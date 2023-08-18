@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href='https://fonts.googleapis.com/css?family=Montserrat' rel='stylesheet'>
+    <title>Meeting Minute AI Assistant</title>
+    <style>
+        body {
+            font-family: 'Montserrat';
+            margin: 20px;
+            color: tan;
+            background-color: black;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: white;
+        }
+        form {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="file"], textarea {
+            margin-left: 10px;
+        }
+        input[type="submit"] {
+            margin-left: 10px;
+            padding: 5px 10px;
+            background-color: transparent; /* Make background transparent */
+            border: 1px solid white; /* White border */
+            border-radius: 3px;
+            cursor: pointer;
+            color: white;
+        }
+        p.error {
+            color: red;
+            text-align: center;
+        }
+        div.minutes {
+            border: 2px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: black;
+        }
+        h2 {
+            margin-bottom: 2px;
+        }
+        h3 {
+          margin-top: 10px;
+          text-align: justify;
+          margin-bottom: 40px;
+          font-size: 10pt;
+          color: tan;
+          margin-left: 252px;
+          margin-right: 252px;
+          font-weight: regular;
+        }
+        p {
+            margin: 0;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <img src="{{ url_for('static', filename='ciao.jpg') }}" alt="ciao.ai logo" style="position: absolute; top: 1; left: 1; width: 125px;">
+    <br>
+    <h1>meeting minute .ai assistant</h1>
+    <h3>Meet ciao.ai - our audio transcription and analysis tool designed to transcribe your audio files or text and extract crucial information like meeting minutes, key points, and action items. It can also analyze sentiment and summarize content, making it an ideal solution for professionals who want to save time and effort in processing spoken content. Feel free to upload an audio file or paste a text transcript to experience the efficiency and accuracy of our system. - ciao</h3>
+    <form action="/" method="post" enctype="multipart/form-data">
+        <input type="radio" id="audio" name="input_type" value="audio" checked>
+        <label for="audio">audio upload</label>
+        <input type="radio" id="text" name="input_type" value="text">
+        <label for="text">text upload</label><P>
+        <br>
+        <div id="audio_input">
+            <label for="audio_file"></label>
+            <input type="file" name="audio_file" id="audio_file" accept=".m4a, .mp3, .webm, .mp4, .mpga, .wav, .mpeg, .ogg, .oga, .flac">
+        </div>
+        <div id="text_input" style="display:none;">
+            <label for="input_text"></label>
+            <textarea name="pasted_text" rows="10" cols="55" style="border-radius: 8px;">paste your meeting minutes here</textarea>
+        </div>
+        <br>
+        <input type="submit" value="Submit">
+    </form>
+    <script>
+        document.getElementsByName('input_type').forEach(function(el) {
+            el.addEventListener('change', function() {
+                document.getElementById('audio_input').style.display = this.value === 'audio' ? 'block' : 'none';
+                document.getElementById('text_input').style.display = this.value === 'text' ? 'block' : 'none';
+            });
+        });
+    </script>
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if minutes %}
+    <div class="minutes">
+        <h2>Meeting Minutes</h2>
+        <p><strong>Abstract Summary:</strong> {{ minutes.abstract_summary }}</p>
+        <p><strong>Key Points:</strong> {{ minutes.key_points }}</p>
+        <p><strong>Action Items:</strong> {{ minutes.action_items }}</p>
+        <p><strong>Sentiment:</strong> {{ minutes.sentiment }}</p>
+    </div>
+    {% endif %}
+</body>
+<footer style="font-family: Montserrat; font-size:10pt; text-align:center; margin-top:20px; color: tan;">
+    <p>&copy; 2023 <a href="" target="_blank">ciao.ai</a> | All rights reserved.</p>
+    <p>Credits:
+        <a href="https://flask.palletsprojects.com/">Flask</a> |
+        <a href="https://github.com/python-openxml/python-docx">python-docx</a> |
+        <a href="https://github.com/sloria/TextBlob">TextBlob</a> |
+        <a href="https://openai.com">OpenAI</a>
+    </p>
+</footer>
+</html>
