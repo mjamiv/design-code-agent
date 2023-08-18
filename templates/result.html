@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link href='https://fonts.googleapis.com/css?family=Montserrat' rel='stylesheet'>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Minute AI Assistant - Results</title>
+    <style>
+        /* Resetting some default browser styles */
+        body, h1, h2, p {
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Montserrat';
+            background-color: black;
+            maring: 20pm;
+            color: white;
+            line-height: 1.6;
+        }
+        header {
+            text-align: center;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            background-color: black;
+            box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
+            padding: 30px 40px;
+            border-radius: 8px;
+        }
+        h1 {
+            font-size: 32px;
+        }
+        h2 {
+            margin-top: 30px;
+            margin-bottom: 20px;
+            font-size: 26px;
+            color: tan;
+            border-bottom: 2px solid #E8E8E8;
+            padding-bottom: 10px;
+        }
+        p {
+            margin-bottom: 20px;
+        }
+        p1 {
+            color: tan;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: tan;
+            font-size: 14px;
+        }
+        a {
+            color: tan;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        a:hover {
+            color: #388E3C;
+        }
+        .download-btn {
+            margin-left: 0 auto;
+            margin-right: 0 auto;
+            padding: 5px 10px;
+            background-color: transparent; /* Make background transparent */
+            border: 1px solid white; /* White border */
+            border-radius: 3px;
+            cursor: pointer;
+            color: white;
+        }
+        .download-btn:hover {
+            background-color: white;
+            color: black;
+            text-slign: center;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>meeting minute .ai assistant</h1>
+        <p1>Analyis Results</p1>
+    </header>
+
+    <div class="container">
+
+        <h2>Meeting Summary:</h2>
+        <p>{{ minutes.abstract_summary }}</p>
+
+        <h2>Key Points & Takeaways:</h2>
+        <div class="bulleted">{{ minutes.key_points }}</div>
+
+        <h2>Action Items:</h2>
+        <div class="bulleted">{{ minutes.action_items }}</div>
+
+        <h2>Sentiment:</h2>
+        <p>{{ minutes.sentiment }}</p>
+
+        <a href="{{ url_for('download_file', filename=filename) }}" download class="download-btn">Download .docx File</a>
+
+    </div>
+
+    <style>
+        .bulleted ul {
+            list-style-type: disc;
+        }
+    </style>
+
+    <script>
+        document.querySelectorAll('.bulleted').forEach(div => {
+            let content = div.innerHTML
+                .split('\n')
+                .filter(line => line.trim().startsWith('-'))
+                .map(line => `<li>${line.trim().substring(1).trim()}</li>`)
+                .join('');
+            div.innerHTML = `<ul>${content}</ul>`;
+        });
+    </script>
+
+</body>
+
+</body>
+<footer style="font-family: Montserrat; font-size:10pt; text-align:center; margin-top:20px;">
+    <p>&copy; 2023 <a href="" target="_blank">ciao.ai</a> | All rights reserved.</p>
+    <p>Credits:
+        <a href="https://flask.palletsprojects.com/">Flask</a>,
+        <a href="https://github.com/python-openxml/python-docx">python-docx</a>,
+        <a href="https://github.com/sloria/TextBlob">TextBlob</a>,
+        <a href="https://openai.com">OpenAI</a>
+    </p>
+</footer>
+</html>
