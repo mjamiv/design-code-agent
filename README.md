@@ -1,5 +1,6 @@
 vox2txt-beta
 
+run using: gunicorn -c gunicorn_config.py -b 0.0.0.0:9000 -w 8 app:app --timeout 600
 
 
 - **Framework & Libraries**: Uses Flask to build a web application, with additional libraries for handling documents (docx) and text analysis (TextBlob). OpenAI is used for specific tasks.
