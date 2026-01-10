@@ -70,11 +70,12 @@ const state = {
     apiKey: '',
     selectedFile: null,
     selectedPdfFile: null,
-    inputMode: 'audio', // 'audio', 'pdf', or 'text'
+    inputMode: 'audio', // 'audio', 'pdf', 'text', or 'url'
     isProcessing: false,
     results: null,
     metrics: null,
-    chatHistory: []
+    chatHistory: [],
+    urlContent: null
 };
 ```
 

@@ -30,11 +30,12 @@ const state = {
     apiKey: '',
     selectedFile: null,
     selectedPdfFile: null,
-    inputMode: 'audio', // 'audio', 'pdf', or 'text'
+    inputMode: 'audio', // 'audio', 'pdf', 'text', or 'url'
     isProcessing: false,
     results: null,
     metrics: null,
-    chatHistory: [] // Stores chat conversation history
+    chatHistory: [], // Stores chat conversation history
+    urlContent: null // Stores fetched URL content
 };
 
 // ============================================
@@ -151,7 +152,15 @@ async function init() {
         // Chat with Data
         chatMessages: document.getElementById('chat-messages'),
         chatInput: document.getElementById('chat-input'),
-        chatSendBtn: document.getElementById('chat-send-btn')
+        chatSendBtn: document.getElementById('chat-send-btn'),
+        
+        // URL Input
+        urlTab: document.getElementById('url-tab'),
+        urlInput: document.getElementById('url-input'),
+        fetchUrlBtn: document.getElementById('fetch-url-btn'),
+        urlPreview: document.getElementById('url-preview'),
+        urlPreviewContent: document.getElementById('url-preview-content'),
+        clearUrlBtn: document.querySelector('.clear-url-btn')
     };
     
     loadSavedApiKey();
@@ -225,6 +234,17 @@ function setupEventListeners() {
             sendChatMessage();
         }
     });
+    
+    // URL Input
+    elements.fetchUrlBtn.addEventListener('click', fetchUrlContent);
+    elements.urlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            fetchUrlContent();
+        }
+    });
+    elements.urlInput.addEventListener('input', updateAnalyzeButton);
+    elements.clearUrlBtn.addEventListener('click', clearUrlContent);
 }
 
 // ============================================
@@ -271,6 +291,7 @@ function switchTab(tab) {
     elements.audioTab.classList.toggle('active', tab === 'audio');
     elements.pdfTab.classList.toggle('active', tab === 'pdf');
     elements.textTab.classList.toggle('active', tab === 'text');
+    elements.urlTab.classList.toggle('active', tab === 'url');
     
     updateAnalyzeButton();
 }
@@ -438,6 +459,8 @@ function updateAnalyzeButton() {
             canAnalyze = true;
         } else if (state.inputMode === 'text' && elements.textInput.value.trim()) {
             canAnalyze = true;
+        } else if (state.inputMode === 'url' && state.urlContent) {
+            canAnalyze = true;
         }
     }
     
@@ -478,6 +501,12 @@ async function startAnalysis() {
             
             if (!transcriptionText || transcriptionText.length < 10) {
                 throw new Error('Could not extract text from PDF. The file may be image-based or empty.');
+            }
+        } else if (state.inputMode === 'url') {
+            transcriptionText = state.urlContent;
+            
+            if (!transcriptionText || transcriptionText.length < 10) {
+                throw new Error('No content available from URL. Please fetch the URL first.');
             }
         } else {
             transcriptionText = elements.textInput.value.trim();
@@ -1007,12 +1036,49 @@ async function downloadDocx() {
             new Paragraph({
                 children: [
                     new TextRun({
-                        text: "An executive audio summary has been generated for this meeting. ",
+                        text: "✓ AUDIO GENERATED",
+                        bold: true,
+                        size: 24,
+                        color: "22c55e"
+                    })
+                ],
+                spacing: { after: 120 }
+            }),
+            new Paragraph({
+                children: [
+                    new TextRun({
+                        text: "An executive audio summary (~2 minutes) has been generated for this meeting.",
                         size: 22
+                    })
+                ],
+                spacing: { after: 80 }
+            }),
+            new Paragraph({
+                children: [
+                    new TextRun({
+                        text: "📎 Attachment: ",
+                        size: 22,
+                        bold: true
                     }),
                     new TextRun({
-                        text: "Download the MP3 file separately using the application.",
+                        text: `meeting-briefing-${new Date().toISOString().slice(0, 10)}.mp3`,
                         size: 22,
+                        color: "2563eb"
+                    })
+                ],
+                spacing: { after: 80 }
+            }),
+            new Paragraph({
+                children: [
+                    new TextRun({
+                        text: "Note: Download the MP3 file separately from the northstar.LM application. ",
+                        size: 20,
+                        italics: true,
+                        color: "718096"
+                    }),
+                    new TextRun({
+                        text: "DOCX format does not support embedded audio playback.",
+                        size: 20,
                         italics: true,
                         color: "718096"
                     })
@@ -1324,6 +1390,9 @@ function resetForNewAnalysis() {
     elements.audioFileInput.value = '';
     elements.pdfFileInput.value = '';
     elements.textInput.value = '';
+    
+    // Clear URL content
+    clearUrlContent();
     elements.fileInfo.classList.add('hidden');
     elements.pdfFileInfo.classList.add('hidden');
     elements.dropZone.style.display = 'block';
@@ -1607,6 +1676,105 @@ async function downloadInfographic() {
         console.error('Download error:', error);
         showError('Failed to download infographic. Try right-clicking the image and saving.');
     }
+}
+
+// ============================================
+// URL Content Fetching
+// ============================================
+async function fetchUrlContent() {
+    const url = elements.urlInput.value.trim();
+    
+    if (!url) {
+        showError('Please enter a URL');
+        return;
+    }
+    
+    // Basic URL validation
+    try {
+        new URL(url);
+    } catch {
+        showError('Please enter a valid URL (e.g., https://example.com)');
+        return;
+    }
+    
+    const btn = elements.fetchUrlBtn;
+    const btnText = btn.querySelector('.btn-text');
+    const btnLoader = btn.querySelector('.btn-loader');
+    
+    btn.disabled = true;
+    btnText.classList.add('hidden');
+    btnLoader.classList.remove('hidden');
+    
+    try {
+        // Use a CORS proxy to fetch the content
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch URL: ${response.status}`);
+        }
+        
+        const html = await response.text();
+        
+        // Extract text content from HTML
+        const textContent = extractTextFromHtml(html);
+        
+        if (!textContent || textContent.length < 20) {
+            throw new Error('Could not extract meaningful text from the webpage.');
+        }
+        
+        // Store the content
+        state.urlContent = textContent;
+        
+        // Show preview
+        elements.urlPreviewContent.textContent = textContent.substring(0, 2000) + 
+            (textContent.length > 2000 ? '\n\n... (content truncated for preview)' : '');
+        elements.urlPreview.classList.remove('hidden');
+        
+        updateAnalyzeButton();
+        
+    } catch (error) {
+        console.error('URL fetch error:', error);
+        showError(error.message || 'Failed to fetch content from URL. The site may block external access.');
+    } finally {
+        btn.disabled = false;
+        btnText.classList.remove('hidden');
+        btnLoader.classList.add('hidden');
+    }
+}
+
+function extractTextFromHtml(html) {
+    // Create a temporary DOM element to parse HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Remove script and style elements
+    const scriptsAndStyles = doc.querySelectorAll('script, style, noscript, iframe, nav, footer, header');
+    scriptsAndStyles.forEach(el => el.remove());
+    
+    // Get text content from body
+    const body = doc.body;
+    if (!body) return '';
+    
+    // Get text and clean it up
+    let text = body.innerText || body.textContent || '';
+    
+    // Clean up whitespace
+    text = text
+        .replace(/\s+/g, ' ')           // Collapse whitespace
+        .replace(/\n\s*\n/g, '\n\n')    // Normalize paragraph breaks
+        .trim();
+    
+    return text;
+}
+
+function clearUrlContent() {
+    state.urlContent = null;
+    elements.urlInput.value = '';
+    elements.urlPreview.classList.add('hidden');
+    elements.urlPreviewContent.textContent = '';
+    updateAnalyzeButton();
 }
 
 // ============================================

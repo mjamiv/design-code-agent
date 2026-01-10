@@ -56,6 +56,10 @@
                     <span class="tab-icon">&#128221;</span>
                     Text
                 </button>
+                <button class="tab-btn" data-tab="url">
+                    <span class="tab-icon">&#127760;</span>
+                    URL
+                </button>
             </div>
 
             <div class="tab-content">
@@ -89,6 +93,29 @@
 
                 <div id="text-tab" class="tab-pane">
                     <textarea id="text-input" placeholder="Paste your meeting transcript or notes here..."></textarea>
+                </div>
+
+                <div id="url-tab" class="tab-pane">
+                    <div class="url-input-container">
+                        <div class="url-input-wrapper">
+                            <span class="url-icon">🔗</span>
+                            <input type="url" id="url-input" placeholder="https://example.com/meeting-notes" />
+                            <button id="fetch-url-btn" class="btn-fetch" type="button">
+                                <span class="btn-text">Fetch</span>
+                                <span class="btn-loader hidden">
+                                    <span class="spinner-small"></span>
+                                </span>
+                            </button>
+                        </div>
+                        <p class="url-hint">Enter a webpage URL to extract its text content</p>
+                    </div>
+                    <div id="url-preview" class="url-preview hidden">
+                        <div class="url-preview-header">
+                            <span class="url-preview-title">Extracted Content</span>
+                            <button type="button" class="clear-url-btn">&#10005; Clear</button>
+                        </div>
+                        <div class="url-preview-content" id="url-preview-content"></div>
+                    </div>
                 </div>
             </div>
 
@@ -287,6 +314,6 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=14" type="module"></script>
+    <script src="js/app.js?v=15" type="module"></script>
 </body>
 </html>

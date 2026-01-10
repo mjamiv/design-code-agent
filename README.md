@@ -14,6 +14,7 @@ northstar.LM is a static web application that uses OpenAI's powerful AI models t
 - **Audio Transcription** - Upload MP3, WAV, M4A, OGG, FLAC, MP4, or WEBM files for automatic transcription using OpenAI Whisper
 - **PDF Text Extraction** - Upload PDF documents for client-side text extraction using PDF.js
 - **Text Input** - Paste meeting notes or transcripts directly
+- **URL Import** - Fetch and extract text content from any webpage URL
 - **AI-Powered Analysis** - Generates summaries, key points, action items, and sentiment analysis using GPT-5.2
 
 ### Audio Briefing
