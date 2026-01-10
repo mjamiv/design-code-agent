@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meeting Minute Men | AI Meeting Assistant</title>
+    <title>Northstar Meeting Insights | AI Meeting Assistant</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -14,8 +14,8 @@
     
     <header>
         <div class="logo">
-            <span class="logo-icon">&#9201;</span>
-            <h1>Meeting Minute Men</h1>
+            <span class="logo-icon">&#11088;</span>
+            <h1>Northstar Meeting Insights</h1>
         </div>
         <p class="tagline">Transform your meetings into actionable insights</p>
     </header>
@@ -46,11 +46,15 @@
             <div class="input-tabs">
                 <button class="tab-btn active" data-tab="audio">
                     <span class="tab-icon">&#127908;</span>
-                    Audio Upload
+                    Audio
+                </button>
+                <button class="tab-btn" data-tab="pdf">
+                    <span class="tab-icon">&#128196;</span>
+                    PDF
                 </button>
                 <button class="tab-btn" data-tab="text">
                     <span class="tab-icon">&#128221;</span>
-                    Paste Text
+                    Text
                 </button>
             </div>
 
@@ -66,6 +70,20 @@
                     <div id="file-info" class="file-info hidden">
                         <span class="file-name"></span>
                         <button type="button" class="remove-file">&#10005;</button>
+                    </div>
+                </div>
+
+                <div id="pdf-tab" class="tab-pane">
+                    <div class="upload-zone" id="pdf-drop-zone">
+                        <div class="upload-icon">&#128196;</div>
+                        <p>Drag & drop your PDF file here</p>
+                        <p class="hint">or click to browse</p>
+                        <input type="file" id="pdf-file" accept=".pdf" hidden>
+                        <p class="file-types">Supported: PDF documents</p>
+                    </div>
+                    <div id="pdf-file-info" class="file-info hidden">
+                        <span class="pdf-file-name"></span>
+                        <button type="button" class="remove-pdf-file">&#10005;</button>
                     </div>
                 </div>
 
@@ -135,6 +153,16 @@
                         <!-- Sentiment will be inserted here -->
                     </div>
                 </div>
+
+                <div class="result-card metrics-card">
+                    <div class="card-header">
+                        <span class="card-icon">&#128202;</span>
+                        <h3>Usage Metrics</h3>
+                    </div>
+                    <div class="card-content" id="result-metrics">
+                        <!-- Metrics will be inserted here -->
+                    </div>
+                </div>
             </div>
 
             <div class="results-actions">
@@ -158,15 +186,16 @@
     </main>
 
     <footer>
-        <p>&copy; 2026 Meeting Minute Men | Your meetings, distilled.</p>
+        <p>&copy; 2026 Northstar Meeting Insights | Your meetings, distilled.</p>
         <p class="credits">
             Powered by 
-            <a href="https://openai.com" target="_blank">OpenAI Whisper & GPT</a>
+            <a href="https://openai.com" target="_blank">OpenAI Whisper & GPT-5.2</a>
         </p>
     </footer>
 
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
-    <script src="js/app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
+    <script src="js/app.js" type="module"></script>
 </body>
 </html>

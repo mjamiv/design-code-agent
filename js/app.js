@@ -1,7 +1,27 @@
 /**
- * Meeting Minute Men - Client-Side Application
- * Transforms meeting audio/text into actionable insights using OpenAI
+ * Northstar Meeting Insights - Client-Side Application
+ * Transforms meeting audio/text/PDF into actionable insights using OpenAI
  */
+
+// ============================================
+// PDF.js Configuration
+// ============================================
+const pdfjsLib = window['pdfjs-dist/build/pdf'] || null;
+let pdfJsLoaded = false;
+
+// Load PDF.js dynamically
+async function loadPdfJs() {
+    if (pdfJsLoaded) return;
+    
+    try {
+        const pdfjsModule = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs');
+        window.pdfjsLib = pdfjsModule;
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+        pdfJsLoaded = true;
+    } catch (e) {
+        console.error('Failed to load PDF.js:', e);
+    }
+}
 
 // ============================================
 // State Management
@@ -9,69 +29,106 @@
 const state = {
     apiKey: '',
     selectedFile: null,
-    inputMode: 'audio', // 'audio' or 'text'
+    selectedPdfFile: null,
+    inputMode: 'audio', // 'audio', 'pdf', or 'text'
     isProcessing: false,
-    results: null
+    results: null,
+    metrics: null
 };
 
 // ============================================
-// DOM Elements
+// Pricing Configuration (per 1M tokens / per minute)
 // ============================================
-const elements = {
-    // API Key
-    apiKeyInput: document.getElementById('api-key'),
-    toggleKeyBtn: document.getElementById('toggle-key'),
-    saveKeyBtn: document.getElementById('save-key'),
-    
-    // Tabs
-    tabBtns: document.querySelectorAll('.tab-btn'),
-    audioTab: document.getElementById('audio-tab'),
-    textTab: document.getElementById('text-tab'),
-    
-    // Audio Upload
-    dropZone: document.getElementById('drop-zone'),
-    audioFileInput: document.getElementById('audio-file'),
-    fileInfo: document.getElementById('file-info'),
-    fileName: document.querySelector('.file-name'),
-    removeFileBtn: document.querySelector('.remove-file'),
-    
-    // Text Input
-    textInput: document.getElementById('text-input'),
-    
-    // Actions
-    analyzeBtn: document.getElementById('analyze-btn'),
-    downloadBtn: document.getElementById('download-btn'),
-    newAnalysisBtn: document.getElementById('new-analysis-btn'),
-    
-    // Progress
-    progressSection: document.getElementById('progress-section'),
-    progressFill: document.querySelector('.progress-fill'),
-    progressText: document.querySelector('.progress-text'),
-    
-    // Results
-    resultsSection: document.getElementById('results-section'),
-    resultSummary: document.getElementById('result-summary'),
-    resultKeypoints: document.getElementById('result-keypoints'),
-    resultActions: document.getElementById('result-actions'),
-    resultSentiment: document.getElementById('result-sentiment'),
-    
-    // Error
-    errorSection: document.getElementById('error-section'),
-    errorMessage: document.getElementById('error-message'),
-    dismissErrorBtn: document.getElementById('dismiss-error')
+const PRICING = {
+    'gpt-5.2': {
+        input: 2.50,   // $ per 1M input tokens
+        output: 10.00  // $ per 1M output tokens
+    },
+    'whisper-1': {
+        perMinute: 0.006  // $ per minute of audio
+    }
 };
+
+// Metrics tracking for current run
+let currentMetrics = {
+    whisperMinutes: 0,
+    gptInputTokens: 0,
+    gptOutputTokens: 0,
+    apiCalls: []
+};
+
+// ============================================
+// DOM Elements (initialized in init())
+// ============================================
+let elements = {};
 
 // ============================================
 // Initialization
 // ============================================
-function init() {
+async function init() {
+    // Initialize DOM element references
+    elements = {
+        // API Key
+        apiKeyInput: document.getElementById('api-key'),
+        toggleKeyBtn: document.getElementById('toggle-key'),
+        saveKeyBtn: document.getElementById('save-key'),
+        
+        // Tabs
+        tabBtns: document.querySelectorAll('.tab-btn'),
+        audioTab: document.getElementById('audio-tab'),
+        pdfTab: document.getElementById('pdf-tab'),
+        textTab: document.getElementById('text-tab'),
+        
+        // Audio Upload
+        dropZone: document.getElementById('drop-zone'),
+        audioFileInput: document.getElementById('audio-file'),
+        fileInfo: document.getElementById('file-info'),
+        fileName: document.querySelector('.file-name'),
+        removeFileBtn: document.querySelector('.remove-file'),
+        
+        // PDF Upload
+        pdfDropZone: document.getElementById('pdf-drop-zone'),
+        pdfFileInput: document.getElementById('pdf-file'),
+        pdfFileInfo: document.getElementById('pdf-file-info'),
+        pdfFileName: document.querySelector('.pdf-file-name'),
+        removePdfFileBtn: document.querySelector('.remove-pdf-file'),
+        
+        // Text Input
+        textInput: document.getElementById('text-input'),
+        
+        // Actions
+        analyzeBtn: document.getElementById('analyze-btn'),
+        downloadBtn: document.getElementById('download-btn'),
+        newAnalysisBtn: document.getElementById('new-analysis-btn'),
+        
+        // Progress
+        progressSection: document.getElementById('progress-section'),
+        progressFill: document.querySelector('.progress-fill'),
+        progressText: document.querySelector('.progress-text'),
+        
+        // Results
+        resultsSection: document.getElementById('results-section'),
+        resultSummary: document.getElementById('result-summary'),
+        resultKeypoints: document.getElementById('result-keypoints'),
+        resultActions: document.getElementById('result-actions'),
+        resultSentiment: document.getElementById('result-sentiment'),
+        
+        // Error
+        errorSection: document.getElementById('error-section'),
+        errorMessage: document.getElementById('error-message'),
+        dismissErrorBtn: document.getElementById('dismiss-error')
+    };
+    
     loadSavedApiKey();
     setupEventListeners();
     updateAnalyzeButton();
+    
+    // Pre-load PDF.js in the background
+    loadPdfJs();
 }
 
 function loadSavedApiKey() {
-    const savedKey = localStorage.getItem('mmm_api_key');
+    const savedKey = localStorage.getItem('northstar_api_key');
     if (savedKey) {
         state.apiKey = savedKey;
         elements.apiKeyInput.value = savedKey;
@@ -92,13 +149,21 @@ function setupEventListeners() {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
     
-    // Drag and Drop
+    // Audio Drag and Drop
     elements.dropZone.addEventListener('click', () => elements.audioFileInput.click());
     elements.dropZone.addEventListener('dragover', handleDragOver);
     elements.dropZone.addEventListener('dragleave', handleDragLeave);
     elements.dropZone.addEventListener('drop', handleDrop);
     elements.audioFileInput.addEventListener('change', handleFileSelect);
     elements.removeFileBtn.addEventListener('click', removeSelectedFile);
+    
+    // PDF Drag and Drop
+    elements.pdfDropZone.addEventListener('click', () => elements.pdfFileInput.click());
+    elements.pdfDropZone.addEventListener('dragover', handlePdfDragOver);
+    elements.pdfDropZone.addEventListener('dragleave', handlePdfDragLeave);
+    elements.pdfDropZone.addEventListener('drop', handlePdfDrop);
+    elements.pdfFileInput.addEventListener('change', handlePdfFileSelect);
+    elements.removePdfFileBtn.addEventListener('click', removeSelectedPdfFile);
     
     // Text Input
     elements.textInput.addEventListener('input', updateAnalyzeButton);
@@ -126,7 +191,7 @@ function toggleApiKeyVisibility() {
 
 function saveApiKey() {
     if (state.apiKey) {
-        localStorage.setItem('mmm_api_key', state.apiKey);
+        localStorage.setItem('northstar_api_key', state.apiKey);
         showTemporaryMessage(elements.saveKeyBtn, 'Saved!', 'Save');
     }
 }
@@ -152,6 +217,7 @@ function switchTab(tab) {
     });
     
     elements.audioTab.classList.toggle('active', tab === 'audio');
+    elements.pdfTab.classList.toggle('active', tab === 'pdf');
     elements.textTab.classList.toggle('active', tab === 'text');
     
     updateAnalyzeButton();
@@ -217,6 +283,97 @@ function removeSelectedFile() {
 }
 
 // ============================================
+// PDF File Handling
+// ============================================
+function handlePdfDragOver(e) {
+    e.preventDefault();
+    elements.pdfDropZone.classList.add('dragover');
+}
+
+function handlePdfDragLeave(e) {
+    e.preventDefault();
+    elements.pdfDropZone.classList.remove('dragover');
+}
+
+function handlePdfDrop(e) {
+    e.preventDefault();
+    elements.pdfDropZone.classList.remove('dragover');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        processSelectedPdfFile(files[0]);
+    }
+}
+
+function handlePdfFileSelect(e) {
+    if (e.target.files.length > 0) {
+        processSelectedPdfFile(e.target.files[0]);
+    }
+}
+
+function processSelectedPdfFile(file) {
+    const extension = file.name.split('.').pop().toLowerCase();
+    
+    if (extension !== 'pdf') {
+        showError('Invalid file format. Please upload a PDF file.');
+        return;
+    }
+    
+    // Check file size (50MB limit for PDFs)
+    if (file.size > 50 * 1024 * 1024) {
+        showError('File size exceeds 50MB limit.');
+        return;
+    }
+    
+    state.selectedPdfFile = file;
+    elements.pdfFileName.textContent = file.name;
+    elements.pdfFileInfo.classList.remove('hidden');
+    elements.pdfDropZone.style.display = 'none';
+    updateAnalyzeButton();
+}
+
+function removeSelectedPdfFile() {
+    state.selectedPdfFile = null;
+    elements.pdfFileInput.value = '';
+    elements.pdfFileInfo.classList.add('hidden');
+    elements.pdfDropZone.style.display = 'block';
+    updateAnalyzeButton();
+}
+
+// ============================================
+// PDF Text Extraction
+// ============================================
+async function extractTextFromPdf(file) {
+    // Ensure PDF.js is loaded
+    if (!pdfJsLoaded) {
+        await loadPdfJs();
+    }
+    
+    if (!window.pdfjsLib) {
+        throw new Error('PDF.js library failed to load. Please refresh the page and try again.');
+    }
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    const totalPages = pdf.numPages;
+    
+    for (let i = 1; i <= totalPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + '\n\n';
+        
+        // Update progress for large PDFs
+        const progress = Math.round((i / totalPages) * 20);
+        updateProgress(progress, `Extracting text from PDF (page ${i}/${totalPages})...`);
+    }
+    
+    return fullText.trim();
+}
+
+// ============================================
 // Analyze Button State
 // ============================================
 function updateAnalyzeButton() {
@@ -224,6 +381,8 @@ function updateAnalyzeButton() {
     
     if (state.apiKey) {
         if (state.inputMode === 'audio' && state.selectedFile) {
+            canAnalyze = true;
+        } else if (state.inputMode === 'pdf' && state.selectedPdfFile) {
             canAnalyze = true;
         } else if (state.inputMode === 'text' && elements.textInput.value.trim()) {
             canAnalyze = true;
@@ -244,12 +403,27 @@ async function startAnalysis() {
     showProgress();
     setButtonLoading(true);
     
+    // Reset metrics for new run
+    currentMetrics = {
+        whisperMinutes: 0,
+        gptInputTokens: 0,
+        gptOutputTokens: 0,
+        apiCalls: []
+    };
+    
     try {
         let transcriptionText;
         
         if (state.inputMode === 'audio') {
-            updateProgress(10, 'Transcribing audio with Whisper...');
+            updateProgress(5, 'Transcribing audio with Whisper...');
             transcriptionText = await transcribeAudio(state.selectedFile);
+        } else if (state.inputMode === 'pdf') {
+            updateProgress(5, 'Extracting text from PDF...');
+            transcriptionText = await extractTextFromPdf(state.selectedPdfFile);
+            
+            if (!transcriptionText || transcriptionText.length < 10) {
+                throw new Error('Could not extract text from PDF. The file may be image-based or empty.');
+            }
         } else {
             transcriptionText = elements.textInput.value.trim();
         }
@@ -263,10 +437,13 @@ async function startAnalysis() {
         updateProgress(70, 'Identifying action items...');
         const actionItems = await extractActionItems(transcriptionText);
         
-        updateProgress(85, 'Analyzing sentiment...');
+        updateProgress(90, 'Analyzing sentiment...');
         const sentiment = await analyzeSentiment(transcriptionText);
         
         updateProgress(100, 'Complete!');
+        
+        // Calculate costs
+        const metrics = calculateMetrics();
         
         state.results = {
             transcription: transcriptionText,
@@ -275,6 +452,7 @@ async function startAnalysis() {
             actionItems,
             sentiment
         };
+        state.metrics = metrics;
         
         setTimeout(() => {
             hideProgress();
@@ -322,10 +500,20 @@ async function transcribeAudio(file) {
     }
     
     const data = await response.json();
+    
+    // Estimate audio duration from file size (rough estimate: ~1MB per minute for common formats)
+    const estimatedMinutes = Math.max(0.1, file.size / (1024 * 1024));
+    currentMetrics.whisperMinutes += estimatedMinutes;
+    currentMetrics.apiCalls.push({
+        name: 'Audio Transcription',
+        model: 'whisper-1',
+        duration: estimatedMinutes.toFixed(2) + ' min'
+    });
+    
     return data.text;
 }
 
-async function callChatAPI(systemPrompt, userContent) {
+async function callChatAPI(systemPrompt, userContent, callName = 'API Call') {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -333,7 +521,7 @@ async function callChatAPI(systemPrompt, userContent) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-5.2',
             temperature: 0,
             messages: [
                 { role: 'system', content: systemPrompt },
@@ -348,6 +536,19 @@ async function callChatAPI(systemPrompt, userContent) {
     }
     
     const data = await response.json();
+    
+    // Track token usage
+    if (data.usage) {
+        currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
+        currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
+        currentMetrics.apiCalls.push({
+            name: callName,
+            model: 'gpt-5.2',
+            inputTokens: data.usage.prompt_tokens || 0,
+            outputTokens: data.usage.completion_tokens || 0
+        });
+    }
+    
     return data.choices[0].message.content;
 }
 
@@ -357,7 +558,7 @@ Read the following text and summarize it into a concise abstract paragraph.
 Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text. 
 Avoid unnecessary details or tangential points.`;
     
-    return await callChatAPI(systemPrompt, text);
+    return await callChatAPI(systemPrompt, text, 'Summary');
 }
 
 async function extractKeyPoints(text) {
@@ -366,7 +567,7 @@ Based on the following text, identify and list the main points that were discuss
 These should be the most important ideas, findings, or topics that are crucial to the essence of the discussion. 
 Format each point on its own line starting with a dash (-).`;
     
-    return await callChatAPI(systemPrompt, text);
+    return await callChatAPI(systemPrompt, text, 'Key Points');
 }
 
 async function extractActionItems(text) {
@@ -375,7 +576,7 @@ Review the following text and identify any specific tasks or action items that w
 Format each action item on its own line starting with a dash (-).
 If no action items are found, respond with "No specific action items identified."`;
     
-    return await callChatAPI(systemPrompt, text);
+    return await callChatAPI(systemPrompt, text, 'Action Items');
 }
 
 async function analyzeSentiment(text) {
@@ -383,7 +584,29 @@ async function analyzeSentiment(text) {
 Analyze the overall sentiment of the following text. 
 Respond with exactly one word: "Positive", "Negative", or "Neutral".`;
     
-    return await callChatAPI(systemPrompt, text);
+    return await callChatAPI(systemPrompt, text, 'Sentiment');
+}
+
+// ============================================
+// Metrics Calculation
+// ============================================
+function calculateMetrics() {
+    const whisperCost = currentMetrics.whisperMinutes * PRICING['whisper-1'].perMinute;
+    const gptInputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING['gpt-5.2'].input;
+    const gptOutputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING['gpt-5.2'].output;
+    const totalCost = whisperCost + gptInputCost + gptOutputCost;
+    
+    return {
+        whisperMinutes: currentMetrics.whisperMinutes,
+        gptInputTokens: currentMetrics.gptInputTokens,
+        gptOutputTokens: currentMetrics.gptOutputTokens,
+        totalTokens: currentMetrics.gptInputTokens + currentMetrics.gptOutputTokens,
+        whisperCost,
+        gptInputCost,
+        gptOutputCost,
+        totalCost,
+        apiCalls: currentMetrics.apiCalls
+    };
 }
 
 // ============================================
@@ -437,8 +660,71 @@ function displayResults() {
         <span class="${sentimentClass}">${sentimentEmoji} ${capitalize(state.results.sentiment)}</span>
     `;
     
+    // Display metrics
+    displayMetrics();
+    
     // Scroll to results
     elements.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function displayMetrics() {
+    const metrics = state.metrics;
+    if (!metrics) return;
+    
+    const resultMetrics = document.getElementById('result-metrics');
+    if (!resultMetrics) return;
+    
+    const formatCost = (cost) => cost < 0.01 ? '<$0.01' : `$${cost.toFixed(4)}`;
+    const formatTokens = (tokens) => tokens.toLocaleString();
+    
+    let breakdownHtml = '';
+    metrics.apiCalls.forEach(call => {
+        if (call.model === 'whisper-1') {
+            breakdownHtml += `
+                <div class="metric-breakdown-item">
+                    <span>${call.name}</span>
+                    <span>${call.duration}</span>
+                </div>`;
+        } else {
+            breakdownHtml += `
+                <div class="metric-breakdown-item">
+                    <span>${call.name}</span>
+                    <span>${formatTokens(call.inputTokens + call.outputTokens)} tokens</span>
+                </div>`;
+        }
+    });
+    
+    resultMetrics.innerHTML = `
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <span class="metric-value">${formatTokens(metrics.totalTokens)}</span>
+                <span class="metric-label">Total Tokens</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-value">${formatCost(metrics.totalCost)}</span>
+                <span class="metric-label">Est. Cost</span>
+            </div>
+        </div>
+        <div class="metric-breakdown">
+            <div class="metric-breakdown-item">
+                <span>GPT-5.2 Input</span>
+                <span>${formatTokens(metrics.gptInputTokens)} tokens (${formatCost(metrics.gptInputCost)})</span>
+            </div>
+            <div class="metric-breakdown-item">
+                <span>GPT-5.2 Output</span>
+                <span>${formatTokens(metrics.gptOutputTokens)} tokens (${formatCost(metrics.gptOutputCost)})</span>
+            </div>
+            ${metrics.whisperMinutes > 0 ? `
+            <div class="metric-breakdown-item">
+                <span>Whisper Audio</span>
+                <span>${metrics.whisperMinutes.toFixed(2)} min (${formatCost(metrics.whisperCost)})</span>
+            </div>` : ''}
+        </div>
+        <div class="metric-breakdown" style="margin-top: var(--space-sm);">
+            <strong style="color: var(--text-secondary);">API Calls:</strong>
+            ${breakdownHtml}
+        </div>
+    `;
 }
 
 function formatListContent(text) {
@@ -488,7 +774,7 @@ async function downloadDocx() {
                 new Paragraph({
                     children: [
                         new TextRun({
-                            text: "Generated by Meeting Minute Men",
+                            text: "Generated by Northstar Meeting Insights",
                             italics: true,
                             color: "666666"
                         })
@@ -575,12 +861,17 @@ async function downloadDocx() {
 // ============================================
 function resetForNewAnalysis() {
     state.results = null;
+    state.metrics = null;
     state.selectedFile = null;
+    state.selectedPdfFile = null;
     
     elements.audioFileInput.value = '';
+    elements.pdfFileInput.value = '';
     elements.textInput.value = '';
     elements.fileInfo.classList.add('hidden');
+    elements.pdfFileInfo.classList.add('hidden');
     elements.dropZone.style.display = 'block';
+    elements.pdfDropZone.style.display = 'block';
     elements.resultsSection.classList.add('hidden');
     
     updateAnalyzeButton();
@@ -605,4 +896,9 @@ function hideError() {
 // ============================================
 // Start the App
 // ============================================
-document.addEventListener('DOMContentLoaded', init);
+// Handle both cases: DOM already loaded (module scripts) or still loading
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}

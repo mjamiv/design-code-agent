@@ -580,6 +580,54 @@ section {
     color: var(--text-muted);
 }
 
+/* Metrics Card */
+.metrics-card .card-content {
+    padding: var(--space-md) var(--space-lg);
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+}
+
+.metric-item {
+    text-align: center;
+    padding: var(--space-sm);
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    display: block;
+}
+
+.metric-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metric-breakdown {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.metric-breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-xs) 0;
+}
+
+.metric-breakdown-item span:last-child {
+    color: var(--text-secondary);
+}
+
 /* Results Actions */
 .results-actions {
     display: flex;
