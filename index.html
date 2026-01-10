@@ -173,6 +173,66 @@
                     <span>&#10227;</span> New Analysis
                 </button>
             </div>
+
+            <!-- Audio Briefing Section -->
+            <div class="feature-section" id="audio-briefing-section">
+                <h3><span>&#127911;</span> Audio Briefing</h3>
+                <p class="feature-desc">Generate a 2-minute executive audio summary</p>
+                
+                <div class="feature-controls">
+                    <div class="voice-selector">
+                        <label for="voice-select">Voice:</label>
+                        <select id="voice-select">
+                            <option value="alloy">Alloy (Neutral)</option>
+                            <option value="echo">Echo (Male)</option>
+                            <option value="fable">Fable (British)</option>
+                            <option value="onyx">Onyx (Deep Male)</option>
+                            <option value="nova" selected>Nova (Female)</option>
+                            <option value="shimmer">Shimmer (Soft Female)</option>
+                        </select>
+                    </div>
+                    <button id="generate-audio-btn" class="btn-secondary">
+                        <span class="btn-text">&#127908; Generate Audio</span>
+                        <span class="btn-loader hidden">
+                            <span class="spinner"></span>
+                            Generating...
+                        </span>
+                    </button>
+                </div>
+
+                <div id="audio-player-container" class="audio-player-container hidden">
+                    <audio id="audio-player" controls></audio>
+                    <button id="download-audio-btn" class="btn-secondary">
+                        <span>&#128229;</span> Download MP3
+                    </button>
+                </div>
+            </div>
+
+            <!-- Infographic Section -->
+            <div class="feature-section" id="infographic-section">
+                <h3><span>&#127912;</span> Meeting Infographic</h3>
+                <p class="feature-desc">Create a visual infographic from your meeting insights</p>
+                
+                <div class="feature-controls">
+                    <div class="prompt-input-group">
+                        <input type="text" id="infographic-prompt" placeholder="Describe your preferred style (e.g., 'colorful corporate with icons')" />
+                    </div>
+                    <button id="generate-infographic-btn" class="btn-secondary">
+                        <span class="btn-text">&#127912; Generate Infographic</span>
+                        <span class="btn-loader hidden">
+                            <span class="spinner"></span>
+                            Creating...
+                        </span>
+                    </button>
+                </div>
+
+                <div id="infographic-container" class="infographic-container hidden">
+                    <img id="infographic-image" alt="Meeting Infographic" />
+                    <button id="download-infographic-btn" class="btn-secondary">
+                        <span>&#128229;</span> Download Image
+                    </button>
+                </div>
+            </div>
         </section>
 
         <!-- Error Section -->
@@ -189,7 +249,7 @@
         <p>&copy; 2026 Northstar Meeting Insights | Your meetings, distilled.</p>
         <p class="credits">
             Powered by 
-            <a href="https://openai.com" target="_blank">OpenAI Whisper & GPT-5.2</a>
+            <a href="https://openai.com" target="_blank">OpenAI Whisper, GPT-5.2, TTS & DALL-E 3</a>
         </p>
     </footer>
 

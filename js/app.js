@@ -37,7 +37,7 @@ const state = {
 };
 
 // ============================================
-// Pricing Configuration (per 1M tokens / per minute)
+// Pricing Configuration (per 1M tokens / per minute / per unit)
 // ============================================
 const PRICING = {
     'gpt-5.2': {
@@ -46,6 +46,12 @@ const PRICING = {
     },
     'whisper-1': {
         perMinute: 0.006  // $ per minute of audio
+    },
+    'tts-1-hd': {
+        perKChars: 0.030  // $ per 1K characters
+    },
+    'dall-e-3': {
+        perImage: 0.080  // $ per image (1792x1024)
     }
 };
 
@@ -54,8 +60,14 @@ let currentMetrics = {
     whisperMinutes: 0,
     gptInputTokens: 0,
     gptOutputTokens: 0,
+    ttsCharacters: 0,
+    dalleImages: 0,
     apiCalls: []
 };
+
+// Store generated audio/image URLs for download
+let generatedAudioUrl = null;
+let generatedImageUrl = null;
 
 // ============================================
 // DOM Elements (initialized in init())
@@ -116,7 +128,21 @@ async function init() {
         // Error
         errorSection: document.getElementById('error-section'),
         errorMessage: document.getElementById('error-message'),
-        dismissErrorBtn: document.getElementById('dismiss-error')
+        dismissErrorBtn: document.getElementById('dismiss-error'),
+        
+        // Audio Briefing
+        voiceSelect: document.getElementById('voice-select'),
+        generateAudioBtn: document.getElementById('generate-audio-btn'),
+        audioPlayerContainer: document.getElementById('audio-player-container'),
+        audioPlayer: document.getElementById('audio-player'),
+        downloadAudioBtn: document.getElementById('download-audio-btn'),
+        
+        // Infographic
+        infographicPrompt: document.getElementById('infographic-prompt'),
+        generateInfographicBtn: document.getElementById('generate-infographic-btn'),
+        infographicContainer: document.getElementById('infographic-container'),
+        infographicImage: document.getElementById('infographic-image'),
+        downloadInfographicBtn: document.getElementById('download-infographic-btn')
     };
     
     loadSavedApiKey();
@@ -173,6 +199,14 @@ function setupEventListeners() {
     elements.downloadBtn.addEventListener('click', downloadDocx);
     elements.newAnalysisBtn.addEventListener('click', resetForNewAnalysis);
     elements.dismissErrorBtn.addEventListener('click', hideError);
+    
+    // Audio Briefing
+    elements.generateAudioBtn.addEventListener('click', generateAudioBriefing);
+    elements.downloadAudioBtn.addEventListener('click', downloadAudio);
+    
+    // Infographic
+    elements.generateInfographicBtn.addEventListener('click', generateInfographic);
+    elements.downloadInfographicBtn.addEventListener('click', downloadInfographic);
 }
 
 // ============================================
@@ -594,16 +628,22 @@ function calculateMetrics() {
     const whisperCost = currentMetrics.whisperMinutes * PRICING['whisper-1'].perMinute;
     const gptInputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING['gpt-5.2'].input;
     const gptOutputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING['gpt-5.2'].output;
-    const totalCost = whisperCost + gptInputCost + gptOutputCost;
+    const ttsCost = (currentMetrics.ttsCharacters / 1000) * PRICING['tts-1-hd'].perKChars;
+    const dalleCost = currentMetrics.dalleImages * PRICING['dall-e-3'].perImage;
+    const totalCost = whisperCost + gptInputCost + gptOutputCost + ttsCost + dalleCost;
     
     return {
         whisperMinutes: currentMetrics.whisperMinutes,
         gptInputTokens: currentMetrics.gptInputTokens,
         gptOutputTokens: currentMetrics.gptOutputTokens,
         totalTokens: currentMetrics.gptInputTokens + currentMetrics.gptOutputTokens,
+        ttsCharacters: currentMetrics.ttsCharacters,
+        dalleImages: currentMetrics.dalleImages,
         whisperCost,
         gptInputCost,
         gptOutputCost,
+        ttsCost,
+        dalleCost,
         totalCost,
         apiCalls: currentMetrics.apiCalls
     };
@@ -685,6 +725,18 @@ function displayMetrics() {
                     <span>${call.name}</span>
                     <span>${call.duration}</span>
                 </div>`;
+        } else if (call.model === 'tts-1-hd') {
+            breakdownHtml += `
+                <div class="metric-breakdown-item">
+                    <span>${call.name}</span>
+                    <span>${call.characters.toLocaleString()} chars</span>
+                </div>`;
+        } else if (call.model === 'dall-e-3') {
+            breakdownHtml += `
+                <div class="metric-breakdown-item">
+                    <span>${call.name}</span>
+                    <span>${call.size}</span>
+                </div>`;
         } else {
             breakdownHtml += `
                 <div class="metric-breakdown-item">
@@ -718,6 +770,16 @@ function displayMetrics() {
             <div class="metric-breakdown-item">
                 <span>Whisper Audio</span>
                 <span>${metrics.whisperMinutes.toFixed(2)} min (${formatCost(metrics.whisperCost)})</span>
+            </div>` : ''}
+            ${metrics.ttsCharacters > 0 ? `
+            <div class="metric-breakdown-item">
+                <span>TTS Audio</span>
+                <span>${metrics.ttsCharacters.toLocaleString()} chars (${formatCost(metrics.ttsCost)})</span>
+            </div>` : ''}
+            ${metrics.dalleImages > 0 ? `
+            <div class="metric-breakdown-item">
+                <span>DALL-E Images</span>
+                <span>${metrics.dalleImages} image(s) (${formatCost(metrics.dalleCost)})</span>
             </div>` : ''}
         </div>
         <div class="metric-breakdown" style="margin-top: var(--space-sm);">
@@ -865,6 +927,23 @@ function resetForNewAnalysis() {
     state.selectedFile = null;
     state.selectedPdfFile = null;
     
+    // Reset metrics tracking
+    currentMetrics = {
+        whisperMinutes: 0,
+        gptInputTokens: 0,
+        gptOutputTokens: 0,
+        ttsCharacters: 0,
+        dalleImages: 0,
+        apiCalls: []
+    };
+    
+    // Clean up generated audio/image URLs
+    if (generatedAudioUrl) {
+        URL.revokeObjectURL(generatedAudioUrl);
+        generatedAudioUrl = null;
+    }
+    generatedImageUrl = null;
+    
     elements.audioFileInput.value = '';
     elements.pdfFileInput.value = '';
     elements.textInput.value = '';
@@ -873,6 +952,15 @@ function resetForNewAnalysis() {
     elements.dropZone.style.display = 'block';
     elements.pdfDropZone.style.display = 'block';
     elements.resultsSection.classList.add('hidden');
+    
+    // Reset audio briefing section
+    elements.audioPlayerContainer.classList.add('hidden');
+    elements.audioPlayer.src = '';
+    
+    // Reset infographic section
+    elements.infographicContainer.classList.add('hidden');
+    elements.infographicImage.src = '';
+    elements.infographicPrompt.value = '';
     
     updateAnalyzeButton();
     
@@ -891,6 +979,243 @@ function showError(message) {
 
 function hideError() {
     elements.errorSection.classList.add('hidden');
+}
+
+// ============================================
+// Audio Briefing (TTS)
+// ============================================
+async function generateAudioBriefing() {
+    if (!state.results) return;
+    
+    const btn = elements.generateAudioBtn;
+    const btnText = btn.querySelector('.btn-text');
+    const btnLoader = btn.querySelector('.btn-loader');
+    
+    // Show loading state
+    btnText.classList.add('hidden');
+    btnLoader.classList.remove('hidden');
+    btn.disabled = true;
+    
+    try {
+        // Step 1: Generate executive briefing script using GPT
+        const scriptPrompt = `You are an expert at creating concise executive briefings. 
+Based on the following meeting analysis, create a 2-minute audio script (approximately 300 words) that:
+- Opens with a brief greeting and meeting context
+- Summarizes the key discussion points
+- Highlights the most important action items
+- Closes with the overall meeting sentiment and next steps
+
+Keep the tone professional but conversational, suitable for audio playback.
+Do not include any stage directions or speaker notes - just the spoken text.
+
+Meeting Summary:
+${state.results.summary}
+
+Key Points:
+${state.results.keyPoints}
+
+Action Items:
+${state.results.actionItems}
+
+Sentiment: ${state.results.sentiment}`;
+
+        const script = await callChatAPI(
+            'You create professional executive audio briefings.',
+            scriptPrompt,
+            'Audio Script'
+        );
+        
+        // Step 2: Convert script to speech using TTS API
+        const selectedVoice = elements.voiceSelect.value;
+        const audioBlob = await textToSpeech(script, selectedVoice);
+        
+        // Step 3: Create audio URL and display player
+        if (generatedAudioUrl) {
+            URL.revokeObjectURL(generatedAudioUrl);
+        }
+        generatedAudioUrl = URL.createObjectURL(audioBlob);
+        
+        elements.audioPlayer.src = generatedAudioUrl;
+        elements.audioPlayerContainer.classList.remove('hidden');
+        
+        // Update metrics display
+        displayMetrics();
+        
+    } catch (error) {
+        console.error('Audio generation error:', error);
+        showError(error.message || 'Failed to generate audio briefing.');
+    } finally {
+        btnText.classList.remove('hidden');
+        btnLoader.classList.add('hidden');
+        btn.disabled = false;
+    }
+}
+
+async function textToSpeech(text, voice = 'nova') {
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'tts-1-hd',
+            input: text,
+            voice: voice,
+            response_format: 'mp3'
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error?.message || `TTS failed: ${response.status}`);
+    }
+    
+    // Track metrics
+    currentMetrics.ttsCharacters += text.length;
+    currentMetrics.apiCalls.push({
+        name: 'Text-to-Speech',
+        model: 'tts-1-hd',
+        characters: text.length
+    });
+    
+    // Recalculate and update metrics
+    state.metrics = calculateMetrics();
+    
+    return await response.blob();
+}
+
+function downloadAudio() {
+    if (!generatedAudioUrl) return;
+    
+    const a = document.createElement('a');
+    a.href = generatedAudioUrl;
+    a.download = `meeting-briefing-${new Date().toISOString().slice(0, 10)}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// ============================================
+// Infographic Generation (DALL-E 3)
+// ============================================
+async function generateInfographic() {
+    if (!state.results) return;
+    
+    const userStyle = elements.infographicPrompt.value.trim() || 'professional corporate infographic with icons';
+    
+    const btn = elements.generateInfographicBtn;
+    const btnText = btn.querySelector('.btn-text');
+    const btnLoader = btn.querySelector('.btn-loader');
+    
+    // Show loading state
+    btnText.classList.add('hidden');
+    btnLoader.classList.remove('hidden');
+    btn.disabled = true;
+    
+    try {
+        // Create a detailed prompt for DALL-E
+        const dallePrompt = `Create a professional meeting infographic with the following style: ${userStyle}.
+
+The infographic should visualize these meeting insights:
+
+SUMMARY: ${state.results.summary.substring(0, 200)}...
+
+KEY POINTS (show as visual elements):
+${state.results.keyPoints.split('\n').slice(0, 4).join('\n')}
+
+ACTION ITEMS (show as checklist or tasks):
+${state.results.actionItems.split('\n').slice(0, 3).join('\n')}
+
+SENTIMENT: ${state.results.sentiment}
+
+Design requirements:
+- Clean, professional layout
+- Use icons and visual hierarchy
+- Include a title "Meeting Insights"
+- Use a cohesive color scheme
+- Make text readable but minimal
+- Landscape orientation`;
+
+        const imageUrl = await generateImage(dallePrompt);
+        
+        // Display the image
+        elements.infographicImage.src = imageUrl;
+        elements.infographicContainer.classList.remove('hidden');
+        
+        // Store URL for download
+        generatedImageUrl = imageUrl;
+        
+        // Update metrics display
+        displayMetrics();
+        
+    } catch (error) {
+        console.error('Infographic generation error:', error);
+        showError(error.message || 'Failed to generate infographic.');
+    } finally {
+        btnText.classList.remove('hidden');
+        btnLoader.classList.add('hidden');
+        btn.disabled = false;
+    }
+}
+
+async function generateImage(prompt) {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'dall-e-3',
+            prompt: prompt,
+            n: 1,
+            size: '1792x1024',
+            quality: 'standard'
+        })
+    });
+    
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error?.message || `Image generation failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Track metrics
+    currentMetrics.dalleImages += 1;
+    currentMetrics.apiCalls.push({
+        name: 'Infographic',
+        model: 'dall-e-3',
+        size: '1792x1024'
+    });
+    
+    // Recalculate and update metrics
+    state.metrics = calculateMetrics();
+    
+    return data.data[0].url;
+}
+
+async function downloadInfographic() {
+    if (!generatedImageUrl) return;
+    
+    try {
+        // Fetch the image and create a blob for download
+        const response = await fetch(generatedImageUrl);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `meeting-infographic-${new Date().toISOString().slice(0, 10)}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Download error:', error);
+        showError('Failed to download infographic. Try right-clicking the image and saving.');
+    }
 }
 
 // ============================================
