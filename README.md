@@ -1,4 +1,4 @@
-# Northstar Meeting Insights
+# northstar.LM
 
 > Transform your meetings into actionable insights with AI
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Northstar Meeting Insights is a static web application that uses OpenAI's powerful AI models to analyze meeting recordings, PDFs, or text transcripts. Get instant summaries, key points, action items, sentiment analysis, audio briefings, and visual infographics—all processed client-side with your own API key.
+northstar.LM is a static web application that uses OpenAI's powerful AI models to analyze meeting recordings, PDFs, or text transcripts. Get instant summaries, key points, action items, sentiment analysis, audio briefings, and visual infographics—all processed client-side with your own API key.
 
 ## Features
 

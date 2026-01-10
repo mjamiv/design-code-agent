@@ -1,5 +1,5 @@
 /**
- * Northstar Meeting Insights - Client-Side Application
+ * northstar.LM - Client-Side Application
  * Transforms meeting audio/text/PDF into actionable insights using OpenAI
  */
 
@@ -900,7 +900,7 @@ async function downloadDocx() {
         new Paragraph({
             children: [
                 new TextRun({
-                    text: "Powered by Northstar Meeting Insights",
+                    text: "Powered by northstar.LM",
                     italics: true,
                     size: 24,
                     color: "718096"
