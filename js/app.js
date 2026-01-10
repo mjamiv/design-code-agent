@@ -50,8 +50,9 @@ const PRICING = {
     'tts-1-hd': {
         perKChars: 0.030  // $ per 1K characters
     },
-    'dall-e-3-hd': {
-        perImage: 0.120  // $ per image (1792x1024 HD quality)
+    'gpt-image-1.5': {
+        input: 10.00,   // $ per 1M input tokens
+        output: 40.00   // $ per 1M output tokens (image generation)
     }
 };
 
@@ -61,7 +62,8 @@ let currentMetrics = {
     gptInputTokens: 0,
     gptOutputTokens: 0,
     ttsCharacters: 0,
-    dalleImages: 0,
+    imageInputTokens: 0,
+    imageOutputTokens: 0,
     apiCalls: []
 };
 
@@ -444,7 +446,8 @@ async function startAnalysis() {
         gptInputTokens: 0,
         gptOutputTokens: 0,
         ttsCharacters: 0,
-        dalleImages: 0,
+        imageInputTokens: 0,
+        imageOutputTokens: 0,
         apiCalls: []
     };
     
@@ -632,8 +635,10 @@ function calculateMetrics() {
     const gptInputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING['gpt-5.2'].input;
     const gptOutputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING['gpt-5.2'].output;
     const ttsCost = (currentMetrics.ttsCharacters / 1000) * PRICING['tts-1-hd'].perKChars;
-    const dalleCost = currentMetrics.dalleImages * PRICING['dall-e-3-hd'].perImage;
-    const totalCost = whisperCost + gptInputCost + gptOutputCost + ttsCost + dalleCost;
+    const imageInputCost = (currentMetrics.imageInputTokens / 1000000) * PRICING['gpt-image-1.5'].input;
+    const imageOutputCost = (currentMetrics.imageOutputTokens / 1000000) * PRICING['gpt-image-1.5'].output;
+    const imageCost = imageInputCost + imageOutputCost;
+    const totalCost = whisperCost + gptInputCost + gptOutputCost + ttsCost + imageCost;
     
     return {
         whisperMinutes: currentMetrics.whisperMinutes,
@@ -641,12 +646,16 @@ function calculateMetrics() {
         gptOutputTokens: currentMetrics.gptOutputTokens,
         totalTokens: currentMetrics.gptInputTokens + currentMetrics.gptOutputTokens,
         ttsCharacters: currentMetrics.ttsCharacters,
-        dalleImages: currentMetrics.dalleImages,
+        imageInputTokens: currentMetrics.imageInputTokens,
+        imageOutputTokens: currentMetrics.imageOutputTokens,
+        imageTotalTokens: currentMetrics.imageInputTokens + currentMetrics.imageOutputTokens,
         whisperCost,
         gptInputCost,
         gptOutputCost,
         ttsCost,
-        dalleCost,
+        imageInputCost,
+        imageOutputCost,
+        imageCost,
         totalCost,
         apiCalls: currentMetrics.apiCalls
     };
@@ -734,11 +743,11 @@ function displayMetrics() {
                     <span>${call.name}</span>
                     <span>${call.characters.toLocaleString()} chars</span>
                 </div>`;
-        } else if (call.model === 'dall-e-3-hd') {
+        } else if (call.model === 'gpt-image-1.5') {
             breakdownHtml += `
                 <div class="metric-breakdown-item">
                     <span>${call.name}</span>
-                    <span>${call.size}</span>
+                    <span>${formatTokens(call.inputTokens + call.outputTokens)} tokens</span>
                 </div>`;
         } else {
             breakdownHtml += `
@@ -779,10 +788,14 @@ function displayMetrics() {
                 <span>TTS Audio</span>
                 <span>${metrics.ttsCharacters.toLocaleString()} chars (${formatCost(metrics.ttsCost)})</span>
             </div>` : ''}
-            ${metrics.dalleImages > 0 ? `
+            ${metrics.imageTotalTokens > 0 ? `
             <div class="metric-breakdown-item">
-                <span>DALL-E Images</span>
-                <span>${metrics.dalleImages} image(s) (${formatCost(metrics.dalleCost)})</span>
+                <span>GPT-Image Input</span>
+                <span>${formatTokens(metrics.imageInputTokens)} tokens (${formatCost(metrics.imageInputCost)})</span>
+            </div>
+            <div class="metric-breakdown-item">
+                <span>GPT-Image Output</span>
+                <span>${formatTokens(metrics.imageOutputTokens)} tokens (${formatCost(metrics.imageOutputCost)})</span>
             </div>` : ''}
         </div>
         <div class="metric-breakdown" style="margin-top: var(--space-sm);">
@@ -1028,7 +1041,8 @@ function resetForNewAnalysis() {
         gptInputTokens: 0,
         gptOutputTokens: 0,
         ttsCharacters: 0,
-        dalleImages: 0,
+        imageInputTokens: 0,
+        imageOutputTokens: 0,
         apiCalls: []
     };
     
@@ -1263,13 +1277,10 @@ async function generateImage(prompt) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'dall-e-3',
+            model: 'gpt-image-1.5',
             prompt: prompt,
             n: 1,
-            size: '1792x1024',
-            quality: 'hd',
-            style: 'natural',
-            response_format: 'b64_json'  // Request base64 for DOCX embedding
+            size: '1024x1024'
         })
     });
     
@@ -1280,12 +1291,19 @@ async function generateImage(prompt) {
     
     const data = await response.json();
     
-    // Track metrics
-    currentMetrics.dalleImages += 1;
+    // Track metrics from usage data
+    const usage = data.usage || {};
+    const inputTokens = usage.input_tokens || 0;
+    const outputTokens = usage.output_tokens || 0;
+    
+    currentMetrics.imageInputTokens += inputTokens;
+    currentMetrics.imageOutputTokens += outputTokens;
     currentMetrics.apiCalls.push({
         name: 'Infographic',
-        model: 'dall-e-3-hd',
-        size: '1792x1024 HD'
+        model: 'gpt-image-1.5',
+        inputTokens: inputTokens,
+        outputTokens: outputTokens,
+        size: '1024x1024'
     });
     
     // Recalculate and update metrics

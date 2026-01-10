@@ -22,9 +22,9 @@ Northstar Meeting Insights is a static web application that uses OpenAI's powerf
 - Download as MP3 for on-the-go listening
 
 ### Meeting Infographic
-- Create visual infographics from meeting insights using DALL-E 3 HD
+- Create visual infographics from meeting insights using GPT-Image-1.5
 - Customize the style with your own prompt (e.g., "minimalist corporate with charts")
-- High-quality 1792x1024 HD output
+- High-quality 1024x1024 output
 - Download as PNG
 
 ### Export & Metrics
@@ -46,7 +46,7 @@ Northstar Meeting Insights is a static web application that uses OpenAI's powerf
   - OpenAI Whisper (audio transcription)
   - GPT-5.2 (text analysis)
   - TTS-1-HD (text-to-speech)
-  - DALL-E 3 HD (image generation)
+  - GPT-Image-1.5 (image generation)
 - **Libraries**:
   - [docx.js](https://docx.js.org/) - Client-side DOCX generation
   - [PDF.js](https://mozilla.github.io/pdf.js/) - Client-side PDF text extraction
@@ -78,7 +78,8 @@ The app provides real-time cost estimates based on OpenAI's pricing:
 | GPT-5.2 Output | $10.00 / 1M tokens |
 | Whisper | $0.006 / minute |
 | TTS-1-HD | $0.030 / 1K characters |
-| DALL-E 3 HD (1792x1024) | $0.120 / image |
+| GPT-Image-1.5 Input | $10.00 / 1M tokens |
+| GPT-Image-1.5 Output | $40.00 / 1M tokens |
 
 ## Local Development
 
