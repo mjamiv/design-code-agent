@@ -726,9 +726,6 @@ function displayMetrics() {
     const resultMetrics = document.getElementById('result-metrics');
     if (!resultMetrics) return;
     
-    const formatCost = (cost) => cost < 0.01 ? '<$0.01' : `$${cost.toFixed(4)}`;
-    const formatTokens = (tokens) => tokens.toLocaleString();
-    
     let breakdownHtml = '';
     metrics.apiCalls.forEach(call => {
         if (call.model === 'whisper-1') {
@@ -827,6 +824,14 @@ function escapeHtml(text) {
 
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+function formatTokens(tokens) {
+    return tokens.toLocaleString();
+}
+
+function formatCost(cost) {
+    return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(4)}`;
 }
 
 // ============================================
