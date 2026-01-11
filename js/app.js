@@ -30,7 +30,9 @@ const state = {
     apiKey: '',
     selectedFile: null,
     selectedPdfFile: null,
-    inputMode: 'audio', // 'audio', 'pdf', 'text', or 'url'
+    selectedImageFile: null,
+    selectedImageBase64: null, // Base64-encoded image for Vision API
+    inputMode: 'audio', // 'audio', 'pdf', 'image', 'text', or 'url'
     isProcessing: false,
     results: null,
     metrics: null,
@@ -114,7 +116,17 @@ async function init() {
         pdfFileInfo: document.getElementById('pdf-file-info'),
         pdfFileName: document.querySelector('.pdf-file-name'),
         removePdfFileBtn: document.querySelector('.remove-pdf-file'),
-        
+
+        // Image Upload
+        imageTab: document.getElementById('image-tab'),
+        imageDropZone: document.getElementById('image-drop-zone'),
+        imageFileInput: document.getElementById('image-file'),
+        imageFileInfo: document.getElementById('image-file-info'),
+        imageFileName: document.querySelector('.image-file-name'),
+        removeImageFileBtn: document.querySelector('.remove-image-file'),
+        imagePreview: document.getElementById('image-preview'),
+        imagePreviewImg: document.getElementById('image-preview-img'),
+
         // Text Input
         textInput: document.getElementById('text-input'),
         
@@ -240,7 +252,18 @@ function setupEventListeners() {
     elements.pdfDropZone.addEventListener('drop', handlePdfDrop);
     elements.pdfFileInput.addEventListener('change', handlePdfFileSelect);
     elements.removePdfFileBtn.addEventListener('click', removeSelectedPdfFile);
-    
+
+    // Image Drag and Drop
+    elements.imageDropZone.addEventListener('click', (e) => {
+        e.preventDefault();
+        elements.imageFileInput.click();
+    });
+    elements.imageDropZone.addEventListener('dragover', handleImageDragOver);
+    elements.imageDropZone.addEventListener('dragleave', handleImageDragLeave);
+    elements.imageDropZone.addEventListener('drop', handleImageDrop);
+    elements.imageFileInput.addEventListener('change', handleImageFileSelect);
+    elements.removeImageFileBtn.addEventListener('click', removeSelectedImageFile);
+
     // Text Input
     elements.textInput.addEventListener('input', updateAnalyzeButton);
     
@@ -324,16 +347,17 @@ function showTemporaryMessage(btn, message, original) {
 // ============================================
 function switchTab(tab) {
     state.inputMode = tab;
-    
+
     elements.tabBtns.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tab);
     });
-    
+
     elements.audioTab.classList.toggle('active', tab === 'audio');
     elements.pdfTab.classList.toggle('active', tab === 'pdf');
+    elements.imageTab.classList.toggle('active', tab === 'image');
     elements.textTab.classList.toggle('active', tab === 'text');
     elements.urlTab.classList.toggle('active', tab === 'url');
-    
+
     updateAnalyzeButton();
 }
 
@@ -455,6 +479,92 @@ function removeSelectedPdfFile() {
 }
 
 // ============================================
+// Image File Handling
+// ============================================
+function handleImageDragOver(e) {
+    e.preventDefault();
+    elements.imageDropZone.classList.add('dragover');
+}
+
+function handleImageDragLeave(e) {
+    e.preventDefault();
+    elements.imageDropZone.classList.remove('dragover');
+}
+
+function handleImageDrop(e) {
+    e.preventDefault();
+    elements.imageDropZone.classList.remove('dragover');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        processSelectedImageFile(files[0]);
+    }
+}
+
+function handleImageFileSelect(e) {
+    if (e.target.files.length > 0) {
+        processSelectedImageFile(e.target.files[0]);
+    }
+}
+
+async function processSelectedImageFile(file) {
+    const allowedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    const extension = file.name.split('.').pop().toLowerCase();
+
+    if (!allowedFormats.includes(extension)) {
+        showError(`Invalid file format. Supported formats: ${allowedFormats.join(', ')}`);
+        return;
+    }
+
+    // Check file size (20MB limit for images)
+    if (file.size > 20 * 1024 * 1024) {
+        showError('File size exceeds 20MB limit.');
+        return;
+    }
+
+    // Convert image to base64 for Vision API
+    try {
+        const base64 = await fileToBase64(file);
+        state.selectedImageFile = file;
+        state.selectedImageBase64 = base64;
+
+        // Update UI
+        elements.imageFileName.textContent = file.name;
+        elements.imageFileInfo.classList.remove('hidden');
+        elements.imageDropZone.style.display = 'none';
+
+        // Show image preview
+        elements.imagePreviewImg.src = base64;
+        elements.imagePreview.classList.remove('hidden');
+
+        updateAnalyzeButton();
+    } catch (error) {
+        showError('Failed to process image file.');
+        console.error('Image processing error:', error);
+    }
+}
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function removeSelectedImageFile() {
+    state.selectedImageFile = null;
+    state.selectedImageBase64 = null;
+    elements.imageFileInput.value = '';
+    elements.imageFileInfo.classList.add('hidden');
+    elements.imagePreview.classList.add('hidden');
+    elements.imagePreviewImg.src = '';
+    elements.imageDropZone.style.display = 'block';
+    updateAnalyzeButton();
+}
+
+// ============================================
 // PDF Text Extraction
 // ============================================
 async function extractTextFromPdf(file) {
@@ -490,8 +600,77 @@ async function extractTextFromPdf(file) {
     if (fullText.length < 100 && totalPages > 1) {
         fullText = "[Note: This PDF may contain images which were ignored. Only text content was extracted.]\n\n" + fullText;
     }
-    
+
     return fullText;
+}
+
+// ============================================
+// Image Analysis with Vision API
+// ============================================
+async function analyzeImageWithVision(base64Image) {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${state.apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: 'gpt-5.2',
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are an expert at analyzing images of documents, meeting notes, whiteboards, diagrams, and other visual content.
+
+Your task is to extract and transcribe ALL text content visible in the image, and describe any relevant visual elements (diagrams, charts, drawings, etc.) that provide context.
+
+Format your response as follows:
+1. First, provide a complete transcription of all visible text, preserving the original structure as much as possible
+2. Then describe any diagrams, charts, or visual elements
+3. Finally, summarize what this image appears to be about
+
+Be thorough and capture every piece of text visible in the image.`
+                },
+                {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Please analyze this image and extract all text content and relevant visual information. This appears to be meeting-related content that needs to be analyzed.'
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: base64Image,
+                                detail: 'high'
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_completion_tokens: 4000,
+            temperature: 0.3
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `Vision API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Track metrics
+    if (data.usage) {
+        currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
+        currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
+    }
+    currentMetrics.apiCalls.push({
+        endpoint: 'chat/completions (vision)',
+        model: 'gpt-5.2',
+        tokens: data.usage?.total_tokens || 0
+    });
+
+    return data.choices[0]?.message?.content || '';
 }
 
 // ============================================
@@ -499,11 +678,13 @@ async function extractTextFromPdf(file) {
 // ============================================
 function updateAnalyzeButton() {
     let canAnalyze = false;
-    
+
     if (state.apiKey) {
         if (state.inputMode === 'audio' && state.selectedFile) {
             canAnalyze = true;
         } else if (state.inputMode === 'pdf' && state.selectedPdfFile) {
+            canAnalyze = true;
+        } else if (state.inputMode === 'image' && state.selectedImageFile) {
             canAnalyze = true;
         } else if (state.inputMode === 'text' && elements.textInput.value.trim()) {
             canAnalyze = true;
@@ -511,7 +692,7 @@ function updateAnalyzeButton() {
             canAnalyze = true;
         }
     }
-    
+
     elements.analyzeBtn.disabled = !canAnalyze;
 }
 
@@ -541,27 +722,34 @@ async function startAnalysis() {
     
     try {
         let transcriptionText;
-        
+
         if (state.inputMode === 'audio') {
             updateProgress(5, 'Transcribing audio with Whisper...');
             transcriptionText = await transcribeAudio(state.selectedFile);
         } else if (state.inputMode === 'pdf') {
             updateProgress(5, 'Extracting text from PDF...');
             transcriptionText = await extractTextFromPdf(state.selectedPdfFile);
-            
+
             if (!transcriptionText || transcriptionText.length < 10) {
                 throw new Error('Could not extract text from PDF. The file may be image-based or empty.');
             }
+        } else if (state.inputMode === 'image') {
+            updateProgress(5, 'Analyzing image with Vision AI...');
+            transcriptionText = await analyzeImageWithVision(state.selectedImageBase64);
+
+            if (!transcriptionText || transcriptionText.length < 10) {
+                throw new Error('Could not extract meaningful content from the image.');
+            }
         } else if (state.inputMode === 'url') {
             transcriptionText = state.urlContent;
-            
+
             if (!transcriptionText || transcriptionText.length < 10) {
                 throw new Error('No content available from URL. Please fetch the URL first.');
             }
         } else {
             transcriptionText = elements.textInput.value.trim();
         }
-        
+
         updateProgress(30, 'Analyzing meeting content...');
         const analysis = await analyzeMeetingBatch(transcriptionText);
 
