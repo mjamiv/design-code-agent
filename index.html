@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=34">
+    <link rel="stylesheet" href="css/styles.css?v=35">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -168,6 +168,52 @@
         <!-- Results Section -->
         <section id="results-section" class="results-section hidden">
             <h2>Analysis Results</h2>
+            
+            <!-- KPI Dashboard -->
+            <div class="kpi-dashboard">
+                <div class="kpi-item kpi-sentiment">
+                    <span class="kpi-icon">📊</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Sentiment</span>
+                        <span class="kpi-value" id="kpi-sentiment">--</span>
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-icon">📝</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Words Analyzed</span>
+                        <span class="kpi-value" id="kpi-words">--</span>
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-icon">💡</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Key Points</span>
+                        <span class="kpi-value" id="kpi-keypoints">--</span>
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-icon">✅</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Action Items</span>
+                        <span class="kpi-value" id="kpi-actions">--</span>
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-icon">⏱️</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Read Time</span>
+                        <span class="kpi-value" id="kpi-readtime">--</span>
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <span class="kpi-icon">🎯</span>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Topics</span>
+                        <span class="kpi-value" id="kpi-topics">--</span>
+                    </div>
+                </div>
+            </div>
             
             <div class="results-grid">
                 <div class="result-card">
@@ -396,7 +442,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=32" type="module"></script>
+    <script src="js/app.js?v=33" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>

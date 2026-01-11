@@ -929,6 +929,9 @@ function displayResults() {
     
     elements.resultsSection.classList.remove('hidden');
     
+    // ========== KPI DASHBOARD ==========
+    updateKPIDashboard();
+    
     // Summary
     elements.resultSummary.innerHTML = `<p>${escapeHtml(state.results.summary)}</p>`;
     
@@ -960,6 +963,81 @@ function displayResults() {
     
     // Scroll to results
     elements.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ============================================
+// KPI Dashboard
+// ============================================
+function updateKPIDashboard() {
+    if (!state.results) return;
+    
+    // Sentiment KPI
+    const kpiSentiment = document.getElementById('kpi-sentiment');
+    if (kpiSentiment) {
+        const sentimentText = state.results.sentiment.trim();
+        const sentimentLower = sentimentText.toLowerCase();
+        
+        // Determine sentiment class
+        let sentimentClass = 'neutral';
+        if (sentimentLower.includes('positive') || sentimentLower.includes('optimistic') || sentimentLower.includes('constructive')) {
+            sentimentClass = 'positive';
+        } else if (sentimentLower.includes('negative') || sentimentLower.includes('concern') || sentimentLower.includes('frustrated')) {
+            sentimentClass = 'negative';
+        }
+        
+        // Extract short sentiment (first word or two)
+        const shortSentiment = sentimentText.split(/[,.:;]/)[0].trim().substring(0, 20);
+        kpiSentiment.textContent = shortSentiment || 'Neutral';
+        kpiSentiment.className = `kpi-value ${sentimentClass}`;
+    }
+    
+    // Words Analyzed KPI
+    const kpiWords = document.getElementById('kpi-words');
+    if (kpiWords && state.results.transcription) {
+        const wordCount = state.results.transcription.split(/\s+/).filter(w => w.length > 0).length;
+        kpiWords.textContent = formatNumber(wordCount);
+    }
+    
+    // Key Points Count KPI
+    const kpiKeypoints = document.getElementById('kpi-keypoints');
+    if (kpiKeypoints && state.results.keyPoints) {
+        const keyPointsCount = state.results.keyPoints.split('\n').filter(line => line.trim().length > 0).length;
+        kpiKeypoints.textContent = keyPointsCount.toString();
+    }
+    
+    // Action Items Count KPI
+    const kpiActions = document.getElementById('kpi-actions');
+    if (kpiActions && state.results.actionItems) {
+        const actionsCount = state.results.actionItems.split('\n').filter(line => line.trim().length > 0).length;
+        kpiActions.textContent = actionsCount.toString();
+    }
+    
+    // Read Time KPI (average 200 words per minute)
+    const kpiReadtime = document.getElementById('kpi-readtime');
+    if (kpiReadtime && state.results.transcription) {
+        const wordCount = state.results.transcription.split(/\s+/).filter(w => w.length > 0).length;
+        const readTimeMinutes = Math.ceil(wordCount / 200);
+        kpiReadtime.textContent = readTimeMinutes <= 1 ? '< 1 min' : `${readTimeMinutes} min`;
+    }
+    
+    // Topics KPI - extract main topics from key points
+    const kpiTopics = document.getElementById('kpi-topics');
+    if (kpiTopics && state.results.keyPoints) {
+        // Count key points as proxy for topics, or could do more sophisticated extraction
+        const keyPointsLines = state.results.keyPoints.split('\n').filter(line => line.trim().length > 0);
+        const topicCount = Math.min(keyPointsLines.length, 10); // Cap at 10 topics
+        kpiTopics.textContent = topicCount.toString();
+    }
+}
+
+// Format number with commas
+function formatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toLocaleString();
 }
 
 function displayMetrics() {
