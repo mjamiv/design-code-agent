@@ -505,11 +505,11 @@ section {
 
 .btn-fetch {
     background: var(--accent-primary);
-    color: var(--bg-primary);
+    color: #000000;
     border: none;
     border-radius: var(--radius-md);
     padding: var(--space-sm) var(--space-md);
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.9rem;
     cursor: pointer;
     transition: var(--transition-fast);
@@ -1264,8 +1264,9 @@ footer a:hover {
     border: none;
     border-radius: 50%;
     background: var(--accent-primary);
-    color: var(--bg-primary);
+    color: #000000;
     font-size: 1.1rem;
+    font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
