@@ -521,12 +521,18 @@ function updateButtonStates() {
 }
 
 function updateSectionsVisibility() {
-    // Chat is always visible once agents are loaded
     // Insights shown after generation
     if (state.insights) {
         elements.insightsSection.classList.remove('hidden');
     } else {
         elements.insightsSection.classList.add('hidden');
+    }
+    
+    // Chat is always visible once agents are loaded
+    const hasActiveAgents = state.agents.filter(a => a.enabled).length > 0;
+    if (hasActiveAgents) {
+        elements.chatSection.classList.remove('hidden');
+    } else {
         elements.chatSection.classList.add('hidden');
     }
 }
