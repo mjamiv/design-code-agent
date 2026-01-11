@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=35">
+    <link rel="stylesheet" href="css/styles.css?v=36">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -59,6 +59,10 @@
                     <span class="tab-icon">&#128196;</span>
                     PDF
                 </button>
+                <button class="tab-btn" data-tab="image">
+                    <span class="tab-icon">&#128247;</span>
+                    Image
+                </button>
                 <button class="tab-btn" data-tab="text">
                     <span class="tab-icon">&#128221;</span>
                     Text
@@ -95,6 +99,23 @@
                     <div id="pdf-file-info" class="file-info hidden">
                         <span class="pdf-file-name"></span>
                         <button type="button" class="remove-pdf-file">&#10005;</button>
+                    </div>
+                </div>
+
+                <div id="image-tab" class="tab-pane">
+                    <input type="file" id="image-file" accept=".jpg,.jpeg,.png,.gif,.webp,image/*" hidden>
+                    <label for="image-file" class="upload-zone" id="image-drop-zone">
+                        <div class="upload-icon">&#128247;</div>
+                        <p>Drag & drop your image file here</p>
+                        <p class="hint">or click to browse</p>
+                        <p class="file-types">Supported: JPG, PNG, GIF, WebP</p>
+                    </label>
+                    <div id="image-file-info" class="file-info hidden">
+                        <span class="image-file-name"></span>
+                        <button type="button" class="remove-image-file">&#10005;</button>
+                    </div>
+                    <div id="image-preview" class="image-preview hidden">
+                        <img id="image-preview-img" alt="Image preview" />
                     </div>
                 </div>
 
@@ -442,7 +463,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=33" type="module"></script>
+    <script src="js/app.js?v=34" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>
