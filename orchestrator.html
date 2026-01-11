@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Orchestrator | northstar.LM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css?v=25">
+</head>
+<body>
+    <div class="gradient-bg"></div>
+    
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🎭</span>
+                <h1>Agent Orchestrator</h1>
+            </div>
+            <a href="index.html" class="back-link">
+                <span>←</span> Back to Main App
+            </a>
+        </div>
+        <p class="tagline">Combine multiple meeting agents for cross-meeting insights</p>
+    </header>
+
+    <main>
+        <!-- API Key Section -->
+        <section class="config-section">
+            <div class="api-key-container">
+                <label for="api-key">
+                    <span class="label-icon">&#128273;</span>
+                    OpenAI API Key
+                </label>
+                <div class="input-group">
+                    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
+                    <button type="button" id="toggle-key" class="icon-btn" title="Show/Hide API Key">
+                        &#128065;
+                    </button>
+                    <button type="button" id="save-key" class="btn-secondary" title="Save to browser">
+                        Save
+                    </button>
+                </div>
+                <p class="hint">Your key is stored locally and sent directly to OpenAI. <a href="https://platform.openai.com/api-keys" target="_blank">Get an API key</a></p>
+            </div>
+        </section>
+
+        <!-- Upload Agents Section -->
+        <section class="input-section">
+            <div class="section-header">
+                <h2><span>📥</span> Upload Meeting Agents</h2>
+                <p class="section-desc">Upload .md agent files exported from northstar.LM</p>
+            </div>
+
+            <input type="file" id="agent-files" accept=".md,text/markdown" multiple hidden>
+            <label for="agent-files" class="upload-zone" id="agents-drop-zone">
+                <div class="upload-icon">📋</div>
+                <p>Drag & drop your agent files here</p>
+                <p class="hint">or click to browse</p>
+                <p class="file-types">Supports multiple .md agent files</p>
+            </label>
+
+            <!-- Uploaded Agents List -->
+            <div id="agents-list-section" class="agents-list-section hidden">
+                <div class="agents-list-header">
+                    <h3>Uploaded Agents (<span id="agents-count">0</span>)</h3>
+                    <button id="clear-all-agents" class="btn-text-danger" title="Remove all agents">
+                        Clear All
+                    </button>
+                </div>
+                <div id="agents-list" class="agents-list">
+                    <!-- Agent cards will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Generate Insights Button -->
+            <button id="generate-insights-btn" class="btn-primary" disabled>
+                <span class="btn-text">📊 Generate Cross-Meeting Insights</span>
+                <span class="btn-loader hidden">
+                    <span class="spinner"></span>
+                    Analyzing...
+                </span>
+            </button>
+        </section>
+
+        <!-- Cross-Meeting Insights Section -->
+        <section id="insights-section" class="insights-section hidden">
+            <div class="section-header">
+                <h2><span>📊</span> Cross-Meeting Insights</h2>
+                <p class="section-desc">Patterns and connections discovered across your meetings</p>
+            </div>
+
+            <div class="insights-grid">
+                <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">🔗</span>
+                        <h3>Common Themes</h3>
+                    </div>
+                    <div class="card-content" id="insight-themes">
+                        <!-- Themes will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">📈</span>
+                        <h3>Trends & Patterns</h3>
+                    </div>
+                    <div class="card-content" id="insight-trends">
+                        <!-- Trends will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">⚠️</span>
+                        <h3>Key Risks & Blockers</h3>
+                    </div>
+                    <div class="card-content" id="insight-risks">
+                        <!-- Risks will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">💡</span>
+                        <h3>Recommendations</h3>
+                    </div>
+                    <div class="card-content" id="insight-recommendations">
+                        <!-- Recommendations will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card full-width">
+                    <div class="card-header">
+                        <span class="card-icon">✅</span>
+                        <h3>Consolidated Action Items</h3>
+                    </div>
+                    <div class="card-content" id="insight-actions">
+                        <!-- Action items will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chat Section -->
+        <section id="chat-section" class="chat-section hidden">
+            <div class="section-header">
+                <h2><span>💬</span> Chat with All Agents</h2>
+                <p class="section-desc">Ask questions across all your uploaded meeting data</p>
+            </div>
+
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="chat-welcome">
+                        <div class="chat-welcome-icon">🤖</div>
+                        <div class="chat-welcome-text">
+                            <strong>Multi-Agent Assistant</strong>
+                            <p>I have access to all your uploaded meeting agents. Ask me about decisions, action items, patterns across meetings, or anything else from your meeting data.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Ask a question across all meetings..." autocomplete="off" />
+                    <button id="chat-send-btn" class="btn-chat-send" title="Send message">
+                        <span class="btn-text">➤</span>
+                        <span class="btn-loader hidden">
+                            <span class="spinner-small"></span>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Section -->
+        <section id="error-section" class="error-section hidden">
+            <div class="error-content">
+                <span class="error-icon">&#9888;</span>
+                <p id="error-message"></p>
+                <button id="dismiss-error" class="btn-secondary">Dismiss</button>
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section class="about-section">
+            <details class="about-card">
+                <summary class="about-header">
+                    <span class="about-icon">ℹ️</span>
+                    <span>About Agent Orchestrator</span>
+                    <span class="about-toggle">▼</span>
+                </summary>
+                <div class="about-content">
+                    <p class="about-intro">
+                        The Agent Orchestrator combines multiple meeting agents exported from northstar.LM, enabling cross-meeting analysis and unified insights.
+                    </p>
+                    <div class="models-grid">
+                        <div class="model-item">
+                            <span class="model-icon">🧠</span>
+                            <div class="model-info">
+                                <strong>GPT-5.2</strong>
+                                <span>Cross-meeting analysis & chat</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="about-privacy">
+                        🔒 Your API key stays local. All data goes directly to OpenAI—no third-party servers.
+                    </p>
+                </div>
+            </details>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 northstar.LM | Agent Orchestrator</p>
+        <p class="credits">
+            Powered by 
+            <a href="https://openai.com" target="_blank">OpenAI GPT-5.2</a>
+        </p>
+    </footer>
+
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="js/orchestrator.js?v=1" type="module"></script>
+</body>
+</html>
