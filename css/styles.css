@@ -331,6 +331,7 @@ section {
 
 /* Upload Zone */
 .upload-zone {
+    display: block;
     border: 2px dashed rgba(212, 168, 83, 0.3);
     border-radius: var(--radius-lg);
     padding: var(--space-2xl);

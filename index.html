@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=23">
+    <link rel="stylesheet" href="css/styles.css?v=24">
 </head>
 <body>
     <div class="gradient-bg"></div>
@@ -64,13 +64,13 @@
 
             <div class="tab-content">
                 <div id="audio-tab" class="tab-pane active">
-                    <div class="upload-zone" id="drop-zone">
+                    <input type="file" id="audio-file" accept=".m4a,.mp3,.webm,.mp4,.mpga,.wav,.mpeg,.ogg,.oga,.flac,audio/*" hidden>
+                    <label for="audio-file" class="upload-zone" id="drop-zone">
                         <div class="upload-icon">&#127926;</div>
                         <p>Drag & drop your audio file here</p>
                         <p class="hint">or click to browse</p>
-                        <input type="file" id="audio-file" accept=".m4a,.mp3,.webm,.mp4,.mpga,.wav,.mpeg,.ogg,.oga,.flac,audio/*" hidden>
                         <p class="file-types">Supported: MP3, WAV, M4A, OGG, FLAC, MP4, WEBM</p>
-                    </div>
+                    </label>
                     <div id="file-info" class="file-info hidden">
                         <span class="file-name"></span>
                         <button type="button" class="remove-file">&#10005;</button>
@@ -78,13 +78,13 @@
                 </div>
 
                 <div id="pdf-tab" class="tab-pane">
-                    <div class="upload-zone" id="pdf-drop-zone">
+                    <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden>
+                    <label for="pdf-file" class="upload-zone" id="pdf-drop-zone">
                         <div class="upload-icon">&#128196;</div>
                         <p>Drag & drop your PDF file here</p>
                         <p class="hint">or click to browse</p>
-                        <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden>
                         <p class="file-types">Supported: PDF documents</p>
-                    </div>
+                    </label>
                     <div id="pdf-file-info" class="file-info hidden">
                         <span class="pdf-file-name"></span>
                         <button type="button" class="remove-pdf-file">&#10005;</button>
@@ -378,6 +378,6 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=23" type="module"></script>
+    <script src="js/app.js?v=24" type="module"></script>
 </body>
 </html>

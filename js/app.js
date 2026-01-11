@@ -200,47 +200,16 @@ function setupEventListeners() {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
     
-    // Audio Drag and Drop (with mobile touch support)
-    const triggerAudioFileInput = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.audioFileInput.click();
-    };
-    elements.dropZone.addEventListener('click', triggerAudioFileInput);
-    elements.dropZone.addEventListener('touchstart', (e) => {
-        // Mark that touch started on this element
-        elements.dropZone.dataset.touchStarted = 'true';
-    }, { passive: true });
-    elements.dropZone.addEventListener('touchend', (e) => {
-        if (elements.dropZone.dataset.touchStarted === 'true') {
-            e.preventDefault();
-            elements.audioFileInput.click();
-            elements.dropZone.dataset.touchStarted = 'false';
-        }
-    }, { passive: false });
+    // Audio Drag and Drop
+    // Note: Click to browse is handled natively by <label for="audio-file">
     elements.dropZone.addEventListener('dragover', handleDragOver);
     elements.dropZone.addEventListener('dragleave', handleDragLeave);
     elements.dropZone.addEventListener('drop', handleDrop);
     elements.audioFileInput.addEventListener('change', handleFileSelect);
     elements.removeFileBtn.addEventListener('click', removeSelectedFile);
     
-    // PDF Drag and Drop (with mobile touch support)
-    const triggerPdfFileInput = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.pdfFileInput.click();
-    };
-    elements.pdfDropZone.addEventListener('click', triggerPdfFileInput);
-    elements.pdfDropZone.addEventListener('touchstart', (e) => {
-        elements.pdfDropZone.dataset.touchStarted = 'true';
-    }, { passive: true });
-    elements.pdfDropZone.addEventListener('touchend', (e) => {
-        if (elements.pdfDropZone.dataset.touchStarted === 'true') {
-            e.preventDefault();
-            elements.pdfFileInput.click();
-            elements.pdfDropZone.dataset.touchStarted = 'false';
-        }
-    }, { passive: false });
+    // PDF Drag and Drop
+    // Note: Click to browse is handled natively by <label for="pdf-file">
     elements.pdfDropZone.addEventListener('dragover', handlePdfDragOver);
     elements.pdfDropZone.addEventListener('dragleave', handlePdfDragLeave);
     elements.pdfDropZone.addEventListener('drop', handlePdfDrop);
