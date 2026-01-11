@@ -63,8 +63,8 @@ function initElements() {
         brainStatus: document.getElementById('brain-status'),
         kbFlow: document.getElementById('kb-flow'),
 
-        // Chat
-        chatSection: document.getElementById('chat-section'),
+        // Chat (now integrated into knowledge base section)
+        chatContainer: document.getElementById('chat-interface-container'),
         chatMessages: document.getElementById('chat-messages'),
         chatInput: document.getElementById('chat-input'),
         chatSendBtn: document.getElementById('chat-send-btn'),
@@ -474,19 +474,20 @@ function updateAgentName(index, newName) {
 }
 
 function updateBrainStatus() {
-    if (!elements.brainStatus) return;
+    const brainStatusEl = elements.brainStatus || document.getElementById('brain-status');
+    if (!brainStatusEl) return;
     
     const activeCount = state.agents.filter(a => a.enabled).length;
     
     if (activeCount === 0) {
-        elements.brainStatus.textContent = 'Waiting for agents...';
-        elements.brainStatus.classList.remove('ready');
+        brainStatusEl.textContent = 'Waiting for agents...';
+        brainStatusEl.classList.remove('ready');
     } else if (activeCount === 1) {
-        elements.brainStatus.textContent = 'Ready with 1 agent';
-        elements.brainStatus.classList.add('ready');
+        brainStatusEl.textContent = 'Ready with 1 agent';
+        brainStatusEl.classList.add('ready');
     } else {
-        elements.brainStatus.textContent = `Ready with ${activeCount} agents`;
-        elements.brainStatus.classList.add('ready');
+        brainStatusEl.textContent = `Ready with ${activeCount} agents`;
+        brainStatusEl.classList.add('ready');
     }
 }
 
@@ -528,12 +529,19 @@ function updateSectionsVisibility() {
         elements.insightsSection.classList.add('hidden');
     }
     
-    // Chat is always visible once agents are loaded
+    // Chat is now always visible as part of the knowledge base section
+    // Just update its visual state based on agent availability
     const hasActiveAgents = state.agents.filter(a => a.enabled).length > 0;
-    if (hasActiveAgents) {
-        elements.chatSection.classList.remove('hidden');
-    } else {
-        elements.chatSection.classList.add('hidden');
+    if (elements.chatContainer) {
+        if (hasActiveAgents) {
+            elements.chatContainer.classList.remove('disabled');
+            elements.chatInput.disabled = false;
+            elements.chatSendBtn.disabled = false;
+        } else {
+            elements.chatContainer.classList.add('disabled');
+            elements.chatInput.disabled = true;
+            elements.chatSendBtn.disabled = true;
+        }
     }
 }
 

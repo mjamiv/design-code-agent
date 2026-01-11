@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=39">
+    <link rel="stylesheet" href="css/styles.css?v=40">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -91,25 +91,49 @@
                     <!-- Agent nodes will be inserted here by JS -->
                 </div>
 
-                <!-- Flow indicator to orchestrator -->
-                <div class="kb-flow-indicator" id="kb-flow">
-                    <div class="flow-line"></div>
-                    <div class="flow-label">
-                        <span>▼</span>
-                        <span>Knowledge flows to</span>
-                        <span>▼</span>
+            </div>
+
+            <!-- Flow indicator to chat -->
+            <div class="kb-to-chat-connector">
+                <div class="connector-line"></div>
+                <div class="connector-label">💬 Query your knowledge</div>
+                <div class="connector-line"></div>
+            </div>
+
+            <!-- Chat Interface - directly connected to Knowledge Base -->
+            <div class="chat-interface-container" id="chat-interface-container">
+                <div class="chat-header-inline">
+                    <div class="chat-header-left">
+                        <span class="chat-icon">🤖</span>
+                        <div class="chat-title-group">
+                            <h3>Orchestrator AI</h3>
+                            <span class="chat-subtitle" id="brain-status">Waiting for agents...</span>
+                        </div>
+                    </div>
+                    <div class="chat-kb-indicator" id="chat-kb-indicator">
+                        <span class="indicator-dot active"></span>
+                        <span class="indicator-text">Connected to <strong id="chat-agent-count">0</strong> agents</span>
                     </div>
                 </div>
-
-                <!-- Orchestrator Brain -->
-                <div class="orchestrator-brain" id="orchestrator-brain">
-                    <div class="brain-icon">🤖</div>
-                    <div class="brain-label">Orchestrator AI</div>
-                    <div class="brain-status" id="brain-status">Waiting for agents...</div>
+                
+                <div class="chat-messages-inline" id="chat-messages">
+                    <div class="chat-welcome">
+                        <p>Ask me anything about your uploaded meeting agents. I'll search across all active knowledge to answer your questions.</p>
+                    </div>
+                </div>
+                
+                <div class="chat-input-inline">
+                    <input type="text" id="chat-input" placeholder="Ask a question across all active agents..." autocomplete="off" />
+                    <button id="chat-send-btn" class="btn-chat-send" title="Send message">
+                        <span class="btn-text">➤</span>
+                        <span class="btn-loader hidden">
+                            <span class="spinner-small"></span>
+                        </span>
+                    </button>
                 </div>
             </div>
 
-            <!-- Actions -->
+            <!-- Actions below chat -->
             <div class="kb-actions">
                 <button id="generate-insights-btn" class="btn-primary btn-large" disabled>
                     <span class="btn-text">📊 Generate Cross-Meeting Insights</span>
@@ -118,6 +142,7 @@
                         Analyzing...
                     </span>
                 </button>
+                <p class="insights-hint">Analyze patterns, trends, and action items across all active agents</p>
             </div>
         </section>
 
@@ -181,41 +206,6 @@
             </div>
         </section>
 
-        <!-- Chat Section -->
-        <section id="chat-section" class="chat-section">
-            <div class="chat-header">
-                <div class="chat-header-info">
-                    <h2><span>💬</span> Chat Interface</h2>
-                    <p class="section-desc">Query your knowledge base through the Orchestrator AI</p>
-                </div>
-                <div class="chat-kb-indicator" id="chat-kb-indicator">
-                    <span class="indicator-dot active"></span>
-                    <span class="indicator-text">Connected to <strong id="chat-agent-count">0</strong> agents</span>
-                </div>
-            </div>
-
-            <div class="chat-container">
-                <div class="chat-messages" id="chat-messages">
-                    <div class="chat-welcome">
-                        <div class="chat-welcome-icon">🤖</div>
-                        <div class="chat-welcome-text">
-                            <strong>Orchestrator AI</strong>
-                            <p>I have access to your knowledge base above. Ask me about decisions, action items, patterns across meetings, or anything else from your agent data.</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input" placeholder="Ask a question across all active agents..." autocomplete="off" />
-                    <button id="chat-send-btn" class="btn-chat-send" title="Send message">
-                        <span class="btn-text">➤</span>
-                        <span class="btn-loader hidden">
-                            <span class="spinner-small"></span>
-                        </span>
-                    </button>
-                </div>
-            </div>
-        </section>
 
         <!-- Metrics Card (Fixed Position) -->
         <div id="metrics-card" class="metrics-card hidden">
@@ -279,7 +269,7 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=11" type="module"></script>
+    <script src="js/orchestrator.js?v=12" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>
