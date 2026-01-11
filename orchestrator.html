@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=29">
+    <link rel="stylesheet" href="css/styles.css?v=30">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#d4a853">
 </head>
@@ -28,9 +28,13 @@
     </header>
 
     <main>
-        <!-- API Key Section -->
-        <section class="config-section">
-            <div class="api-key-container">
+        <!-- API Key Section (Collapsible) -->
+        <section class="config-section" id="config-section">
+            <div class="api-key-collapsed hidden" id="api-key-collapsed">
+                <span class="key-status">🔑 API Key configured</span>
+                <button type="button" id="expand-key-btn" class="btn-text" title="Edit API key">Edit</button>
+            </div>
+            <div class="api-key-container" id="api-key-container">
                 <label for="api-key">
                     <span class="label-icon">&#128273;</span>
                     OpenAI API Key
@@ -183,9 +187,12 @@
         <div id="metrics-card" class="metrics-card hidden">
             <div class="metrics-card-header">
                 <h4>📊 Usage Metrics</h4>
-                <button id="metrics-toggle" class="metrics-toggle" title="Toggle metrics">▼</button>
+                <div class="metrics-controls">
+                    <button id="metrics-pin-btn" class="metrics-pin-btn" title="Pin metrics open" style="opacity: 0.6;">📍</button>
+                    <button id="metrics-toggle" class="metrics-toggle" title="Toggle metrics">▶</button>
+                </div>
             </div>
-            <div id="metrics-content" class="metrics-card-content">
+            <div id="metrics-content" class="metrics-card-content hidden">
                 <!-- Metrics will be populated by JS -->
             </div>
         </div>
@@ -238,7 +245,7 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=7" type="module"></script>
+    <script src="js/orchestrator.js?v=8" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>

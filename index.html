@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=29">
+    <link rel="stylesheet" href="css/styles.css?v=30">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#d4a853">
 </head>
@@ -125,7 +125,7 @@
                 </div>
             </div>
 
-            <button id="analyze-btn" class="btn-primary" disabled>
+            <button id="analyze-btn" class="btn-primary" disabled title="Analyze your meeting recording, PDF, or text to extract insights">
                 <span class="btn-text">Analyze Meeting</span>
                 <span class="btn-loader hidden">
                     <span class="spinner"></span>
@@ -221,13 +221,13 @@
             </div>
 
             <div class="results-actions">
-                <button id="download-btn" class="btn-primary">
+                <button id="download-btn" class="btn-primary" title="Download analysis results as a formatted Word document">
                     <span>&#128229;</span> Download DOCX
                 </button>
-                <button id="export-agent-btn" class="btn-secondary">
+                <button id="export-agent-btn" class="btn-secondary" title="Export analysis as markdown file for Agent Orchestrator">
                     <span>🤖</span> Export Agent
                 </button>
-                <button id="new-analysis-btn" class="btn-secondary">
+                <button id="new-analysis-btn" class="btn-secondary" title="Start a new analysis (clears current results)">
                     <span>&#10227;</span> New Analysis
                 </button>
             </div>
@@ -279,7 +279,7 @@
                             <option value="shimmer">Shimmer (Soft Female)</option>
                         </select>
                     </div>
-                    <button id="generate-audio-btn" class="btn-secondary">
+                    <button id="generate-audio-btn" class="btn-secondary" title="Convert meeting summary to spoken audio briefing">
                         <span class="btn-text">&#127908; Generate Audio</span>
                         <span class="btn-loader hidden">
                             <span class="spinner"></span>
@@ -290,7 +290,7 @@
 
                 <div id="audio-player-container" class="audio-player-container hidden">
                     <audio id="audio-player" controls></audio>
-                    <button id="download-audio-btn" class="btn-secondary">
+                    <button id="download-audio-btn" class="btn-secondary" title="Download audio briefing as MP3 file">
                         <span>&#128229;</span> Download MP3
                     </button>
                 </div>
@@ -305,7 +305,7 @@
                     <div class="prompt-input-group">
                         <input type="text" id="infographic-prompt" placeholder="Describe your preferred style (e.g., 'colorful corporate with icons')" />
                     </div>
-                    <button id="generate-infographic-btn" class="btn-secondary">
+                    <button id="generate-infographic-btn" class="btn-secondary" title="Generate a visual infographic from meeting insights using AI">
                         <span class="btn-text">&#127912; Generate Infographic</span>
                         <span class="btn-loader hidden">
                             <span class="spinner"></span>
@@ -316,7 +316,7 @@
 
                 <div id="infographic-container" class="infographic-container hidden">
                     <img id="infographic-image" alt="Meeting Infographic" />
-                    <button id="download-infographic-btn" class="btn-secondary">
+                    <button id="download-infographic-btn" class="btn-secondary" title="Download infographic as PNG image">
                         <span>&#128229;</span> Download Image
                     </button>
                 </div>
@@ -394,7 +394,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=29" type="module"></script>
+    <script src="js/app.js?v=30" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>

@@ -27,6 +27,12 @@ let currentMetrics = {
     apiCalls: []
 };
 
+// Metrics card state
+let metricsState = {
+    isPinned: false,
+    autoCollapseTimeout: null
+};
+
 // ============================================
 // DOM Elements
 // ============================================
@@ -37,6 +43,9 @@ function initElements() {
     elements = {
         // API Key
         apiKeyInput: document.getElementById('api-key'),
+        apiKeyContainer: document.getElementById('api-key-container'),
+        apiKeyCollapsed: document.getElementById('api-key-collapsed'),
+        expandKeyBtn: document.getElementById('expand-key-btn'),
         toggleKeyBtn: document.getElementById('toggle-key'),
         saveKeyBtn: document.getElementById('save-key'),
 
@@ -90,6 +99,9 @@ function setupEventListeners() {
     // API Key
     elements.toggleKeyBtn.addEventListener('click', toggleApiKeyVisibility);
     elements.saveKeyBtn.addEventListener('click', saveApiKey);
+    if (elements.expandKeyBtn) {
+        elements.expandKeyBtn.addEventListener('click', expandApiKeySection);
+    }
 
     // Agent Upload
     elements.agentsDropZone.addEventListener('dragover', handleDragOver);
@@ -115,6 +127,11 @@ function setupEventListeners() {
         elements.metricsToggle.addEventListener('click', toggleMetricsCard);
     }
 
+    const metricsPinBtn = document.getElementById('metrics-pin-btn');
+    if (metricsPinBtn) {
+        metricsPinBtn.addEventListener('click', toggleMetricsPin);
+    }
+
     // Error
     elements.dismissErrorBtn.addEventListener('click', hideError);
 }
@@ -128,6 +145,7 @@ function loadApiKey() {
     if (savedKey) {
         state.apiKey = savedKey;
         elements.apiKeyInput.value = savedKey;
+        collapseApiKeySection();
     }
 }
 
@@ -137,6 +155,24 @@ function saveApiKey() {
         state.apiKey = key;
         localStorage.setItem('northstar.LM_api_key', key);
         showTemporaryMessage(elements.saveKeyBtn, 'Saved!', 'Save');
+        // Collapse after showing saved message
+        setTimeout(() => {
+            collapseApiKeySection();
+        }, 1000);
+    }
+}
+
+function collapseApiKeySection() {
+    if (elements.apiKeyContainer && elements.apiKeyCollapsed) {
+        elements.apiKeyContainer.classList.add('hidden');
+        elements.apiKeyCollapsed.classList.remove('hidden');
+    }
+}
+
+function expandApiKeySection() {
+    if (elements.apiKeyContainer && elements.apiKeyCollapsed) {
+        elements.apiKeyContainer.classList.remove('hidden');
+        elements.apiKeyCollapsed.classList.add('hidden');
     }
 }
 
@@ -867,10 +903,39 @@ function updateMetricsDisplay() {
         </div>` : ''}
     `;
 
-    // Show metrics card if hidden
+    // Show metrics card if hidden, default content to collapsed
     if (elements.metricsCard && metrics.totalTokens > 0) {
         elements.metricsCard.classList.remove('hidden');
+
+        // Default content to collapsed unless already expanded
+        if (!elements.metricsContent.dataset.initialized) {
+            elements.metricsContent.classList.add('hidden');
+            elements.metricsContent.dataset.initialized = 'true';
+        }
+
+        // Auto-collapse after 10 seconds if not pinned
+        scheduleAutoCollapse();
     }
+}
+
+function scheduleAutoCollapse() {
+    // Clear any existing timeout
+    if (metricsState.autoCollapseTimeout) {
+        clearTimeout(metricsState.autoCollapseTimeout);
+    }
+
+    // Don't auto-collapse if pinned or already collapsed
+    if (metricsState.isPinned || elements.metricsContent.classList.contains('hidden')) {
+        return;
+    }
+
+    // Schedule auto-collapse in 10 seconds
+    metricsState.autoCollapseTimeout = setTimeout(() => {
+        if (!metricsState.isPinned && !elements.metricsContent.classList.contains('hidden')) {
+            elements.metricsContent.classList.add('hidden');
+            updateToggleIcon();
+        }
+    }, 10000);
 }
 
 function resetMetrics() {
@@ -888,6 +953,40 @@ function resetMetrics() {
 function toggleMetricsCard() {
     if (elements.metricsContent) {
         elements.metricsContent.classList.toggle('hidden');
+        updateToggleIcon();
+
+        // If expanding, schedule auto-collapse (unless pinned)
+        if (!elements.metricsContent.classList.contains('hidden')) {
+            scheduleAutoCollapse();
+        }
+    }
+}
+
+function updateToggleIcon() {
+    if (!elements.metricsToggle) return;
+
+    const isCollapsed = elements.metricsContent.classList.contains('hidden');
+    elements.metricsToggle.textContent = isCollapsed ? '▶' : '▼';
+}
+
+function toggleMetricsPin() {
+    metricsState.isPinned = !metricsState.isPinned;
+
+    const pinBtn = document.getElementById('metrics-pin-btn');
+    if (pinBtn) {
+        pinBtn.textContent = metricsState.isPinned ? '📌' : '📍';
+        pinBtn.title = metricsState.isPinned ? 'Unpin metrics' : 'Pin metrics open';
+        pinBtn.style.opacity = metricsState.isPinned ? '1' : '0.6';
+    }
+
+    // If pinning, cancel auto-collapse
+    if (metricsState.isPinned && metricsState.autoCollapseTimeout) {
+        clearTimeout(metricsState.autoCollapseTimeout);
+    }
+
+    // If unpinning and expanded, schedule auto-collapse
+    if (!metricsState.isPinned && !elements.metricsContent.classList.contains('hidden')) {
+        scheduleAutoCollapse();
     }
 }
 
