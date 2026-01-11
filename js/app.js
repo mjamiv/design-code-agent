@@ -558,18 +558,14 @@ async function startAnalysis() {
             transcriptionText = elements.textInput.value.trim();
         }
         
-        updateProgress(30, 'Generating summary...');
-        const summary = await extractSummary(transcriptionText);
-        
-        updateProgress(50, 'Extracting key points...');
-        const keyPoints = await extractKeyPoints(transcriptionText);
-        
-        updateProgress(70, 'Identifying action items...');
-        const actionItems = await extractActionItems(transcriptionText);
-        
-        updateProgress(90, 'Analyzing sentiment...');
-        const sentiment = await analyzeSentiment(transcriptionText);
-        
+        updateProgress(30, 'Analyzing meeting content...');
+        const analysis = await analyzeMeetingBatch(transcriptionText);
+
+        const summary = analysis.summary;
+        const keyPoints = analysis.keyPoints;
+        const actionItems = analysis.actionItems;
+        const sentiment = analysis.sentiment;
+
         updateProgress(100, 'Complete!');
         
         // Calculate costs
@@ -609,85 +605,238 @@ function setButtonLoading(loading) {
 }
 
 // ============================================
+// Response Caching
+// ============================================
+
+const responseCache = new Map();
+const MAX_CACHE_SIZE = 50; // Limit cache size to prevent memory issues
+
+function getCacheKey(systemPrompt, userContent) {
+    // Create a hash-like key from the prompts
+    const combined = systemPrompt + '::' + userContent;
+    // Use a simple but effective cache key
+    try {
+        return btoa(encodeURIComponent(combined)).slice(0, 64);
+    } catch (e) {
+        // Fallback if btoa fails on large content
+        return combined.substring(0, 100);
+    }
+}
+
+function getCachedResponse(systemPrompt, userContent) {
+    const key = getCacheKey(systemPrompt, userContent);
+    return responseCache.get(key);
+}
+
+function cacheResponse(systemPrompt, userContent, response) {
+    // Implement LRU-style caching - remove oldest if at capacity
+    if (responseCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = responseCache.keys().next().value;
+        responseCache.delete(firstKey);
+    }
+
+    const key = getCacheKey(systemPrompt, userContent);
+    responseCache.set(key, response);
+}
+
+// ============================================
+// Error Handling & Retry Logic
+// ============================================
+
+async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function callAPIWithRetry(fn, maxRetries = 3, operation = 'API call') {
+    let lastError;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+
+            // Don't retry on client errors (4xx except 429)
+            if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429) {
+                throw error;
+            }
+
+            // For rate limits (429) or server errors (5xx), retry with exponential backoff
+            if (attempt < maxRetries - 1) {
+                const delay = Math.min(2000 * Math.pow(2, attempt), 16000); // Max 16 seconds
+                console.warn(`${operation} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+                await sleep(delay);
+            }
+        }
+    }
+
+    // All retries exhausted
+    throw new Error(`${operation} failed after ${maxRetries} attempts: ${lastError.message}`);
+}
+
+// ============================================
 // OpenAI API Calls
 // ============================================
 async function transcribeAudio(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('model', 'whisper-1');
-    
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${state.apiKey}`
-        },
-        body: formData
-    });
-    
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `Transcription failed: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Estimate audio duration from file size (rough estimate: ~1MB per minute for common formats)
-    const estimatedMinutes = Math.max(0.1, file.size / (1024 * 1024));
-    currentMetrics.whisperMinutes += estimatedMinutes;
-    currentMetrics.apiCalls.push({
-        name: 'Audio Transcription',
-        model: 'whisper-1',
-        duration: estimatedMinutes.toFixed(2) + ' min'
-    });
-    
-    return data.text;
+    return await callAPIWithRetry(async () => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('model', 'whisper-1');
+
+        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const err = new Error(error.error?.message || `Transcription failed: ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await response.json();
+
+        // Estimate audio duration from file size (rough estimate: ~1MB per minute for common formats)
+        const estimatedMinutes = Math.max(0.1, file.size / (1024 * 1024));
+        currentMetrics.whisperMinutes += estimatedMinutes;
+        currentMetrics.apiCalls.push({
+            name: 'Audio Transcription',
+            model: 'whisper-1',
+            duration: estimatedMinutes.toFixed(2) + ' min'
+        });
+
+        return data.text;
+    }, 3, 'Audio transcription');
 }
 
-async function callChatAPI(systemPrompt, userContent, callName = 'API Call') {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${state.apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'gpt-5.2',
-            temperature: 0,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userContent }
-            ]
-        })
-    });
-    
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `API call failed: ${response.status}`);
+async function callChatAPI(systemPrompt, userContent, callName = 'API Call', useCache = true) {
+    // Check cache first (only for deterministic calls with temperature=0)
+    if (useCache) {
+        const cached = getCachedResponse(systemPrompt, userContent);
+        if (cached) {
+            console.log(`[Cache Hit] ${callName}`);
+            return cached;
+        }
     }
-    
-    const data = await response.json();
-    
-    // Track token usage
-    if (data.usage) {
-        currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
-        currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
-        currentMetrics.apiCalls.push({
-            name: callName,
-            model: 'gpt-5.2',
-            inputTokens: data.usage.prompt_tokens || 0,
-            outputTokens: data.usage.completion_tokens || 0
+
+    const result = await callAPIWithRetry(async () => {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${state.apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.2',
+                temperature: 0,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userContent }
+                ]
+            })
         });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const err = new Error(error.error?.message || `API call failed: ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await response.json();
+
+        // Track token usage
+        if (data.usage) {
+            currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
+            currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
+            currentMetrics.apiCalls.push({
+                name: callName,
+                model: 'gpt-5.2',
+                inputTokens: data.usage.prompt_tokens || 0,
+                outputTokens: data.usage.completion_tokens || 0
+            });
+        }
+
+        return data.choices[0].message.content;
+    }, 3, callName);
+
+    // Cache the result
+    if (useCache) {
+        cacheResponse(systemPrompt, userContent, result);
     }
-    
-    return data.choices[0].message.content;
+
+    return result;
+}
+
+async function analyzeMeetingBatch(text) {
+    const systemPrompt = `You are an expert meeting analyst. Analyze the following meeting transcript and provide a comprehensive analysis in JSON format with these fields:
+
+{
+    "summary": "A concise abstract paragraph summarizing the meeting. Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text.",
+    "keyPoints": "List of main points discussed, separated by newlines. Start each point with a dash (-). These should be the most important ideas, findings, or topics that are crucial to the essence of the discussion.",
+    "actionItems": "List of specific tasks or action items that were assigned or discussed, separated by newlines. Start each item with a dash (-). If no action items are found, respond with 'No specific action items identified.'",
+    "sentiment": "Overall sentiment of the meeting. Respond with exactly one word: 'Positive', 'Negative', or 'Neutral'."
+}
+
+Ensure your response is valid JSON only, no additional text.`;
+
+    const response = await callChatAPI(systemPrompt, text, 'Meeting Analysis');
+
+    try {
+        // Try to parse the JSON response
+        const parsed = JSON.parse(response);
+        return {
+            summary: parsed.summary || '',
+            keyPoints: parsed.keyPoints || '',
+            actionItems: parsed.actionItems || '',
+            sentiment: parsed.sentiment || 'Neutral'
+        };
+    } catch (error) {
+        // Fallback: try to extract JSON from response
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    summary: parsed.summary || '',
+                    keyPoints: parsed.keyPoints || '',
+                    actionItems: parsed.actionItems || '',
+                    sentiment: parsed.sentiment || 'Neutral'
+                };
+            } catch (e) {
+                // If still fails, use individual functions as fallback
+                console.warn('Batch analysis failed, falling back to individual calls');
+                const [summary, keyPoints, actionItems, sentiment] = await Promise.all([
+                    extractSummary(text),
+                    extractKeyPoints(text),
+                    extractActionItems(text),
+                    analyzeSentiment(text)
+                ]);
+                return { summary, keyPoints, actionItems, sentiment };
+            }
+        }
+        // Final fallback
+        console.warn('JSON extraction failed, falling back to individual calls');
+        const [summary, keyPoints, actionItems, sentiment] = await Promise.all([
+            extractSummary(text),
+            extractKeyPoints(text),
+            extractActionItems(text),
+            analyzeSentiment(text)
+        ]);
+        return { summary, keyPoints, actionItems, sentiment };
+    }
 }
 
 async function extractSummary(text) {
-    const systemPrompt = `You are a highly skilled AI trained in language comprehension and summarization. 
-Read the following text and summarize it into a concise abstract paragraph. 
-Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text. 
+    const systemPrompt = `You are a highly skilled AI trained in language comprehension and summarization.
+Read the following text and summarize it into a concise abstract paragraph.
+Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text.
 Avoid unnecessary details or tangential points.`;
-    
+
     return await callChatAPI(systemPrompt, text, 'Summary');
 }
 

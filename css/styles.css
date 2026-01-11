@@ -2225,40 +2225,131 @@ details[open] .about-toggle {
     }
 }
 
+/* Metrics Card (Fixed Position) */
+.metrics-card {
+    position: fixed;
+    bottom: var(--space-lg);
+    right: var(--space-lg);
+    width: 360px;
+    max-width: calc(100vw - 2 * var(--space-lg));
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    border: 1px solid rgba(212, 168, 83, 0.3);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    animation: slideInUp 0.3s ease-out;
+}
+
+.metrics-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md);
+    border-bottom: 1px solid rgba(212, 168, 83, 0.2);
+    background: rgba(212, 168, 83, 0.08);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.metrics-card-header h4 {
+    margin: 0;
+    color: var(--accent-primary);
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    letter-spacing: 0.05em;
+}
+
+.metrics-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: var(--space-xs);
+    transition: var(--transition-fast);
+    transform: rotate(0deg);
+}
+
+.metrics-toggle:hover {
+    color: var(--accent-primary);
+}
+
+.metrics-card-content.hidden + .metrics-card-header .metrics-toggle {
+    transform: rotate(-90deg);
+}
+
+.metrics-card-content {
+    padding: var(--space-md);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.metrics-card-content::-webkit-scrollbar {
+    width: 4px;
+}
+
+.metrics-card-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.metrics-card-content::-webkit-scrollbar-thumb {
+    background: rgba(212, 168, 83, 0.3);
+    border-radius: 2px;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Orchestrator Mobile Responsive */
 @media (max-width: 768px) {
     .header-content {
         flex-direction: column;
         gap: var(--space-md);
     }
-    
+
     .orchestrator-link,
     .back-link {
         font-size: 0.85rem;
         padding: var(--space-sm) var(--space-md);
     }
-    
+
     .insights-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .insight-card.full-width {
         grid-column: 1;
     }
-    
+
     .agents-list-header {
         flex-direction: column;
         align-items: flex-start;
         gap: var(--space-sm);
     }
-    
+
     .agent-card {
         flex-direction: column;
         align-items: flex-start;
         gap: var(--space-sm);
     }
-    
+
     .remove-agent-btn {
         align-self: flex-end;
+    }
+
+    /* Metrics card mobile adjustments */
+    .metrics-card {
+        bottom: var(--space-md);
+        right: var(--space-md);
+        left: var(--space-md);
+        width: auto;
+        max-width: none;
     }
 }

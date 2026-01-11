@@ -7,7 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=28">
+    <link rel="stylesheet" href="css/styles.css?v=29">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#d4a853">
 </head>
 <body>
     <div class="gradient-bg"></div>
@@ -177,6 +179,17 @@
             </div>
         </section>
 
+        <!-- Metrics Card (Fixed Position) -->
+        <div id="metrics-card" class="metrics-card hidden">
+            <div class="metrics-card-header">
+                <h4>📊 Usage Metrics</h4>
+                <button id="metrics-toggle" class="metrics-toggle" title="Toggle metrics">▼</button>
+            </div>
+            <div id="metrics-content" class="metrics-card-content">
+                <!-- Metrics will be populated by JS -->
+            </div>
+        </div>
+
         <!-- Error Section -->
         <section id="error-section" class="error-section hidden">
             <div class="error-content">
@@ -225,6 +238,21 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=4" type="module"></script>
+    <script src="js/orchestrator.js?v=7" type="module"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

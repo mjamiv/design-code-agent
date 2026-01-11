@@ -20,6 +20,13 @@ const PRICING = {
     'gpt-5.2': { input: 2.50, output: 10.00 }
 };
 
+// Metrics tracking for current session
+let currentMetrics = {
+    gptInputTokens: 0,
+    gptOutputTokens: 0,
+    apiCalls: []
+};
+
 // ============================================
 // DOM Elements
 // ============================================
@@ -32,7 +39,7 @@ function initElements() {
         apiKeyInput: document.getElementById('api-key'),
         toggleKeyBtn: document.getElementById('toggle-key'),
         saveKeyBtn: document.getElementById('save-key'),
-        
+
         // Agent Upload
         agentFilesInput: document.getElementById('agent-files'),
         agentsDropZone: document.getElementById('agents-drop-zone'),
@@ -41,7 +48,7 @@ function initElements() {
         agentsCount: document.getElementById('agents-count'),
         clearAllBtn: document.getElementById('clear-all-agents'),
         generateInsightsBtn: document.getElementById('generate-insights-btn'),
-        
+
         // Insights
         insightsSection: document.getElementById('insights-section'),
         insightThemes: document.getElementById('insight-themes'),
@@ -49,13 +56,18 @@ function initElements() {
         insightRisks: document.getElementById('insight-risks'),
         insightRecommendations: document.getElementById('insight-recommendations'),
         insightActions: document.getElementById('insight-actions'),
-        
+
         // Chat
         chatSection: document.getElementById('chat-section'),
         chatMessages: document.getElementById('chat-messages'),
         chatInput: document.getElementById('chat-input'),
         chatSendBtn: document.getElementById('chat-send-btn'),
-        
+
+        // Metrics
+        metricsCard: document.getElementById('metrics-card'),
+        metricsToggle: document.getElementById('metrics-toggle'),
+        metricsContent: document.getElementById('metrics-content'),
+
         // Error
         errorSection: document.getElementById('error-section'),
         errorMessage: document.getElementById('error-message'),
@@ -78,17 +90,17 @@ function setupEventListeners() {
     // API Key
     elements.toggleKeyBtn.addEventListener('click', toggleApiKeyVisibility);
     elements.saveKeyBtn.addEventListener('click', saveApiKey);
-    
+
     // Agent Upload
     elements.agentsDropZone.addEventListener('dragover', handleDragOver);
     elements.agentsDropZone.addEventListener('dragleave', handleDragLeave);
     elements.agentsDropZone.addEventListener('drop', handleDrop);
     elements.agentFilesInput.addEventListener('change', handleFileSelect);
     elements.clearAllBtn.addEventListener('click', clearAllAgents);
-    
+
     // Generate Insights
     elements.generateInsightsBtn.addEventListener('click', generateCrossInsights);
-    
+
     // Chat
     elements.chatSendBtn.addEventListener('click', sendChatMessage);
     elements.chatInput.addEventListener('keypress', (e) => {
@@ -97,7 +109,12 @@ function setupEventListeners() {
             sendChatMessage();
         }
     });
-    
+
+    // Metrics
+    if (elements.metricsToggle) {
+        elements.metricsToggle.addEventListener('click', toggleMetricsCard);
+    }
+
     // Error
     elements.dismissErrorBtn.addEventListener('click', hideError);
 }
@@ -300,6 +317,7 @@ function clearAllAgents() {
     state.agents = [];
     state.insights = null;
     state.chatHistory = [];
+    resetMetrics();
     updateUI();
 }
 
@@ -408,7 +426,7 @@ Analyze the meetings holistically and provide insights in the following categori
 Format your response as JSON with these keys: themes, trends, risks, recommendations, actions
 Each should be an array of strings (bullet points).`;
 
-        const response = await callGPT(systemPrompt, combinedContext);
+        const response = await callGPT(systemPrompt, combinedContext, 'Cross-Meeting Insights');
         
         // Parse JSON response
         let insights;
@@ -509,44 +527,104 @@ async function sendChatMessage() {
 }
 
 async function chatWithAgents(userMessage) {
-    const context = buildChatContext();
-    
+    // Build context with smart agent selection
+    const context = buildChatContext(userMessage);
+
     const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
 Use the following meeting data to answer questions accurately and comprehensively.
 If information isn't available in the meeting data, say so clearly.
 Be concise but thorough. Use bullet points when listing multiple items.
 
 ${context}`;
-    
+
     // Build messages array with history
     const messages = [
         { role: 'system', content: systemPrompt }
     ];
-    
+
     // Add recent chat history (last 10 exchanges)
     const recentHistory = state.chatHistory.slice(-20);
     messages.push(...recentHistory);
-    
+
     // Add current message
     messages.push({ role: 'user', content: userMessage });
-    
-    const response = await callGPTWithMessages(messages);
-    
+
+    const response = await callGPTWithMessages(messages, `Chat: ${userMessage.substring(0, 30)}...`);
+
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: response });
-    
+
     return response;
 }
 
-function buildChatContext() {
-    return state.agents.map((agent, index) => `
+function extractKeywords(text) {
+    // Simple keyword extraction - remove common words and extract significant ones
+    const commonWords = new Set(['the', 'is', 'at', 'which', 'on', 'a', 'an', 'and', 'or', 'but', 'in', 'with', 'to', 'for', 'of', 'as', 'by', 'from', 'what', 'where', 'when', 'why', 'how', 'who', 'about', 'can', 'could', 'should', 'would', 'will', 'are', 'was', 'were', 'been', 'be', 'have', 'has', 'had', 'do', 'does', 'did', 'me', 'my', 'you', 'your', 'it', 'its', 'this', 'that', 'these', 'those']);
+
+    const words = text.toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 3 && !commonWords.has(word));
+
+    return [...new Set(words)];
+}
+
+function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
+    if (allAgents.length <= maxAgents) {
+        return allAgents; // Return all if we have fewer than max
+    }
+
+    const queryKeywords = extractKeywords(userQuery);
+
+    const scored = allAgents.map(agent => {
+        let score = 0;
+
+        // Keyword matching
+        queryKeywords.forEach(keyword => {
+            if (agent.title.toLowerCase().includes(keyword)) score += 5;
+            if (agent.summary.toLowerCase().includes(keyword)) score += 3;
+            if (agent.keyPoints.toLowerCase().includes(keyword)) score += 2;
+            if (agent.actionItems.toLowerCase().includes(keyword)) score += 2;
+        });
+
+        // Recency boost (recent meetings are more likely to be relevant)
+        if (agent.date) {
+            try {
+                const agentDate = new Date(agent.date);
+                if (!isNaN(agentDate.getTime())) {
+                    const age = Date.now() - agentDate.getTime();
+                    const daysSince = age / (1000 * 60 * 60 * 24);
+                    score += Math.max(0, 10 - (daysSince / 7)); // Decay over weeks
+                }
+            } catch (e) {
+                // Invalid date, skip recency boost
+            }
+        }
+
+        return { agent, score };
+    });
+
+    // Sort by score and return top N agents
+    return scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxAgents)
+        .map(s => s.agent);
+}
+
+function buildChatContext(userQuery = '') {
+    // Select only relevant agents for this query
+    const relevantAgents = userQuery ?
+        selectRelevantAgents(userQuery, state.agents, 5) :
+        state.agents.slice(0, 5); // Default to first 5 if no query
+
+    return relevantAgents.map((agent, index) => `
 --- Meeting ${index + 1}: ${agent.title} (${agent.date || 'No date'}) ---
 Summary: ${agent.summary}
 Key Points: ${agent.keyPoints}
 Action Items: ${agent.actionItems}
 Sentiment: ${agent.sentiment}
-${agent.transcript ? `Transcript excerpt: ${agent.transcript.substring(0, 2000)}...` : ''}
+${agent.transcript ? `Transcript excerpt: ${agent.transcript.substring(0, 1500)}...` : ''}
 `).join('\n\n');
 }
 
@@ -592,58 +670,225 @@ function resetChatHistory() {
 }
 
 // ============================================
+// Error Handling & Retry Logic
+// ============================================
+
+async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function callAPIWithRetry(fn, maxRetries = 3, operation = 'API call') {
+    let lastError;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+
+            // Don't retry on client errors (4xx except 429)
+            if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429) {
+                throw error;
+            }
+
+            // For rate limits (429) or server errors (5xx), retry with exponential backoff
+            if (attempt < maxRetries - 1) {
+                const delay = Math.min(2000 * Math.pow(2, attempt), 16000); // Max 16 seconds
+                console.warn(`${operation} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+                await sleep(delay);
+            }
+        }
+    }
+
+    // All retries exhausted
+    throw new Error(`${operation} failed after ${maxRetries} attempts: ${lastError.message}`);
+}
+
+// ============================================
 // API Calls
 // ============================================
 
-async function callGPT(systemPrompt, userContent) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${state.apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-5.2',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userContent }
-            ],
-            max_completion_tokens: 4000,
-            temperature: 0.7
-        })
-    });
-    
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return data.choices[0].message.content;
+async function callGPT(systemPrompt, userContent, callName = 'API Call') {
+    return await callAPIWithRetry(async () => {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.2',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userContent }
+                ],
+                max_completion_tokens: 4000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const err = new Error(error.error?.message || `API error: ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await response.json();
+
+        // Track token usage
+        if (data.usage) {
+            currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
+            currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
+            currentMetrics.apiCalls.push({
+                name: callName,
+                model: 'gpt-5.2',
+                inputTokens: data.usage.prompt_tokens || 0,
+                outputTokens: data.usage.completion_tokens || 0
+            });
+            updateMetricsDisplay();
+        }
+
+        return data.choices[0].message.content;
+    }, 3, callName);
 }
 
-async function callGPTWithMessages(messages) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${state.apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-5.2',
-            messages: messages,
-            max_completion_tokens: 2000,
-            temperature: 0.7
-        })
+async function callGPTWithMessages(messages, callName = 'Chat Query') {
+    return await callAPIWithRetry(async () => {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-5.2',
+                messages: messages,
+                max_completion_tokens: 2000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            const err = new Error(error.error?.message || `API error: ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await response.json();
+
+        // Track token usage
+        if (data.usage) {
+            currentMetrics.gptInputTokens += data.usage.prompt_tokens || 0;
+            currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
+            currentMetrics.apiCalls.push({
+                name: callName,
+                model: 'gpt-5.2',
+                inputTokens: data.usage.prompt_tokens || 0,
+                outputTokens: data.usage.completion_tokens || 0
+            });
+            updateMetricsDisplay();
+        }
+
+        return data.choices[0].message.content;
+    }, 3, callName);
+}
+
+// ============================================
+// Metrics Display & Management
+// ============================================
+
+function calculateMetrics() {
+    const inputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING['gpt-5.2'].input;
+    const outputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING['gpt-5.2'].output;
+    const totalCost = inputCost + outputCost;
+
+    return {
+        gptInputTokens: currentMetrics.gptInputTokens,
+        gptOutputTokens: currentMetrics.gptOutputTokens,
+        totalTokens: currentMetrics.gptInputTokens + currentMetrics.gptOutputTokens,
+        inputCost,
+        outputCost,
+        totalCost,
+        apiCalls: currentMetrics.apiCalls
+    };
+}
+
+function formatTokens(tokens) {
+    return tokens.toLocaleString();
+}
+
+function formatCost(cost) {
+    return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(4)}`;
+}
+
+function updateMetricsDisplay() {
+    if (!elements.metricsContent) return;
+
+    const metrics = calculateMetrics();
+
+    // Build API calls breakdown
+    let breakdownHtml = '';
+    metrics.apiCalls.forEach((call, idx) => {
+        const totalTokens = call.inputTokens + call.outputTokens;
+        breakdownHtml += `
+            <div class="metric-breakdown-item">
+                <span>${call.name}</span>
+                <span>${formatTokens(totalTokens)} tokens</span>
+            </div>`;
     });
-    
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error?.message || `API error: ${response.status}`);
+
+    elements.metricsContent.innerHTML = `
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <span class="metric-value">${formatTokens(metrics.totalTokens)}</span>
+                <span class="metric-label">Total Tokens</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-value">${formatCost(metrics.totalCost)}</span>
+                <span class="metric-label">Est. Cost</span>
+            </div>
+        </div>
+        <div class="metric-breakdown">
+            <div class="metric-breakdown-item">
+                <span>GPT-5.2 Input</span>
+                <span>${formatTokens(metrics.gptInputTokens)} tokens (${formatCost(metrics.inputCost)})</span>
+            </div>
+            <div class="metric-breakdown-item">
+                <span>GPT-5.2 Output</span>
+                <span>${formatTokens(metrics.gptOutputTokens)} tokens (${formatCost(metrics.outputCost)})</span>
+            </div>
+        </div>
+        ${metrics.apiCalls.length > 0 ? `
+        <div class="metric-breakdown" style="margin-top: var(--space-sm);">
+            <strong style="color: var(--text-secondary);">API Calls (${metrics.apiCalls.length}):</strong>
+            ${breakdownHtml}
+        </div>` : ''}
+    `;
+
+    // Show metrics card if hidden
+    if (elements.metricsCard && metrics.totalTokens > 0) {
+        elements.metricsCard.classList.remove('hidden');
     }
-    
-    const data = await response.json();
-    return data.choices[0].message.content;
+}
+
+function resetMetrics() {
+    currentMetrics = {
+        gptInputTokens: 0,
+        gptOutputTokens: 0,
+        apiCalls: []
+    };
+    updateMetricsDisplay();
+    if (elements.metricsCard) {
+        elements.metricsCard.classList.add('hidden');
+    }
+}
+
+function toggleMetricsCard() {
+    if (elements.metricsContent) {
+        elements.metricsContent.classList.toggle('hidden');
+    }
 }
 
 // ============================================
