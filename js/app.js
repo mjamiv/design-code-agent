@@ -572,36 +572,92 @@ async function extractTextFromPdf(file) {
     if (!pdfJsLoaded) {
         await loadPdfJs();
     }
-    
+
     if (!window.pdfjsLib) {
         throw new Error('PDF.js library failed to load. Please refresh the page and try again.');
     }
-    
+
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
+
     let fullText = '';
     const totalPages = pdf.numPages;
-    
+
     for (let i = 1; i <= totalPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map(item => item.str).join(' ');
         fullText += pageText + '\n\n';
-        
+
         // Update progress for large PDFs
         const progress = Math.round((i / totalPages) * 20);
         updateProgress(progress, `Extracting text from PDF (page ${i}/${totalPages})...`);
     }
-    
+
     fullText = fullText.trim();
-    
-    // Check if PDF might contain images (sparse text for multi-page doc)
-    if (fullText.length < 100 && totalPages > 1) {
-        fullText = "[Note: This PDF may contain images which were ignored. Only text content was extracted.]\n\n" + fullText;
+
+    // Return both text and PDF object for potential image-based processing
+    return { text: fullText, pdf, totalPages };
+}
+
+// ============================================
+// PDF to Image Conversion (for image-based PDFs)
+// ============================================
+async function renderPdfPagesToImages(pdf, totalPages, maxPages = 5) {
+    const images = [];
+    const pagesToRender = Math.min(totalPages, maxPages);
+
+    for (let i = 1; i <= pagesToRender; i++) {
+        updateProgress(10 + Math.round((i / pagesToRender) * 10), `Converting PDF page ${i}/${pagesToRender} to image...`);
+
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
+
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        // Render page to canvas
+        await page.render({
+            canvasContext: context,
+            viewport: viewport
+        }).promise;
+
+        // Convert canvas to base64
+        const base64Image = canvas.toDataURL('image/png');
+        images.push(base64Image);
     }
 
-    return fullText;
+    return images;
+}
+
+async function analyzeImageBasedPdf(pdf, totalPages) {
+    updateProgress(10, 'Detected image-based PDF. Converting pages to images...');
+
+    // Render PDF pages to images
+    const images = await renderPdfPagesToImages(pdf, totalPages);
+
+    updateProgress(25, 'Analyzing PDF images with Vision AI...');
+
+    // Analyze each page with Vision API and combine results
+    const pageResults = [];
+
+    for (let i = 0; i < images.length; i++) {
+        updateProgress(25 + Math.round((i / images.length) * 20), `Analyzing page ${i + 1}/${images.length} with Vision AI...`);
+
+        const pageContent = await analyzeImageWithVision(images[i]);
+        pageResults.push(`--- Page ${i + 1} ---\n${pageContent}`);
+    }
+
+    // If there are more pages than we analyzed, add a note
+    let combinedText = pageResults.join('\n\n');
+    if (totalPages > images.length) {
+        combinedText += `\n\n[Note: Only the first ${images.length} of ${totalPages} pages were analyzed.]`;
+    }
+
+    return combinedText;
 }
 
 // ============================================
@@ -728,10 +784,18 @@ async function startAnalysis() {
             transcriptionText = await transcribeAudio(state.selectedFile);
         } else if (state.inputMode === 'pdf') {
             updateProgress(5, 'Extracting text from PDF...');
-            transcriptionText = await extractTextFromPdf(state.selectedPdfFile);
+            const pdfResult = await extractTextFromPdf(state.selectedPdfFile);
 
-            if (!transcriptionText || transcriptionText.length < 10) {
-                throw new Error('Could not extract text from PDF. The file may be image-based or empty.');
+            // Check if PDF has meaningful text content
+            if (!pdfResult.text || pdfResult.text.length < 50) {
+                // PDF appears to be image-based, use Vision API
+                transcriptionText = await analyzeImageBasedPdf(pdfResult.pdf, pdfResult.totalPages);
+
+                if (!transcriptionText || transcriptionText.length < 10) {
+                    throw new Error('Could not extract content from PDF. The file may be empty or unreadable.');
+                }
+            } else {
+                transcriptionText = pdfResult.text;
             }
         } else if (state.inputMode === 'image') {
             updateProgress(5, 'Analyzing image with Vision AI...');
