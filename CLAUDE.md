@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Project Overview
 
-**northstar.LM** is a client-side web application that transforms meeting recordings, PDFs, or text into actionable insights using OpenAI's AI models. The entire application runs client-side with no backend server. Features include multi-meeting orchestration, agent export/import, and professional document generation.
+**northstar.LM** is a client-side web application that transforms meeting recordings, PDFs, images, or text into actionable insights using OpenAI's AI models. The entire application runs client-side with no backend server. Features include multi-meeting orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
 
 ## Architecture
 
@@ -38,13 +38,14 @@ northstar.LM/
 |---------|-------|
 | Audio Transcription | `whisper-1` |
 | Text Analysis (Summary, Key Points, Actions, Sentiment) | `gpt-5.2` |
+| Image/PDF Vision Analysis (OCR, content extraction) | `gpt-5.2` (vision) |
 | Chat with Data (Q&A) | `gpt-5.2` (with reasoning) |
 | Text-to-Speech | `gpt-4o-mini-tts` |
 | Image Generation | `gpt-image-1.5` |
 
 ### Libraries (CDN-loaded)
 - **docx.js** (`8.5.0`) - Client-side DOCX generation with professional formatting
-- **PDF.js** (`4.0.379`) - Client-side PDF text extraction
+- **PDF.js** (`4.0.379`) - Client-side PDF text extraction and page-to-image rendering
 
 ## Common Development Tasks
 
@@ -77,7 +78,9 @@ const state = {
     apiKey: '',
     selectedFile: null,
     selectedPdfFile: null,
-    inputMode: 'audio', // 'audio', 'pdf', 'text', or 'url'
+    selectedImageFile: null,
+    selectedImageBase64: null, // Base64-encoded image for Vision API
+    inputMode: 'audio', // 'audio', 'pdf', 'image', 'text', or 'url'
     isProcessing: false,
     results: null,        // Contains transcription, summary, keyPoints, actionItems, sentiment
     metrics: null,        // API usage metrics
@@ -97,6 +100,12 @@ const state = {
 - `downloadAgentFile()` - Exports session as markdown with YAML frontmatter
 - `importAgentFile()` - Restores session from exported agent file
 - Agent files are portable markdown (~90 KB) containing all analysis data
+
+### Image & Vision Analysis
+- `analyzeImageWithVision()` - Sends image to GPT-5.2 Vision for OCR and content extraction
+- `renderPdfPagesToImages()` - Converts PDF pages to base64 PNG images using canvas
+- `analyzeImageBasedPdf()` - Detects image-based PDFs and processes via Vision API
+- `fileToBase64()` - Converts uploaded image files to base64 data URLs
 
 ### DOCX Generation
 - `downloadDocx()` - Creates professionally formatted Word document
