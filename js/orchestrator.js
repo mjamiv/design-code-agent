@@ -234,30 +234,54 @@ function parseAgentFile(content) {
     if (frontmatterMatch) {
         const frontmatter = frontmatterMatch[1];
         
-        const titleMatch = frontmatter.match(/title:\s*"?([^"\n]+)"?/);
-        if (titleMatch) result.title = titleMatch[1].trim();
-        
-        const dateMatch = frontmatter.match(/date:\s*"?([^"\n]+)"?/);
-        if (dateMatch) result.date = dateMatch[1].trim();
+        // Get creation date
+        const createdMatch = frontmatter.match(/created:\s*"?([^"\n]+)"?/);
+        if (createdMatch) {
+            try {
+                const date = new Date(createdMatch[1].trim());
+                result.date = date.toLocaleDateString('en-US', { 
+                    year: 'numeric', month: 'short', day: 'numeric' 
+                });
+            } catch (e) {
+                result.date = createdMatch[1].trim();
+            }
+        }
         
         const sourceMatch = frontmatter.match(/source_type:\s*(\w+)/);
         if (sourceMatch) result.sourceType = sourceMatch[1].trim();
     }
     
-    // Parse sections
-    const sectionPatterns = {
-        summary: /## Summary\n([\s\S]*?)(?=\n## |$)/,
-        keyPoints: /## Key Points\n([\s\S]*?)(?=\n## |$)/,
-        actionItems: /## Action Items\n([\s\S]*?)(?=\n## |$)/,
-        sentiment: /## Sentiment\n([\s\S]*?)(?=\n## |$)/,
-        transcript: /## Transcript\n([\s\S]*?)(?=\n## |$)/
-    };
+    // Parse title from heading (# Meeting Agent: <title>)
+    const titleMatch = content.match(/# Meeting Agent:\s*(.+)/);
+    if (titleMatch) {
+        result.title = titleMatch[1].trim();
+    }
     
-    for (const [key, pattern] of Object.entries(sectionPatterns)) {
-        const match = content.match(pattern);
-        if (match) {
-            result[key] = match[1].trim();
-        }
+    // Parse sections with flexible matching (handles both old and new formats)
+    // Executive Summary or Summary
+    const summaryMatch = content.match(/## (?:Executive )?Summary\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (summaryMatch) result.summary = summaryMatch[1].trim();
+    
+    // Key Points
+    const keyPointsMatch = content.match(/## Key Points\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (keyPointsMatch) result.keyPoints = keyPointsMatch[1].trim();
+    
+    // Action Items
+    const actionItemsMatch = content.match(/## Action Items\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (actionItemsMatch) result.actionItems = actionItemsMatch[1].trim();
+    
+    // Sentiment Analysis or Sentiment
+    const sentimentMatch = content.match(/## Sentiment(?: Analysis)?\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (sentimentMatch) result.sentiment = sentimentMatch[1].trim();
+    
+    // Full Transcript (may be in code block)
+    const transcriptMatch = content.match(/## Full Transcript[\s\S]*?```\n?([\s\S]*?)```/);
+    if (transcriptMatch) {
+        result.transcript = transcriptMatch[1].trim();
+    } else {
+        // Try without code block
+        const plainTranscriptMatch = content.match(/## (?:Full )?Transcript\n\n?([\s\S]*?)(?=\n## |$)/);
+        if (plainTranscriptMatch) result.transcript = plainTranscriptMatch[1].trim();
     }
     
     return result;
