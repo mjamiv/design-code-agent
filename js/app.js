@@ -605,6 +605,41 @@ function setButtonLoading(loading) {
 }
 
 // ============================================
+// Response Caching
+// ============================================
+
+const responseCache = new Map();
+const MAX_CACHE_SIZE = 50; // Limit cache size to prevent memory issues
+
+function getCacheKey(systemPrompt, userContent) {
+    // Create a hash-like key from the prompts
+    const combined = systemPrompt + '::' + userContent;
+    // Use a simple but effective cache key
+    try {
+        return btoa(encodeURIComponent(combined)).slice(0, 64);
+    } catch (e) {
+        // Fallback if btoa fails on large content
+        return combined.substring(0, 100);
+    }
+}
+
+function getCachedResponse(systemPrompt, userContent) {
+    const key = getCacheKey(systemPrompt, userContent);
+    return responseCache.get(key);
+}
+
+function cacheResponse(systemPrompt, userContent, response) {
+    // Implement LRU-style caching - remove oldest if at capacity
+    if (responseCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = responseCache.keys().next().value;
+        responseCache.delete(firstKey);
+    }
+
+    const key = getCacheKey(systemPrompt, userContent);
+    responseCache.set(key, response);
+}
+
+// ============================================
 // Error Handling & Retry Logic
 // ============================================
 
@@ -678,8 +713,17 @@ async function transcribeAudio(file) {
     }, 3, 'Audio transcription');
 }
 
-async function callChatAPI(systemPrompt, userContent, callName = 'API Call') {
-    return await callAPIWithRetry(async () => {
+async function callChatAPI(systemPrompt, userContent, callName = 'API Call', useCache = true) {
+    // Check cache first (only for deterministic calls with temperature=0)
+    if (useCache) {
+        const cached = getCachedResponse(systemPrompt, userContent);
+        if (cached) {
+            console.log(`[Cache Hit] ${callName}`);
+            return cached;
+        }
+    }
+
+    const result = await callAPIWithRetry(async () => {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -719,6 +763,13 @@ async function callChatAPI(systemPrompt, userContent, callName = 'API Call') {
 
         return data.choices[0].message.content;
     }, 3, callName);
+
+    // Cache the result
+    if (useCache) {
+        cacheResponse(systemPrompt, userContent, result);
+    }
+
+    return result;
 }
 
 async function analyzeMeetingBatch(text) {
