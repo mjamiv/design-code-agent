@@ -2651,20 +2651,20 @@ function downloadAudio() {
 // ============================================
 async function generateInfographic() {
     if (!state.results) return;
-    
+
     const userStyle = elements.infographicPrompt.value.trim() || 'professional corporate infographic with icons';
-    
+
     const btn = elements.generateInfographicBtn;
     const btnText = btn.querySelector('.btn-text');
     const btnLoader = btn.querySelector('.btn-loader');
-    
+
     // Show loading state
     btnText.classList.add('hidden');
     btnLoader.classList.remove('hidden');
     btn.disabled = true;
-    
+
     try {
-        // Create a detailed prompt for DALL-E
+        // Create a detailed prompt for DALL-E with safe margin instructions
         const dallePrompt = `Create a professional meeting infographic with the following style: ${userStyle}.
 
 The infographic should visualize these meeting insights:
@@ -2679,26 +2679,29 @@ ${state.results.actionItems.split('\n').slice(0, 3).join('\n')}
 
 SENTIMENT: ${state.results.sentiment}
 
-Design requirements:
-- Clean, professional layout
+CRITICAL DESIGN REQUIREMENTS:
+- Keep ALL content well within the image boundaries with generous padding (at least 50px from all edges)
+- Do NOT place any text, icons, or visual elements near the edges that might get cut off
+- Center the composition with clear margins on all sides
+- Clean, professional layout with good whitespace
 - Use icons and visual hierarchy
-- Include a title "Meeting Insights"
+- Include a centered title "Meeting Insights" at the top
 - Use a cohesive color scheme
-- Make text readable but minimal
-- Landscape orientation`;
+- Make text readable and fully visible
+- Horizontal/landscape layout`;
 
         const imageUrl = await generateImage(dallePrompt);
-        
+
         // Display the image
         elements.infographicImage.src = imageUrl;
         elements.infographicContainer.classList.remove('hidden');
-        
+
         // Store URL for download
         generatedImageUrl = imageUrl;
-        
+
         // Update metrics display
         displayMetrics();
-        
+
     } catch (error) {
         console.error('Infographic generation error:', error);
         showError(error.message || 'Failed to generate infographic.');
@@ -2720,22 +2723,22 @@ async function generateImage(prompt) {
             model: 'gpt-image-1.5',
             prompt: prompt,
             n: 1,
-            size: '1024x1024'
+            size: '1536x1024' // Landscape format for infographics
         })
     });
-    
+
     if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error?.message || `Image generation failed: ${response.status}`);
     }
-    
+
     const data = await response.json();
-    
+
     // Track metrics from usage data
     const usage = data.usage || {};
     const inputTokens = usage.input_tokens || 0;
     const outputTokens = usage.output_tokens || 0;
-    
+
     currentMetrics.imageInputTokens += inputTokens;
     currentMetrics.imageOutputTokens += outputTokens;
     currentMetrics.apiCalls.push({
@@ -2743,7 +2746,7 @@ async function generateImage(prompt) {
         model: 'gpt-image-1.5',
         inputTokens: inputTokens,
         outputTokens: outputTokens,
-        size: '1024x1024'
+        size: '1536x1024'
     });
     
     // Recalculate and update metrics
