@@ -21,7 +21,7 @@ At-a-glance metrics displayed at the top of every analysis:
 
 ### Core Analysis
 - **Audio Transcription** - Upload MP3, WAV, M4A, OGG, FLAC, MP4, or WEBM files for automatic transcription using OpenAI Whisper
-- **Video Transcription** - Upload MP4, WebM, MOV, AVI, or MKV video files for audio extraction and transcription using Whisper
+- **Video Transcription** - Upload MP4, WebM, or MPEG video files for audio extraction and transcription using Whisper
 - **PDF Text Extraction** - Upload PDF documents for client-side text extraction using PDF.js
 - **Image Upload & Vision AI** - Upload JPG, PNG, GIF, or WebP images for OCR and content extraction using GPT-5.2 Vision
 - **Smart PDF Processing** - Automatically detects image-based PDFs and uses Vision AI for OCR when text extraction fails

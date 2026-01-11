@@ -615,11 +615,12 @@ function handleVideoFileSelect(e) {
 }
 
 function processSelectedVideoFile(file) {
-    const allowedFormats = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'];
+    // Whisper-compatible formats: mp3, mp4, mpeg, mpga, m4a, wav, webm
+    const allowedFormats = ['mp4', 'webm', 'mpeg', 'mpga', 'm4a', 'mp3', 'wav'];
     const extension = file.name.split('.').pop().toLowerCase();
 
     if (!allowedFormats.includes(extension)) {
-        showError(`Invalid file format. Supported formats: ${allowedFormats.join(', ')}`);
+        showError(`Invalid file format. Whisper supports: MP4, WebM, MPEG, M4A, MP3, WAV`);
         return;
     }
 

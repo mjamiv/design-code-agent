@@ -124,12 +124,12 @@
                 </div>
 
                 <div id="video-tab" class="tab-pane">
-                    <input type="file" id="video-file" accept=".mp4,.webm,.mov,.avi,.mkv,.m4v,video/*" hidden>
+                    <input type="file" id="video-file" accept=".mp4,.webm,.mpeg,.m4a,.wav,.mp3,video/mp4,video/webm" hidden>
                     <label for="video-file" class="upload-zone" id="video-drop-zone">
                         <div class="upload-icon">&#127909;</div>
                         <p>Drag & drop your video file here</p>
                         <p class="hint">or click to browse</p>
-                        <p class="file-types">Supported: MP4, WebM, MOV, AVI, MKV</p>
+                        <p class="file-types">Supported: MP4, WebM, MPEG (Whisper-compatible formats)</p>
                     </label>
                     <div id="video-file-info" class="file-info hidden">
                         <span class="video-file-name"></span>
@@ -488,7 +488,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=36" type="module"></script>
+    <script src="js/app.js?v=37" type="module"></script>
 
     <!-- Service Worker Registration -->
     <script>
