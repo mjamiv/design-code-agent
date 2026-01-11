@@ -195,11 +195,23 @@ function setupEventListeners() {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
     
-    // Audio Drag and Drop
-    elements.dropZone.addEventListener('click', () => elements.audioFileInput.click());
-    elements.dropZone.addEventListener('touchend', (e) => {
+    // Audio Drag and Drop (with mobile touch support)
+    const triggerAudioFileInput = (e) => {
         e.preventDefault();
+        e.stopPropagation();
         elements.audioFileInput.click();
+    };
+    elements.dropZone.addEventListener('click', triggerAudioFileInput);
+    elements.dropZone.addEventListener('touchstart', (e) => {
+        // Mark that touch started on this element
+        elements.dropZone.dataset.touchStarted = 'true';
+    }, { passive: true });
+    elements.dropZone.addEventListener('touchend', (e) => {
+        if (elements.dropZone.dataset.touchStarted === 'true') {
+            e.preventDefault();
+            elements.audioFileInput.click();
+            elements.dropZone.dataset.touchStarted = 'false';
+        }
     }, { passive: false });
     elements.dropZone.addEventListener('dragover', handleDragOver);
     elements.dropZone.addEventListener('dragleave', handleDragLeave);
@@ -207,11 +219,22 @@ function setupEventListeners() {
     elements.audioFileInput.addEventListener('change', handleFileSelect);
     elements.removeFileBtn.addEventListener('click', removeSelectedFile);
     
-    // PDF Drag and Drop
-    elements.pdfDropZone.addEventListener('click', () => elements.pdfFileInput.click());
-    elements.pdfDropZone.addEventListener('touchend', (e) => {
+    // PDF Drag and Drop (with mobile touch support)
+    const triggerPdfFileInput = (e) => {
         e.preventDefault();
+        e.stopPropagation();
         elements.pdfFileInput.click();
+    };
+    elements.pdfDropZone.addEventListener('click', triggerPdfFileInput);
+    elements.pdfDropZone.addEventListener('touchstart', (e) => {
+        elements.pdfDropZone.dataset.touchStarted = 'true';
+    }, { passive: true });
+    elements.pdfDropZone.addEventListener('touchend', (e) => {
+        if (elements.pdfDropZone.dataset.touchStarted === 'true') {
+            e.preventDefault();
+            elements.pdfFileInput.click();
+            elements.pdfDropZone.dataset.touchStarted = 'false';
+        }
     }, { passive: false });
     elements.pdfDropZone.addEventListener('dragover', handlePdfDragOver);
     elements.pdfDropZone.addEventListener('dragleave', handlePdfDragLeave);
@@ -1726,23 +1749,54 @@ async function fetchUrlContent() {
     btnText.classList.add('hidden');
     btnLoader.classList.remove('hidden');
     
-    try {
-        // Use a CORS proxy to fetch the content
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-        
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) {
-            throw new Error(`Failed to fetch URL: ${response.status}`);
+    // CORS proxies to try (in order)
+    const corsProxies = [
+        (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`
+    ];
+    
+    let html = null;
+    let lastError = null;
+    
+    for (const proxyFn of corsProxies) {
+        try {
+            const proxyUrl = proxyFn(url);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+            
+            const response = await fetch(proxyUrl, {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                html = await response.text();
+                break;
+            }
+        } catch (e) {
+            lastError = e;
+            // Try next proxy
+            continue;
         }
-        
-        const html = await response.text();
+    }
+    
+    try {
+        if (!html) {
+            throw new Error(lastError?.name === 'AbortError' 
+                ? 'Request timed out. Please check your connection and try again.'
+                : 'Could not fetch the URL. The site may block external access or your connection may be unstable.');
+        }
         
         // Extract text content from HTML
         const textContent = extractTextFromHtml(html);
         
         if (!textContent || textContent.length < 20) {
-            throw new Error('Could not extract meaningful text from the webpage.');
+            throw new Error('Could not extract meaningful text from the webpage. The page may be empty or require JavaScript to load content.');
         }
         
         // Store the content
@@ -1757,7 +1811,7 @@ async function fetchUrlContent() {
         
     } catch (error) {
         console.error('URL fetch error:', error);
-        showError(error.message || 'Failed to fetch content from URL. The site may block external access.');
+        showError(error.message || 'Failed to fetch content from URL.');
     } finally {
         btn.disabled = false;
         btnText.classList.remove('hidden');

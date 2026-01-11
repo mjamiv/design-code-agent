@@ -338,6 +338,11 @@ section {
     cursor: pointer;
     transition: all var(--transition-fast);
     background: rgba(212, 168, 83, 0.02);
+    /* Mobile touch improvements */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(212, 168, 83, 0.3);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .upload-zone:hover,
@@ -1462,9 +1467,19 @@ details[open] .about-toggle {
         font-size: 1.1rem;
     }
     
-    /* Upload zone */
+    /* Upload zone - improved mobile touch handling */
     .upload-zone {
         padding: var(--space-lg);
+        min-height: 150px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(212, 168, 83, 0.2);
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    
+    .upload-zone:active {
+        background: rgba(212, 168, 83, 0.1);
+        border-color: var(--accent-primary);
     }
     
     .upload-icon {

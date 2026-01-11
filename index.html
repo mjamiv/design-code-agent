@@ -68,7 +68,7 @@
                         <div class="upload-icon">&#127926;</div>
                         <p>Drag & drop your audio file here</p>
                         <p class="hint">or click to browse</p>
-                        <input type="file" id="audio-file" accept=".m4a,.mp3,.webm,.mp4,.mpga,.wav,.mpeg,.ogg,.oga,.flac" hidden>
+                        <input type="file" id="audio-file" accept=".m4a,.mp3,.webm,.mp4,.mpga,.wav,.mpeg,.ogg,.oga,.flac,audio/*" hidden>
                         <p class="file-types">Supported: MP3, WAV, M4A, OGG, FLAC, MP4, WEBM</p>
                     </div>
                     <div id="file-info" class="file-info hidden">
@@ -82,7 +82,7 @@
                         <div class="upload-icon">&#128196;</div>
                         <p>Drag & drop your PDF file here</p>
                         <p class="hint">or click to browse</p>
-                        <input type="file" id="pdf-file" accept=".pdf" hidden>
+                        <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden>
                         <p class="file-types">Supported: PDF documents</p>
                     </div>
                     <div id="pdf-file-info" class="file-info hidden">
@@ -363,6 +363,6 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=19" type="module"></script>
+    <script src="js/app.js?v=20" type="module"></script>
 </body>
 </html>
