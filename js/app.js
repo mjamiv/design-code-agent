@@ -151,10 +151,10 @@ async function init() {
         
         // Results
         resultsSection: document.getElementById('results-section'),
+        resultsNav: document.getElementById('results-nav'),
         resultSummary: document.getElementById('result-summary'),
         resultKeypoints: document.getElementById('result-keypoints'),
         resultActions: document.getElementById('result-actions'),
-        resultSentiment: document.getElementById('result-sentiment'),
         
         // Error
         errorSection: document.getElementById('error-section'),
@@ -326,6 +326,93 @@ function setupEventListeners() {
     elements.exportAgentBtn.addEventListener('click', exportAgent);
     elements.importAgentBtn.addEventListener('click', () => elements.agentFileInput.click());
     elements.agentFileInput.addEventListener('change', handleAgentFileSelect);
+    
+    // Results Navigation
+    setupResultsNav();
+}
+
+// ============================================
+// Results Navigation & Scroll Spy
+// ============================================
+function setupResultsNav() {
+    if (!elements.resultsNav) return;
+    
+    // Handle nav pill clicks
+    const navPills = elements.resultsNav.querySelectorAll('.nav-pill');
+    navPills.forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetId = pill.getAttribute('data-section');
+            const targetElement = document.getElementById(targetId);
+            
+            if (targetElement) {
+                // Smooth scroll to section
+                const navHeight = elements.resultsNav.offsetHeight;
+                const targetPosition = targetElement.getBoundingClientRect().top + window.scrollY - navHeight - 20;
+                
+                window.scrollTo({
+                    top: targetPosition,
+                    behavior: 'smooth'
+                });
+                
+                // Update active state
+                updateActiveNavPill(targetId);
+            }
+        });
+    });
+    
+    // Scroll spy - update active pill based on scroll position
+    let scrollTimeout;
+    window.addEventListener('scroll', () => {
+        if (scrollTimeout) {
+            window.cancelAnimationFrame(scrollTimeout);
+        }
+        scrollTimeout = window.requestAnimationFrame(() => {
+            updateNavOnScroll();
+        });
+    });
+}
+
+function updateActiveNavPill(sectionId) {
+    if (!elements.resultsNav) return;
+    
+    const navPills = elements.resultsNav.querySelectorAll('.nav-pill');
+    navPills.forEach(pill => {
+        pill.classList.remove('active');
+        if (pill.getAttribute('data-section') === sectionId) {
+            pill.classList.add('active');
+            // Scroll the pill into view if needed (for mobile)
+            pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    });
+}
+
+function updateNavOnScroll() {
+    if (!elements.resultsNav || elements.resultsSection.classList.contains('hidden')) return;
+    
+    const navPills = elements.resultsNav.querySelectorAll('.nav-pill');
+    const navHeight = elements.resultsNav.offsetHeight;
+    const scrollPosition = window.scrollY + navHeight + 100; // Offset for better UX
+    
+    let currentSection = null;
+    
+    navPills.forEach(pill => {
+        const sectionId = pill.getAttribute('data-section');
+        const section = document.getElementById(sectionId);
+        
+        if (section) {
+            const sectionTop = section.offsetTop;
+            const sectionBottom = sectionTop + section.offsetHeight;
+            
+            if (scrollPosition >= sectionTop && scrollPosition < sectionBottom) {
+                currentSection = sectionId;
+            }
+        }
+    });
+    
+    if (currentSection) {
+        updateActiveNavPill(currentSection);
+    }
 }
 
 // ============================================
@@ -1279,23 +1366,6 @@ function displayResults() {
     
     // Action Items
     elements.resultActions.innerHTML = formatListContent(state.results.actionItems);
-    
-    // Sentiment
-    const sentiment = state.results.sentiment.trim().toLowerCase();
-    let sentimentClass = 'sentiment-neutral';
-    let sentimentEmoji = '😐';
-    
-    if (sentiment.includes('positive')) {
-        sentimentClass = 'sentiment-positive';
-        sentimentEmoji = '😊';
-    } else if (sentiment.includes('negative')) {
-        sentimentClass = 'sentiment-negative';
-        sentimentEmoji = '😟';
-    }
-    
-    elements.resultSentiment.innerHTML = `
-        <span class="${sentimentClass}">${sentimentEmoji} ${capitalize(state.results.sentiment)}</span>
-    `;
     
     // Display metrics
     displayMetrics();

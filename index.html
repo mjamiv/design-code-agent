@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=37">
+    <link rel="stylesheet" href="css/styles.css?v=38">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -208,8 +208,33 @@
         <section id="results-section" class="results-section hidden">
             <h2>Analysis Results</h2>
             
+            <!-- Quick Navigation Bar -->
+            <nav class="results-nav" id="results-nav">
+                <a href="#kpi-section" class="nav-pill active" data-section="kpi-section">
+                    <span>📊</span><span class="nav-label">Overview</span>
+                </a>
+                <a href="#summary-section" class="nav-pill" data-section="summary-section">
+                    <span>📄</span><span class="nav-label">Summary</span>
+                </a>
+                <a href="#keypoints-section" class="nav-pill" data-section="keypoints-section">
+                    <span>💡</span><span class="nav-label">Key Points</span>
+                </a>
+                <a href="#actions-section" class="nav-pill" data-section="actions-section">
+                    <span>✅</span><span class="nav-label">Actions</span>
+                </a>
+                <a href="#chat-section" class="nav-pill" data-section="chat-section">
+                    <span>💬</span><span class="nav-label">Chat</span>
+                </a>
+                <a href="#audio-briefing-section" class="nav-pill" data-section="audio-briefing-section">
+                    <span>🎧</span><span class="nav-label">Audio</span>
+                </a>
+                <a href="#infographic-section" class="nav-pill" data-section="infographic-section">
+                    <span>🎨</span><span class="nav-label">Visual</span>
+                </a>
+            </nav>
+            
             <!-- KPI Dashboard -->
-            <div class="kpi-dashboard">
+            <div class="kpi-dashboard" id="kpi-section">
                 <div class="kpi-item kpi-sentiment">
                     <span class="kpi-icon">📊</span>
                     <div class="kpi-content">
@@ -253,47 +278,54 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Action Buttons - Moved up for visibility -->
+            <div class="results-actions">
+                <button id="download-btn" class="btn-primary" title="Download analysis results as a formatted Word document">
+                    <span>&#128229;</span> Download DOCX
+                </button>
+                <button id="export-agent-btn" class="btn-secondary" title="Export analysis as markdown file for Agent Orchestrator">
+                    <span>🤖</span> Export Agent
+                </button>
+                <button id="new-analysis-btn" class="btn-secondary" title="Start a new analysis (clears current results)">
+                    <span>&#10227;</span> New Analysis
+                </button>
+            </div>
             
+            <!-- Results Cards - All Collapsible -->
             <div class="results-grid">
-                <div class="result-card">
-                    <div class="card-header">
+                <details class="result-card" id="summary-section" open>
+                    <summary class="card-header card-header-collapsible">
                         <span class="card-icon">&#128196;</span>
                         <h3>Summary</h3>
-                    </div>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
                     <div class="card-content" id="result-summary">
                         <!-- Summary will be inserted here -->
                     </div>
-                </div>
+                </details>
 
-                <div class="result-card">
-                    <div class="card-header">
+                <details class="result-card" id="keypoints-section" open>
+                    <summary class="card-header card-header-collapsible">
                         <span class="card-icon">&#128161;</span>
                         <h3>Key Points</h3>
-                    </div>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
                     <div class="card-content" id="result-keypoints">
                         <!-- Key points will be inserted here -->
                     </div>
-                </div>
+                </details>
 
-                <div class="result-card">
-                    <div class="card-header">
+                <details class="result-card" id="actions-section" open>
+                    <summary class="card-header card-header-collapsible">
                         <span class="card-icon">&#9989;</span>
                         <h3>Action Items</h3>
-                    </div>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
                     <div class="card-content" id="result-actions">
                         <!-- Action items will be inserted here -->
                     </div>
-                </div>
-
-                <div class="result-card sentiment-card">
-                    <div class="card-header">
-                        <span class="card-icon">&#128200;</span>
-                        <h3>Sentiment</h3>
-                    </div>
-                    <div class="card-content" id="result-sentiment">
-                        <!-- Sentiment will be inserted here -->
-                    </div>
-                </div>
+                </details>
 
                 <details class="result-card metrics-card">
                     <summary class="card-header card-header-collapsible">
@@ -305,18 +337,6 @@
                         <!-- Metrics will be inserted here -->
                     </div>
                 </details>
-            </div>
-
-            <div class="results-actions">
-                <button id="download-btn" class="btn-primary" title="Download analysis results as a formatted Word document">
-                    <span>&#128229;</span> Download DOCX
-                </button>
-                <button id="export-agent-btn" class="btn-secondary" title="Export analysis as markdown file for Agent Orchestrator">
-                    <span>🤖</span> Export Agent
-                </button>
-                <button id="new-analysis-btn" class="btn-secondary" title="Start a new analysis (clears current results)">
-                    <span>&#10227;</span> New Analysis
-                </button>
             </div>
 
             <!-- Chat with Data Section -->
@@ -494,7 +514,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=41" type="module"></script></invoke>
+    <script src="js/app.js?v=42" type="module"></script></invoke>
 
     <!-- Service Worker Registration -->
     <script>
