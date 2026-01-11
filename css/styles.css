@@ -275,6 +275,10 @@ section {
     cursor: not-allowed;
 }
 
+.btn-primary .btn-text {
+    color: #000000;
+}
+
 .btn-secondary {
     background: transparent;
     color: var(--text-primary);
@@ -533,6 +537,10 @@ section {
 
 .btn-fetch:disabled .btn-text {
     display: none;
+}
+
+.btn-fetch .btn-text {
+    color: #000000;
 }
 
 .btn-fetch:disabled .btn-loader {
