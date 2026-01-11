@@ -6,7 +6,7 @@
 
 ## Overview
 
-northstar.LM is a client-side web application that uses OpenAI's AI models to analyze meeting recordings, PDFs, or text transcripts. Get instant KPI dashboards, summaries, key points, action items, sentiment analysis, audio briefings, and visual infographics—all processed in your browser with your own API key.
+northstar.LM is a client-side web application that uses OpenAI's AI models to analyze meeting recordings, PDFs, images, or text transcripts. Get instant KPI dashboards, summaries, key points, action items, sentiment analysis, audio briefings, and visual infographics—all processed in your browser with your own API key.
 
 ## Features
 
@@ -22,6 +22,8 @@ At-a-glance metrics displayed at the top of every analysis:
 ### Core Analysis
 - **Audio Transcription** - Upload MP3, WAV, M4A, OGG, FLAC, MP4, or WEBM files for automatic transcription using OpenAI Whisper
 - **PDF Text Extraction** - Upload PDF documents for client-side text extraction using PDF.js
+- **Image Upload & Vision AI** - Upload JPG, PNG, GIF, or WebP images for OCR and content extraction using GPT-5.2 Vision
+- **Smart PDF Processing** - Automatically detects image-based PDFs and uses Vision AI for OCR when text extraction fails
 - **Text Input** - Paste meeting notes or transcripts directly
 - **URL Import** - Fetch and extract text content from any webpage URL
 - **AI-Powered Analysis** - Generates summaries, key points, action items, and sentiment analysis using GPT-5.2
@@ -81,19 +83,20 @@ Collapsible panel with real-time tracking of:
 - **AI Models**:
   - OpenAI Whisper (audio transcription)
   - GPT-5.2 (text analysis - summary, key points, actions, sentiment)
+  - GPT-5.2 Vision (image OCR, visual content extraction, image-based PDF processing)
   - GPT-5.2-Thinking (chat/Q&A with meeting data)
   - GPT-4o-mini-TTS (text-to-speech)
   - GPT-Image-1.5 (image generation)
 - **Libraries**:
   - [docx.js](https://docx.js.org/) - Client-side DOCX generation
-  - [PDF.js](https://mozilla.github.io/pdf.js/) - Client-side PDF text extraction
+  - [PDF.js](https://mozilla.github.io/pdf.js/) - Client-side PDF text extraction and page rendering
 - **Deployment**: GitHub Pages (static hosting)
 
 ## Getting Started
 
 1. Visit https://mjamiv.github.io/vox2txt/
 2. Enter your OpenAI API key (stored locally in your browser)
-3. Upload an audio file, PDF, or paste text
+3. Upload an audio file, PDF, image, or paste text
 4. Click "Analyze Meeting"
 5. Review KPI dashboard and detailed analysis
 6. Optionally generate audio briefing and/or infographic
