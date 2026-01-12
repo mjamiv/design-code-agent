@@ -106,7 +106,7 @@ header {
 }
 
 .logo-image {
-    height: 48px;
+    height: 64px;
     width: auto;
     filter: drop-shadow(0 0 12px rgba(212, 168, 83, 0.4));
     border-radius: 8px;
