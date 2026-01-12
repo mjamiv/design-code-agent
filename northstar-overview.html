@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>northstar.LM - Product Overview</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        @page {
+            size: letter;
+            margin: 0.5in;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0e17 0%, #1a1f2e 100%);
+            color: #e8e6e3;
+            line-height: 1.5;
+            padding: 40px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 8.5in;
+            margin: 0 auto;
+            background: linear-gradient(180deg, rgba(26, 31, 46, 0.95) 0%, rgba(10, 14, 23, 0.98) 100%);
+            border: 2px solid rgba(212, 168, 83, 0.3);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(212, 168, 83, 0.3);
+        }
+        
+        .logo {
+            font-size: 2.5rem;
+            margin-bottom: 8px;
+        }
+        
+        .title {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #d4a853;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        
+        .tagline {
+            font-size: 1rem;
+            color: #a0a0a0;
+            font-weight: 300;
+        }
+        
+        /* Two Column Layout */
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        
+        /* Section Styling */
+        .section {
+            margin-bottom: 16px;
+        }
+        
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #d4a853;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(212, 168, 83, 0.5), transparent);
+        }
+        
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 0.8rem;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .feature-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        
+        .feature-text {
+            color: #c0c0c0;
+        }
+        
+        .feature-text strong {
+            color: #e8e6e3;
+            font-weight: 600;
+        }
+        
+        /* Use Case Cards */
+        .use-case-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .use-case {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: linear-gradient(135deg, rgba(212, 168, 83, 0.08), rgba(212, 168, 83, 0.02));
+            border: 1px solid rgba(212, 168, 83, 0.2);
+            border-radius: 8px;
+        }
+        
+        .use-case-icon {
+            font-size: 1.3rem;
+        }
+        
+        .use-case-content h4 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #e8e6e3;
+            margin-bottom: 2px;
+        }
+        
+        .use-case-content p {
+            font-size: 0.75rem;
+            color: #a0a0a0;
+        }
+        
+        /* Tech Stack */
+        .tech-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        
+        .tech-badge {
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            background: rgba(96, 165, 250, 0.1);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            border-radius: 20px;
+            color: #60a5fa;
+        }
+        
+        /* Stats Row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 12px;
+            background: rgba(212, 168, 83, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(212, 168, 83, 0.15);
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #d4a853;
+        }
+        
+        .stat-label {
+            font-size: 0.7rem;
+            color: #808080;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        /* Footer */
+        .footer {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: #606060;
+        }
+        
+        .footer a {
+            color: #d4a853;
+            text-decoration: none;
+        }
+        
+        .privacy-note {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #4ade80;
+        }
+        
+        /* Full Width Section */
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        /* Print Styles */
+        @media print {
+            body {
+                background: white;
+                color: #1a1a1a;
+                padding: 0;
+            }
+            
+            .container {
+                background: white;
+                border: 2px solid #d4a853;
+                box-shadow: none;
+            }
+            
+            .feature-item, .use-case, .stat-item {
+                background: #f8f8f8;
+                border-color: #e0e0e0;
+            }
+            
+            .feature-text, .use-case-content p {
+                color: #404040;
+            }
+            
+            .tech-badge {
+                background: #e8f4fc;
+                border-color: #60a5fa;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">⭐</div>
+            <h1 class="title">northstar.LM</h1>
+            <p class="tagline">Transform Your Meetings into Actionable Insights with AI</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- Left Column -->
+            <div class="left-column">
+                <div class="section">
+                    <h2 class="section-title">Core Features</h2>
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <span class="feature-icon">🎤</span>
+                            <span class="feature-text"><strong>Audio</strong> MP3, WAV, M4A transcription</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🎥</span>
+                            <span class="feature-text"><strong>Video</strong> MP4, WebM extraction</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📄</span>
+                            <span class="feature-text"><strong>PDF</strong> Text & image OCR</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📷</span>
+                            <span class="feature-text"><strong>Images</strong> Vision AI analysis</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📝</span>
+                            <span class="feature-text"><strong>Text</strong> Direct paste input</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🌐</span>
+                            <span class="feature-text"><strong>URLs</strong> Web content fetch</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">AI Analysis</h2>
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <span class="feature-icon">📊</span>
+                            <span class="feature-text"><strong>KPI Dashboard</strong> Instant metrics</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📋</span>
+                            <span class="feature-text"><strong>Summary</strong> Executive overview</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🎯</span>
+                            <span class="feature-text"><strong>Key Points</strong> Main insights</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">✅</span>
+                            <span class="feature-text"><strong>Actions</strong> Task extraction</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">💬</span>
+                            <span class="feature-text"><strong>Chat</strong> Q&A with data</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">💭</span>
+                            <span class="feature-text"><strong>Sentiment</strong> Tone analysis</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">Export Options</h2>
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <span class="feature-icon">🎧</span>
+                            <span class="feature-text"><strong>Audio Briefing</strong> TTS summary</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🖼️</span>
+                            <span class="feature-text"><strong>Infographic</strong> Visual summary</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📄</span>
+                            <span class="feature-text"><strong>DOCX Report</strong> Professional doc</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🤖</span>
+                            <span class="feature-text"><strong>Agent Export</strong> Reusable data</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="right-column">
+                <div class="section">
+                    <h2 class="section-title">Use Cases</h2>
+                    <div class="use-case-list">
+                        <div class="use-case">
+                            <span class="use-case-icon">🏢</span>
+                            <div class="use-case-content">
+                                <h4>Executive Briefings</h4>
+                                <p>Convert hour-long meetings into 2-minute audio summaries for busy leaders</p>
+                            </div>
+                        </div>
+                        <div class="use-case">
+                            <span class="use-case-icon">📈</span>
+                            <div class="use-case-content">
+                                <h4>Project Management</h4>
+                                <p>Extract action items and track decisions across multiple team meetings</p>
+                            </div>
+                        </div>
+                        <div class="use-case">
+                            <span class="use-case-icon">🎓</span>
+                            <div class="use-case-content">
+                                <h4>Research & Analysis</h4>
+                                <p>Analyze interview recordings, focus groups, and qualitative data</p>
+                            </div>
+                        </div>
+                        <div class="use-case">
+                            <span class="use-case-icon">🎭</span>
+                            <div class="use-case-content">
+                                <h4>Multi-Meeting Intelligence</h4>
+                                <p>Use Agent Orchestrator to find patterns across weeks of meetings</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">Technology Stack</h2>
+                    <div class="tech-badges">
+                        <span class="tech-badge">OpenAI GPT-5.2</span>
+                        <span class="tech-badge">Whisper</span>
+                        <span class="tech-badge">Vision AI</span>
+                        <span class="tech-badge">TTS</span>
+                        <span class="tech-badge">DALL-E</span>
+                        <span class="tech-badge">PDF.js</span>
+                        <span class="tech-badge">docx.js</span>
+                        <span class="tech-badge">PWA</span>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2 class="section-title">Agent Orchestrator</h2>
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <span class="feature-icon">🧠</span>
+                            <span class="feature-text"><strong>Knowledge Base</strong> Visual agent chain</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🔗</span>
+                            <span class="feature-text"><strong>Cross-Analysis</strong> Multi-meeting insights</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">⚡</span>
+                            <span class="feature-text"><strong>Toggle Agents</strong> Enable/disable</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">💡</span>
+                            <span class="feature-text"><strong>Smart Chat</strong> Query all data</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full Width Stats -->
+            <div class="full-width">
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <div class="stat-value">6</div>
+                        <div class="stat-label">Input Formats</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">5</div>
+                        <div class="stat-label">AI Models</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">4</div>
+                        <div class="stat-label">Export Types</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">100%</div>
+                        <div class="stat-label">Client-Side</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div>
+                <a href="https://mjamiv.github.io/vox2txt/">mjamiv.github.io/vox2txt</a> • MIT License • © 2026
+            </div>
+            <div class="privacy-note">
+                🔒 Your data never leaves your browser
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Print instructions
+        console.log('To save as PDF: Press Ctrl+P (or Cmd+P on Mac) and select "Save as PDF"');
+    </script>
+</body>
+</html>
