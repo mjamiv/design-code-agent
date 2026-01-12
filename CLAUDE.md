@@ -274,6 +274,43 @@ flowchart TB
 
 The orchestrator uses RLM-Lite for intelligent query processing. Based on the paper "Recursive Language Models" by Zhang, Kraska & Khattab (arXiv:2512.24601).
 
+### RLM Decision Flow
+
+```mermaid
+flowchart TB
+    subgraph Entry["📥 QUERY ENTRY"]
+        Q1[User submits query]
+        Q2{shouldUseRLM?}
+        Q3[3+ active agents?]
+        Q4[Complex query pattern?<br/>compare/all/trend/pattern]
+    end
+
+    subgraph Legacy["⚡ LEGACY PATH"]
+        L1[buildChatContext]
+        L2[Single GPT call]
+        L3[Return response]
+    end
+
+    subgraph RLMPath["🧠 RLM PATH"]
+        R1[chatWithRLM]
+        R2[rlmPipeline.process]
+    end
+
+    Q1 --> Q2
+    Q2 --> Q3
+    Q3 -->|No| Q4
+    Q3 -->|Yes| RLMPath
+    Q4 -->|No| Legacy
+    Q4 -->|Yes| RLMPath
+
+    L1 --> L2 --> L3
+    R1 --> R2
+
+    style Entry fill:#1a1f2e,stroke:#60a5fa,color:#fff
+    style Legacy fill:#2a2a1a,stroke:#fbbf24,color:#fff
+    style RLMPath fill:#1a2a1a,stroke:#4ade80,color:#fff
+```
+
 ### RLM Pipeline Flow
 
 ```mermaid
@@ -320,6 +357,53 @@ flowchart TB
     style Decompose fill:#1a2a1a,stroke:#4ade80,color:#fff
     style Execute fill:#1a1a2a,stroke:#a855f7,color:#fff
     style Aggregate fill:#2a1a1a,stroke:#ef4444,color:#fff
+```
+
+### RLM Map-Reduce Example
+
+```mermaid
+flowchart TB
+    subgraph Query["📥 User Query"]
+        Q["What are all the action items<br/>blocking progress?"]
+    end
+
+    subgraph Decompose["1️⃣ DECOMPOSE"]
+        DC[Intent: AGGREGATIVE<br/>Strategy: MAP-REDUCE]
+    end
+
+    subgraph Map["2️⃣ MAP PHASE (Parallel)"]
+        M1["Agent: Q4 Planning<br/>─────────────<br/>Extract blocking items"]
+        M2["Agent: Sprint Review<br/>─────────────<br/>Extract blocking items"]
+        M3["Agent: Team Sync<br/>─────────────<br/>Extract blocking items"]
+    end
+
+    subgraph Results["SUB-RESULTS"]
+        R1["Budget approval pending"]
+        R2["Testing env not ready"]
+        R3["Hiring delayed"]
+    end
+
+    subgraph Reduce["3️⃣ REDUCE PHASE"]
+        RD[Synthesize all blockers<br/>into coherent response]
+    end
+
+    subgraph Output["📤 FINAL RESPONSE"]
+        O["Based on 3 meetings:<br/>• Budget approval (Q4 Planning)<br/>• Testing environment (Sprint)<br/>• Hiring decision (Team Sync)"]
+    end
+
+    Q --> DC
+    DC --> M1 & M2 & M3
+    M1 --> R1
+    M2 --> R2
+    M3 --> R3
+    R1 & R2 & R3 --> RD
+    RD --> O
+
+    style Query fill:#1a1f2e,stroke:#60a5fa,color:#fff
+    style Decompose fill:#1a2a1a,stroke:#4ade80,color:#fff
+    style Map fill:#1a1a2a,stroke:#a855f7,color:#fff
+    style Reduce fill:#2a1a1a,stroke:#ef4444,color:#fff
+    style Output fill:#2a2a1a,stroke:#fbbf24,color:#fff
 ```
 
 ### RLM Components
