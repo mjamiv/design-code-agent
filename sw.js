@@ -3,7 +3,7 @@
  * Provides offline support and faster repeat loads via caching
  */
 
-const CACHE_NAME = 'northstar-lm-v1';
+const CACHE_NAME = 'northstar-lm-v2';
 const urlsToCache = [
     './',
     './index.html',

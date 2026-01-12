@@ -2587,6 +2587,8 @@ async function downloadDocx() {
 // Reset / New Analysis
 // ============================================
 function resetForNewAnalysis() {
+    console.log('[resetForNewAnalysis] Starting full reset...');
+    
     // Reset all state
     state.results = null;
     state.metrics = null;
@@ -2694,6 +2696,15 @@ function resetForNewAnalysis() {
     
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    console.log('[resetForNewAnalysis] Reset complete. State:', {
+        results: state.results,
+        selectedFile: state.selectedFile,
+        selectedPdfFile: state.selectedPdfFile,
+        selectedImageFile: state.selectedImageFile,
+        selectedVideoFile: state.selectedVideoFile,
+        urlContent: state.urlContent
+    });
 }
 
 // ============================================
