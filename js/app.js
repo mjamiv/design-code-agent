@@ -200,7 +200,13 @@ async function init() {
         agentNameHint: document.getElementById('agent-name-hint'),
         modalCloseBtn: document.getElementById('modal-close-btn'),
         modalCancelBtn: document.getElementById('modal-cancel-btn'),
-        modalConfirmBtn: document.getElementById('modal-confirm-btn')
+        modalConfirmBtn: document.getElementById('modal-confirm-btn'),
+        
+        // Help Modal
+        helpBtn: document.getElementById('help-btn'),
+        helpModal: document.getElementById('help-modal'),
+        helpCloseBtn: document.getElementById('help-close-btn'),
+        helpGotItBtn: document.getElementById('help-got-it-btn')
     };
     
     loadSavedApiKey();
@@ -344,6 +350,14 @@ function setupEventListeners() {
     });
     elements.agentNameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') confirmExportAgent();
+    });
+    
+    // Help Modal
+    elements.helpBtn.addEventListener('click', showHelpModal);
+    elements.helpCloseBtn.addEventListener('click', hideHelpModal);
+    elements.helpGotItBtn.addEventListener('click', hideHelpModal);
+    elements.helpModal.addEventListener('click', (e) => {
+        if (e.target === elements.helpModal) hideHelpModal();
     });
     
     // Results Navigation
@@ -3316,6 +3330,14 @@ function showAgentNameModal() {
 function hideAgentNameModal() {
     elements.agentNameModal.classList.add('hidden');
     elements.agentNameInput.value = '';
+}
+
+function showHelpModal() {
+    elements.helpModal.classList.remove('hidden');
+}
+
+function hideHelpModal() {
+    elements.helpModal.classList.add('hidden');
 }
 
 function confirmExportAgent() {

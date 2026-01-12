@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=41">
+    <link rel="stylesheet" href="css/styles.css?v=42">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -21,6 +21,7 @@
             <h1>northstar.LM</h1>
         </div>
         <p class="tagline">Transform your meetings into actionable insights</p>
+        <button id="help-btn" class="help-btn" title="How to use this app">?</button>
     </header>
 
     <main>
@@ -503,6 +504,66 @@
         </section>
     </main>
 
+    <!-- How To Modal -->
+    <div id="help-modal" class="modal-overlay hidden">
+        <div class="modal-container help-modal-container">
+            <div class="modal-header">
+                <h3>📖 How to Use northstar.LM</h3>
+                <button class="modal-close" id="help-close-btn">&times;</button>
+            </div>
+            <div class="modal-body help-modal-body">
+                <div class="help-steps">
+                    <div class="help-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Enter Your API Key</h4>
+                            <p>Get your key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a> and paste it in the API Key field. It's stored locally in your browser.</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Choose Your Input</h4>
+                            <p>Select a tab (Audio, PDF, Image, Video, Text, or URL) and upload your content or paste text.</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Analyze</h4>
+                            <p>Click <strong>"Analyze Meeting"</strong> and wait for the AI to process your content.</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h4>Explore Results</h4>
+                            <p>View the KPI dashboard, summary, key points, and action items. Use the chat to ask follow-up questions.</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="step-number">5</div>
+                        <div class="step-content">
+                            <h4>Export & Share</h4>
+                            <p>Generate audio briefings, infographics, DOCX reports, or export as an Agent for the Orchestrator.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-tips">
+                    <h4>💡 Pro Tips</h4>
+                    <ul>
+                        <li><strong>Agent Orchestrator:</strong> Export multiple meetings as agents, then use the Orchestrator to find patterns across them.</li>
+                        <li><strong>Custom Audio:</strong> Add a style prompt before generating audio briefings (e.g., "upbeat and motivational").</li>
+                        <li><strong>Image PDFs:</strong> The app automatically detects scanned PDFs and uses Vision AI for OCR.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="help-got-it-btn">Got it!</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Agent Name Modal -->
     <div id="agent-name-modal" class="modal-overlay hidden">
         <div class="modal-container">
@@ -538,7 +599,7 @@
     <!-- External Libraries -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs" type="module"></script>
-    <script src="js/app.js?v=43" type="module"></script></invoke>
+    <script src="js/app.js?v=44" type="module"></script></invoke>
 
     <!-- Service Worker Registration -->
     <script>
