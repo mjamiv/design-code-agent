@@ -2573,10 +2573,15 @@ async function downloadDocx() {
 // Reset / New Analysis
 // ============================================
 function resetForNewAnalysis() {
+    // Reset all state
     state.results = null;
     state.metrics = null;
     state.selectedFile = null;
     state.selectedPdfFile = null;
+    state.selectedImageFile = null;
+    state.selectedImageBase64 = null;
+    state.selectedVideoFile = null;
+    state.urlContent = null;
     
     // Reset metrics tracking
     currentMetrics = {
@@ -2602,21 +2607,63 @@ function resetForNewAnalysis() {
     generatedImageUrl = null;
     generatedImageBase64 = null;
     
+    // Reset all file inputs
     elements.audioFileInput.value = '';
     elements.pdfFileInput.value = '';
+    elements.imageFileInput.value = '';
+    elements.videoFileInput.value = '';
     elements.textInput.value = '';
+    elements.urlInput.value = '';
     
-    // Clear URL content
-    clearUrlContent();
+    // Reset audio file UI
     elements.fileInfo.classList.add('hidden');
-    elements.pdfFileInfo.classList.add('hidden');
     elements.dropZone.style.display = 'block';
+    
+    // Reset PDF file UI
+    elements.pdfFileInfo.classList.add('hidden');
     elements.pdfDropZone.style.display = 'block';
+    
+    // Reset image file UI
+    elements.imageFileInfo.classList.add('hidden');
+    elements.imagePreview.classList.add('hidden');
+    elements.imagePreviewImg.src = '';
+    elements.imageDropZone.style.display = 'block';
+    
+    // Reset video file UI
+    elements.videoFileInfo.classList.add('hidden');
+    elements.videoDropZone.style.display = 'block';
+    
+    // Reset URL preview
+    elements.urlPreview.classList.add('hidden');
+    elements.urlPreviewContent.textContent = '';
+    
+    // Clear results content (not just hide)
+    if (elements.resultSummary) elements.resultSummary.innerHTML = '';
+    if (elements.resultKeypoints) elements.resultKeypoints.innerHTML = '';
+    if (elements.resultActions) elements.resultActions.innerHTML = '';
+    if (elements.resultTranscript) elements.resultTranscript.innerHTML = '';
+    
+    // Reset KPI dashboard values
+    const kpiSentiment = document.getElementById('kpi-sentiment');
+    const kpiWords = document.getElementById('kpi-words');
+    const kpiKeypoints = document.getElementById('kpi-keypoints');
+    const kpiActions = document.getElementById('kpi-actions');
+    const kpiReadtime = document.getElementById('kpi-readtime');
+    const kpiTopics = document.getElementById('kpi-topics');
+    if (kpiSentiment) { kpiSentiment.textContent = '-'; kpiSentiment.className = 'kpi-value'; }
+    if (kpiWords) kpiWords.textContent = '-';
+    if (kpiKeypoints) kpiKeypoints.textContent = '-';
+    if (kpiActions) kpiActions.textContent = '-';
+    if (kpiReadtime) kpiReadtime.textContent = '-';
+    if (kpiTopics) kpiTopics.textContent = '-';
+    
+    // Hide results section
     elements.resultsSection.classList.add('hidden');
     
     // Reset audio briefing section
     elements.audioPlayerContainer.classList.add('hidden');
     elements.audioPlayer.src = '';
+    elements.audioPrompt.value = '';
     
     // Reset infographic section
     elements.infographicContainer.classList.add('hidden');

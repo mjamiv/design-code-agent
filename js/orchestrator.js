@@ -602,7 +602,10 @@ function escapeHtml(text) {
 // ============================================
 
 async function generateCrossInsights() {
+    console.log('[generateCrossInsights] Starting...');
     const activeAgents = state.agents.filter(a => a.enabled);
+    console.log('[generateCrossInsights] Active agents:', activeAgents.length);
+    
     if (activeAgents.length < 2 || !state.apiKey) {
         showError('Please enable at least 2 agents and enter your API key.');
         return;
@@ -614,6 +617,7 @@ async function generateCrossInsights() {
     
     try {
         const combinedContext = buildCombinedContext();
+        console.log('[generateCrossInsights] Combined context length:', combinedContext.length);
         
         const systemPrompt = `You are an expert business analyst specializing in meeting synthesis and strategic insights. 
 You have been given data from multiple meetings and must identify cross-meeting patterns, themes, and actionable recommendations.
@@ -628,7 +632,9 @@ Analyze the meetings holistically and provide insights in the following categori
 Format your response as JSON with these keys: themes, trends, risks, recommendations, actions
 Each should be an array of strings (bullet points).`;
 
+        console.log('[generateCrossInsights] Calling GPT API...');
         const response = await callGPT(systemPrompt, combinedContext, 'Cross-Meeting Insights');
+        console.log('[generateCrossInsights] Got response, length:', response?.length);
         
         // Parse JSON response
         let insights;
@@ -637,10 +643,12 @@ Each should be an array of strings (bullet points).`;
             const jsonMatch = response.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 insights = JSON.parse(jsonMatch[0]);
+                console.log('[generateCrossInsights] Parsed JSON successfully');
             } else {
                 throw new Error('No JSON found in response');
             }
         } catch (parseError) {
+            console.warn('[generateCrossInsights] JSON parse failed, using fallback:', parseError.message);
             // Fallback: treat response as plain text
             insights = {
                 themes: [response],
@@ -651,13 +659,15 @@ Each should be an array of strings (bullet points).`;
             };
         }
         
+        console.log('[generateCrossInsights] Setting state.insights and displaying...');
         state.insights = insights;
         displayInsights(insights);
         resetChatHistory();
         updateUI();
+        console.log('[generateCrossInsights] Complete!');
         
     } catch (error) {
-        console.error('Insights generation error:', error);
+        console.error('[generateCrossInsights] Error:', error);
         showError(`Failed to generate insights: ${error.message}`);
     } finally {
         state.isProcessing = false;
@@ -692,11 +702,35 @@ function getActiveAgents() {
 }
 
 function displayInsights(insights) {
-    elements.insightThemes.innerHTML = formatInsightList(insights.themes);
-    elements.insightTrends.innerHTML = formatInsightList(insights.trends);
-    elements.insightRisks.innerHTML = formatInsightList(insights.risks);
-    elements.insightRecommendations.innerHTML = formatInsightList(insights.recommendations);
-    elements.insightActions.innerHTML = formatInsightList(insights.actions);
+    if (!insights) {
+        console.error('displayInsights called with null/undefined insights');
+        return;
+    }
+    
+    // Ensure insights section is visible
+    if (elements.insightsSection) {
+        elements.insightsSection.classList.remove('hidden');
+    }
+    
+    // Populate each insight card with null checks
+    if (elements.insightThemes) {
+        elements.insightThemes.innerHTML = formatInsightList(insights.themes);
+    }
+    if (elements.insightTrends) {
+        elements.insightTrends.innerHTML = formatInsightList(insights.trends);
+    }
+    if (elements.insightRisks) {
+        elements.insightRisks.innerHTML = formatInsightList(insights.risks);
+    }
+    if (elements.insightRecommendations) {
+        elements.insightRecommendations.innerHTML = formatInsightList(insights.recommendations);
+    }
+    if (elements.insightActions) {
+        elements.insightActions.innerHTML = formatInsightList(insights.actions);
+    }
+    
+    // Scroll to insights section
+    elements.insightsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function formatInsightList(items) {
