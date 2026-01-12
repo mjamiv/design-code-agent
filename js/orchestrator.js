@@ -453,7 +453,7 @@ function updateAgentsList() {
                 <button class="agent-control-btn toggle-btn ${agent.enabled ? 'active' : ''}" 
                         data-index="${index}" 
                         title="${agent.enabled ? 'Disable agent' : 'Enable agent'}">
-                    ${agent.enabled ? '✓ On' : '○ Off'}
+                    ${agent.enabled ? '●' : '○'}
                 </button>
                 <button class="agent-control-btn remove-btn" 
                         data-index="${index}" 

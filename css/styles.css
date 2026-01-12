@@ -2795,38 +2795,36 @@ details[open] .about-toggle {
 /* Knowledge Base Container */
 .knowledge-base-container {
     background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
-    border: 2px solid rgba(212, 168, 83, 0.3);
-    border-radius: var(--radius-xl);
-    padding: var(--space-lg);
+    border: 1px solid rgba(212, 168, 83, 0.3);
+    border-radius: var(--radius-lg);
+    padding: var(--space-sm) var(--space-md);
     position: relative;
-    box-shadow: 
-        0 0 40px rgba(212, 168, 83, 0.1),
-        inset 0 0 60px rgba(212, 168, 83, 0.02);
+    box-shadow: 0 0 20px rgba(212, 168, 83, 0.08);
 }
 
 .kb-header {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
-    padding-bottom: var(--space-md);
-    border-bottom: 1px solid rgba(212, 168, 83, 0.2);
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xs);
+    padding-bottom: var(--space-xs);
+    border-bottom: 1px solid rgba(212, 168, 83, 0.15);
     flex-wrap: wrap;
 }
 
 .kb-title {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
 }
 
 .kb-icon {
-    font-size: 1.8rem;
+    font-size: 1.2rem;
 }
 
 .kb-title h2 {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: 1rem;
     letter-spacing: 0.05em;
     color: var(--accent-primary);
     margin: 0;
@@ -2835,8 +2833,8 @@ details[open] .about-toggle {
 .kb-stats {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    font-size: 0.9rem;
+    gap: 4px;
+    font-size: 0.75rem;
     color: var(--text-secondary);
 }
 
@@ -2850,14 +2848,15 @@ details[open] .about-toggle {
 }
 
 .btn-sm {
-    font-size: 0.75rem;
-    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.65rem;
+    padding: 2px var(--space-xs);
 }
 
 .btn-text-danger {
     background: none;
     border: none;
     color: var(--error);
+    font-size: 0.7rem;
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: all var(--transition-fast);
@@ -2872,10 +2871,10 @@ details[open] .about-toggle {
 .agent-chain {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     justify-content: center;
-    padding: var(--space-lg) 0;
-    min-height: 120px;
+    padding: var(--space-sm) 0;
+    min-height: 60px;
     position: relative;
 }
 
@@ -2885,15 +2884,24 @@ details[open] .about-toggle {
     align-items: center;
     justify-content: center;
     width: 100%;
-    padding: var(--space-xl);
+    padding: var(--space-md);
     color: var(--text-muted);
     text-align: center;
 }
 
 .agent-chain-empty .empty-icon {
-    font-size: 3rem;
-    margin-bottom: var(--space-md);
+    font-size: 1.5rem;
+    margin-bottom: var(--space-xs);
     opacity: 0.5;
+}
+
+.agent-chain-empty p {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.agent-chain-empty .hint {
+    display: none;
 }
 
 /* Agent Node */
@@ -2902,11 +2910,11 @@ details[open] .about-toggle {
     flex-direction: column;
     align-items: center;
     background: linear-gradient(135deg, rgba(96, 165, 250, 0.15), rgba(96, 165, 250, 0.05));
-    border: 2px solid rgba(96, 165, 250, 0.4);
-    border-radius: var(--radius-lg);
-    padding: var(--space-md);
-    min-width: 160px;
-    max-width: 200px;
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    border-radius: var(--radius-md);
+    padding: var(--space-xs) var(--space-sm);
+    min-width: 100px;
+    max-width: 140px;
     position: relative;
     transition: all var(--transition-fast);
     animation: nodeAppear 0.3s ease-out;
@@ -2944,10 +2952,10 @@ details[open] .about-toggle {
 .agent-node:not(:last-child)::after {
     content: '';
     position: absolute;
-    right: -14px;
+    right: -6px;
     top: 50%;
-    width: 12px;
-    height: 2px;
+    width: 6px;
+    height: 1px;
     background: linear-gradient(90deg, rgba(96, 165, 250, 0.6), rgba(212, 168, 83, 0.6));
     transform: translateY(-50%);
 }
@@ -2957,8 +2965,8 @@ details[open] .about-toggle {
 }
 
 .agent-node-icon {
-    font-size: 2rem;
-    margin-bottom: var(--space-xs);
+    font-size: 1.1rem;
+    margin-bottom: 2px;
 }
 
 .agent-node-name {
@@ -2967,10 +2975,10 @@ details[open] .about-toggle {
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--text-primary);
-    font-size: 0.85rem;
+    font-size: 0.7rem;
     font-weight: 600;
     text-align: center;
-    padding: var(--space-xs);
+    padding: 2px 4px;
     transition: all var(--transition-fast);
 }
 
@@ -2986,15 +2994,13 @@ details[open] .about-toggle {
 }
 
 .agent-node-meta {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    margin-top: var(--space-xs);
+    display: none;
 }
 
 .agent-node-controls {
     display: flex;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
+    gap: 4px;
+    margin-top: 4px;
 }
 
 .agent-control-btn {
@@ -3002,8 +3008,8 @@ details[open] .about-toggle {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
-    font-size: 0.8rem;
-    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.65rem;
+    padding: 2px 6px;
     cursor: pointer;
     transition: all var(--transition-fast);
 }
@@ -3013,10 +3019,20 @@ details[open] .about-toggle {
     color: var(--text-primary);
 }
 
+.agent-control-btn.toggle-btn {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .agent-control-btn.toggle-btn.active {
-    background: rgba(74, 222, 128, 0.2);
-    border-color: rgba(74, 222, 128, 0.4);
-    color: var(--success);
+    background: var(--success);
+    border-color: var(--success);
+    color: #fff;
 }
 
 .agent-control-btn.remove-btn:hover {
@@ -3776,32 +3792,32 @@ details[open] .about-toggle {
 /* Mobile Responsive for Knowledge Base */
 @media (max-width: 768px) {
     .kb-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
+        flex-direction: row;
+        align-items: center;
+        gap: var(--space-xs);
     }
     
     .btn-text-danger {
-        margin-left: 0;
+        margin-left: auto;
     }
     
     .agent-chain {
-        flex-direction: column;
-        align-items: center;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
     }
     
     .agent-node {
-        width: 100%;
-        max-width: 280px;
+        width: auto;
+        max-width: 140px;
     }
     
     .agent-node:not(:last-child)::after {
-        right: 50%;
-        top: auto;
-        bottom: -14px;
-        width: 2px;
-        height: 12px;
-        transform: translateX(50%);
+        right: -6px;
+        top: 50%;
+        width: 6px;
+        height: 1px;
+        transform: translateY(-50%);
     }
     
     .chat-header {
