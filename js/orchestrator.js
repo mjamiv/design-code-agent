@@ -1,7 +1,20 @@
 /**
  * northstar.LM - Agent Orchestrator
  * Combines multiple meeting agents for cross-meeting insights
+ *
+ * Now powered by RLM-Lite (Recursive Language Model) for:
+ * - Query decomposition into targeted sub-queries
+ * - Parallel execution for efficiency
+ * - Intelligent response aggregation
  */
+
+import { getRLMPipeline, RLM_CONFIG } from './rlm/index.js';
+
+// ============================================
+// RLM Pipeline Instance
+// ============================================
+
+const rlmPipeline = getRLMPipeline();
 
 // ============================================
 // State Management
@@ -406,6 +419,7 @@ function clearAllAgents() {
     state.insights = null;
     state.chatHistory = [];
     resetMetrics();
+    rlmPipeline.reset(); // Reset RLM pipeline state
     updateUI();
 }
 
@@ -417,6 +431,19 @@ function updateUI() {
     updateAgentsList();
     updateButtonStates();
     updateSectionsVisibility();
+    syncAgentsToRLM();
+}
+
+/**
+ * Sync agents to the RLM context store
+ * This keeps the RLM pipeline in sync with the current agent state
+ */
+function syncAgentsToRLM() {
+    try {
+        rlmPipeline.loadAgents(state.agents);
+    } catch (error) {
+        console.warn('[RLM] Failed to sync agents:', error.message);
+    }
 }
 
 function updateAgentsList() {
@@ -760,23 +787,33 @@ async function sendChatMessage() {
     const thinkingId = showThinkingIndicator();
     
     try {
+        // Check if RLM will be used
+        const useRLM = rlmPipeline.shouldUseRLM(message);
+
         // Step 1: Understanding
         updateThinkingStatus(thinkingId, 'Understanding your question...');
         await sleep(300);
-        
-        // Step 2: Selecting relevant agents
-        updateThinkingStatus(thinkingId, `Searching ${state.agents.length} meetings...`);
-        const context = buildChatContext(message);
-        await sleep(200);
-        
-        // Step 3: Analyzing
-        updateThinkingStatus(thinkingId, 'Analyzing with AI...');
+
+        if (useRLM) {
+            // RLM-specific status updates
+            updateThinkingStatus(thinkingId, 'Decomposing query...');
+            await sleep(200);
+
+            updateThinkingStatus(thinkingId, `Analyzing ${state.agents.filter(a => a.enabled).length} meetings in parallel...`);
+        } else {
+            // Legacy status
+            updateThinkingStatus(thinkingId, `Searching ${state.agents.length} meetings...`);
+            await sleep(200);
+        }
+
+        // Step 3: Execute (RLM or legacy)
+        updateThinkingStatus(thinkingId, useRLM ? 'Running sub-queries...' : 'Analyzing with AI...');
         const response = await chatWithAgents(message);
-        
+
         // Step 4: Preparing response
-        updateThinkingStatus(thinkingId, 'Preparing response...');
+        updateThinkingStatus(thinkingId, useRLM ? 'Aggregating insights...' : 'Preparing response...');
         await sleep(150);
-        
+
         removeThinkingIndicator(thinkingId);
         appendChatMessage('assistant', response);
     } catch (error) {
@@ -790,6 +827,63 @@ async function sendChatMessage() {
 }
 
 async function chatWithAgents(userMessage) {
+    // Check if RLM should be used for this query
+    const useRLM = rlmPipeline.shouldUseRLM(userMessage);
+
+    if (useRLM) {
+        console.log('[Chat] Using RLM pipeline for query');
+        return await chatWithRLM(userMessage);
+    } else {
+        console.log('[Chat] Using legacy processing for query');
+        return await chatWithAgentsLegacy(userMessage);
+    }
+}
+
+/**
+ * Process chat using RLM pipeline (decompose → parallel → aggregate)
+ */
+async function chatWithRLM(userMessage) {
+    // Create a wrapper for the LLM call that the RLM pipeline can use
+    const llmCallWrapper = async (systemPrompt, userContent, context) => {
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+        ];
+
+        // Add recent chat history for context continuity
+        const recentHistory = state.chatHistory.slice(-10);
+        if (recentHistory.length > 0) {
+            messages.splice(1, 0, ...recentHistory);
+        }
+
+        return callGPTWithMessages(messages, `RLM: ${userMessage.substring(0, 20)}...`);
+    };
+
+    // Process through RLM pipeline
+    const result = await rlmPipeline.process(userMessage, llmCallWrapper, {
+        apiKey: state.apiKey
+    });
+
+    // Store in history
+    state.chatHistory.push({ role: 'user', content: userMessage });
+    state.chatHistory.push({ role: 'assistant', content: result.response });
+
+    // Log RLM metadata for debugging
+    if (result.metadata) {
+        console.log('[RLM] Query processed:', {
+            strategy: result.metadata.strategy,
+            subQueries: result.metadata.totalSubQueries,
+            time: result.metadata.pipelineTime + 'ms'
+        });
+    }
+
+    return result.response;
+}
+
+/**
+ * Legacy chat processing (non-RLM fallback)
+ */
+async function chatWithAgentsLegacy(userMessage) {
     // Build context with smart agent selection
     const context = buildChatContext(userMessage);
 

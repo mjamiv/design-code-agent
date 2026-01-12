@@ -19,7 +19,13 @@ northstar.LM/
 │   └── styles.css      # All styling (dark theme with gold accents)
 ├── js/
 │   ├── app.js          # Main application logic (ES Module)
-│   └── orchestrator.js # Orchestrator page logic
+│   ├── orchestrator.js # Orchestrator page logic (uses RLM)
+│   └── rlm/            # RLM-Lite module (Recursive Language Model)
+│       ├── index.js        # Main entry point & RLMPipeline class
+│       ├── context-store.js    # Agent data as queryable variables
+│       ├── query-decomposer.js # Query analysis & sub-query generation
+│       ├── sub-executor.js     # Parallel execution engine
+│       └── aggregator.js       # Response synthesis & merging
 ├── images/
 │   ├── k-northstar-logo.png   # Main app logo (northstar.LM)
 │   └── orchestrator-logo.png  # Robot mascot logo for Orchestrator
@@ -264,6 +270,97 @@ flowchart TB
     style ChatUI fill:#2a2a1a,stroke:#fbbf24,color:#fff
 ```
 
+## RLM-Lite Architecture (Recursive Language Model)
+
+The orchestrator uses RLM-Lite for intelligent query processing. Based on the paper "Recursive Language Models" by Zhang, Kraska & Khattab (arXiv:2512.24601).
+
+### RLM Pipeline Flow
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 User Query"]
+        Q1[User asks question]
+    end
+
+    subgraph RLM["🧠 RLM Pipeline"]
+        direction TB
+
+        subgraph Decompose["1️⃣ Query Decomposer"]
+            D1[Classify Intent<br/>factual/comparative/aggregate/analytical]
+            D2[Determine Complexity<br/>simple/comparative/aggregate/exploratory]
+            D3[Select Strategy<br/>direct/parallel/map-reduce/iterative]
+            D4[Generate Sub-Queries]
+        end
+
+        subgraph Execute["2️⃣ Sub-Executor"]
+            E1[Load Agent Context<br/>from ContextStore]
+            E2[Execute Sub-Queries<br/>in Parallel]
+            E3[Concurrency Control<br/>max 3 concurrent]
+            E4[Retry with Backoff]
+        end
+
+        subgraph Aggregate["3️⃣ Aggregator"]
+            A1[Collect Results]
+            A2[Deduplicate]
+            A3[LLM Synthesis<br/>or Simple Merge]
+            A4[Format Response]
+        end
+    end
+
+    subgraph Output["📤 Response"]
+        R1[Coherent Answer<br/>with Source Attribution]
+    end
+
+    Q1 --> D1 --> D2 --> D3 --> D4
+    D4 --> E1 --> E2 --> E3 --> E4
+    E4 --> A1 --> A2 --> A3 --> A4
+    A4 --> R1
+
+    style RLM fill:#0a0e17,stroke:#d4a853,color:#fff
+    style Decompose fill:#1a2a1a,stroke:#4ade80,color:#fff
+    style Execute fill:#1a1a2a,stroke:#a855f7,color:#fff
+    style Aggregate fill:#2a1a1a,stroke:#ef4444,color:#fff
+```
+
+### RLM Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **ContextStore** | `context-store.js` | Stores agent data as queryable variables with search indexing |
+| **QueryDecomposer** | `query-decomposer.js` | Analyzes queries, classifies intent, generates sub-queries |
+| **SubExecutor** | `sub-executor.js` | Runs sub-queries in parallel with concurrency control |
+| **Aggregator** | `aggregator.js` | Merges sub-responses into coherent final answer |
+| **RLMPipeline** | `index.js` | Main orchestration class tying all components together |
+
+### Query Strategies
+
+| Strategy | When Used | How It Works |
+|----------|-----------|--------------|
+| **direct** | Simple queries, ≤2 agents | Single LLM call with combined context |
+| **parallel** | Comparative queries | One sub-query per agent, run concurrently |
+| **map-reduce** | Aggregate queries (all/every/across) | Map: query each agent → Reduce: synthesize results |
+| **iterative** | Exploratory queries | Initial query → followup if uncertain |
+
+### RLM Configuration
+
+```javascript
+const RLM_CONFIG = {
+    maxSubQueries: 5,        // Max sub-queries per decomposition
+    maxConcurrent: 3,        // Parallel execution limit
+    maxDepth: 2,             // For future recursive implementation
+    tokensPerSubQuery: 800,  // Token budget per sub-query
+    enableLLMSynthesis: true // Use LLM to synthesize results
+};
+```
+
+### Future Full RLM Features (Placeholders)
+
+The RLM-Lite implementation includes hooks for future full RLM:
+- `executeInContext()` - REPL code execution against context
+- `generateREPLCode()` - Generate Python/JS code for queries
+- `executeRecursive()` - Recursive sub-LM calls (depth > 1)
+- `aggregateHierarchical()` - Multi-depth result aggregation
+
 ## Data Flow: Agent Export/Import
 
 ```mermaid
@@ -384,11 +481,16 @@ const state = {
 
 ### Orchestrator
 - `orchestrator.js` - Manages multiple loaded agents
-- Cross-meeting chat queries all loaded agent data simultaneously
+- **RLM-Lite powered**: Uses Recursive Language Model for intelligent query processing
+- Cross-meeting chat uses query decomposition and parallel execution
 - Visual Knowledge Base with agent chain visualization
 - Each agent is a node with: editable name, enable/disable toggle, remove button
 - Only active (enabled) agents are used for chat and insights generation
 - Custom robot mascot branding in header (`images/orchestrator-logo.png`)
+- Key RLM functions:
+  - `chatWithRLM()` - Process queries through RLM pipeline
+  - `syncAgentsToRLM()` - Keep RLM context store in sync with state
+  - `shouldUseRLM()` - Determine if RLM should be used for a query
 
 ### Agent Export Modal
 - `showAgentNameModal()` - Opens naming dialog before export
@@ -483,7 +585,7 @@ Automatic deployment via GitHub Actions on push to `main` branch.
 ### Files Deployed
 The GitHub Actions workflow copies these to `_site`:
 - `index.html`, `orchestrator.html`, `northstar-overview.html`
-- `css/`, `js/`, `images/`
+- `css/`, `js/` (including `js/rlm/`), `images/`
 - `manifest.json`, `sw.js` (PWA files)
 
 Note: The `archive/` folder is NOT deployed—it contains legacy Flask backend code for reference only.
