@@ -2871,7 +2871,7 @@ details[open] .about-toggle {
 .agent-chain {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-md);
+    gap: var(--space-lg);
     justify-content: center;
     padding: var(--space-sm) 0;
     min-height: 60px;
@@ -2950,21 +2950,32 @@ details[open] .about-toggle {
 
 /* Connection line between nodes */
 .agent-node:not(:last-child)::after {
-    content: '→';
+    content: '';
     position: absolute;
-    right: -12px;
+    right: -18px;
     top: 50%;
-    font-size: 0.8rem;
-    color: var(--accent-primary);
+    width: 20px;
+    height: 3px;
+    background-image: repeating-linear-gradient(
+        90deg,
+        var(--accent-primary) 0px,
+        var(--accent-primary) 4px,
+        transparent 4px,
+        transparent 8px
+    );
     transform: translateY(-50%);
-    opacity: 0.7;
-    text-shadow: 0 0 8px rgba(212, 168, 83, 0.5);
+    opacity: 0.8;
 }
 
 .agent-node.disabled::after {
-    color: var(--text-muted);
+    background-image: repeating-linear-gradient(
+        90deg,
+        var(--text-muted) 0px,
+        var(--text-muted) 4px,
+        transparent 4px,
+        transparent 8px
+    );
     opacity: 0.3;
-    text-shadow: none;
 }
 
 .agent-node-icon {
@@ -3844,7 +3855,7 @@ details[open] .about-toggle {
     }
     
     .agent-node:not(:last-child)::after {
-        right: -14px;
+        right: -20px;
         top: 50%;
         transform: translateY(-50%);
     }
