@@ -3867,10 +3867,16 @@ details[open] .about-toggle {
 
 /* Insights hint */
 .insights-hint {
-    margin-top: var(--space-sm);
-    font-size: 0.85rem;
+    margin: 0;
+    font-size: 0.875rem;
     color: var(--text-muted);
     text-align: center;
+    max-width: 400px;
+    line-height: 1.5;
+}
+
+.insights-hint::before {
+    content: "💡 ";
 }
 
 /* Disabled chat state */
@@ -3904,16 +3910,31 @@ details[open] .about-toggle {
     }
 }
 
-/* KB Actions */
+/* KB Actions - Generate Insights Button Area */
 .kb-actions {
     display: flex;
-    justify-content: center;
-    margin-top: var(--space-lg);
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    margin-top: var(--space-xl);
+    padding: var(--space-lg);
+    background: linear-gradient(135deg, rgba(212, 168, 83, 0.08) 0%, rgba(212, 168, 83, 0.02) 100%);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(212, 168, 83, 0.15);
 }
 
-.btn-large {
+.kb-actions .btn-large {
     padding: var(--space-md) var(--space-2xl);
     font-size: 1.1rem;
+    min-width: 320px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.kb-actions .btn-large:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(212, 168, 83, 0.3);
 }
 
 /* Chat Header with KB Connection */
