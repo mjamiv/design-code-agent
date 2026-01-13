@@ -111,12 +111,114 @@ function initElements() {
 }
 
 // ============================================
+// State Persistence (sessionStorage)
+// ============================================
+
+const STORAGE_KEYS = {
+    AGENTS: 'orch_agents',
+    CHAT_HISTORY: 'orch_chat_history',
+    INSIGHTS: 'orch_insights'
+};
+
+/**
+ * Save state to sessionStorage
+ */
+function saveState() {
+    try {
+        sessionStorage.setItem(STORAGE_KEYS.AGENTS, JSON.stringify(state.agents));
+        sessionStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(state.chatHistory));
+        if (state.insights) {
+            sessionStorage.setItem(STORAGE_KEYS.INSIGHTS, JSON.stringify(state.insights));
+        }
+        console.log('[State] Saved to sessionStorage:', {
+            agents: state.agents.length,
+            chatHistory: state.chatHistory.length
+        });
+    } catch (error) {
+        console.warn('[State] Failed to save state:', error.message);
+    }
+}
+
+/**
+ * Restore state from sessionStorage
+ */
+function restoreState() {
+    try {
+        const savedAgents = sessionStorage.getItem(STORAGE_KEYS.AGENTS);
+        const savedChatHistory = sessionStorage.getItem(STORAGE_KEYS.CHAT_HISTORY);
+        const savedInsights = sessionStorage.getItem(STORAGE_KEYS.INSIGHTS);
+
+        if (savedAgents) {
+            state.agents = JSON.parse(savedAgents);
+            console.log('[State] Restored agents:', state.agents.length);
+        }
+
+        if (savedChatHistory) {
+            state.chatHistory = JSON.parse(savedChatHistory);
+            console.log('[State] Restored chat history:', state.chatHistory.length);
+
+            // Restore chat messages in UI
+            if (state.chatHistory.length > 0) {
+                restoreChatHistoryUI();
+            }
+        }
+
+        if (savedInsights) {
+            state.insights = JSON.parse(savedInsights);
+            console.log('[State] Restored insights');
+            // Display restored insights
+            if (state.insights) {
+                displayInsights(state.insights);
+            }
+        }
+
+        return state.agents.length > 0; // Return true if we restored anything
+    } catch (error) {
+        console.warn('[State] Failed to restore state:', error.message);
+        return false;
+    }
+}
+
+/**
+ * Restore chat history to UI
+ */
+function restoreChatHistoryUI() {
+    // Remove welcome card
+    const welcomeCard = elements.chatMessages.querySelector('.chat-welcome-card');
+    if (welcomeCard) {
+        welcomeCard.remove();
+    }
+
+    // Restore messages
+    state.chatHistory.forEach((msg) => {
+        appendChatMessage(msg.role, msg.content, false); // Don't save again
+    });
+}
+
+/**
+ * Clear saved state
+ */
+function clearSavedState() {
+    sessionStorage.removeItem(STORAGE_KEYS.AGENTS);
+    sessionStorage.removeItem(STORAGE_KEYS.CHAT_HISTORY);
+    sessionStorage.removeItem(STORAGE_KEYS.INSIGHTS);
+    console.log('[State] Cleared sessionStorage');
+}
+
+// ============================================
 // Initialization
 // ============================================
 
 function init() {
     initElements();
     loadApiKey();
+
+    // Restore state from sessionStorage if available
+    const restored = restoreState();
+    if (restored) {
+        console.log('[Init] State restored from previous session');
+    }
+
     setupEventListeners();
     updateUI();
 }
@@ -420,6 +522,7 @@ function clearAllAgents() {
     state.chatHistory = [];
     resetMetrics();
     rlmPipeline.reset(); // Reset RLM pipeline state
+    clearSavedState(); // Clear sessionStorage
     updateUI();
 }
 
@@ -432,6 +535,7 @@ function updateUI() {
     updateButtonStates();
     updateSectionsVisibility();
     syncAgentsToRLM();
+    saveState(); // Save state after UI updates
 }
 
 /**
@@ -691,6 +795,7 @@ Each should be an array of strings (bullet points).`;
         displayInsights(insights);
         resetChatHistory();
         updateUI();
+        saveState(); // Save insights to sessionStorage
         console.log('[generateCrossInsights] Complete!');
         
     } catch (error) {
@@ -774,18 +879,24 @@ function formatInsightList(items) {
 async function sendChatMessage() {
     const message = elements.chatInput.value.trim();
     if (!message || state.isProcessing || state.agents.length === 0) return;
-    
+
+    // Set defer flag to prevent SW updates during processing
+    if (window.deferSWUpdate !== undefined) {
+        window.deferSWUpdate = true;
+        console.log('[Chat] Deferring SW updates during processing');
+    }
+
     // Clear input and disable while processing
     elements.chatInput.value = '';
     elements.chatInput.disabled = true;
     elements.chatSendBtn.disabled = true;
-    
+
     // Add user message to UI
     appendChatMessage('user', message);
-    
+
     // Show thinking indicator with train of thought
     const thinkingId = showThinkingIndicator();
-    
+
     try {
         // Check execution mode
         const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message);
@@ -833,6 +944,21 @@ async function sendChatMessage() {
         elements.chatInput.disabled = false;
         elements.chatSendBtn.disabled = false;
         elements.chatInput.focus();
+
+        // Clear defer flag after processing complete
+        if (window.deferSWUpdate !== undefined) {
+            window.deferSWUpdate = false;
+            console.log('[Chat] Processing complete, SW updates allowed');
+
+            // If there's a pending SW update, apply it now
+            if (window.swUpdatePending && window.applySWUpdate) {
+                console.log('[Chat] Applying pending SW update after processing');
+                setTimeout(() => window.applySWUpdate(), 1000); // Small delay for UX
+            }
+        }
+
+        // Save state after chat completes
+        saveState();
     }
 }
 
@@ -1060,32 +1186,37 @@ ${agent.transcript ? `Transcript excerpt: ${agent.transcript.substring(0, 1500)}
 `).join('\n\n');
 }
 
-function appendChatMessage(role, content) {
+function appendChatMessage(role, content, shouldSave = true) {
     // Remove welcome card on first message
     const welcomeCard = elements.chatMessages.querySelector('.chat-welcome-card');
     if (welcomeCard) {
         welcomeCard.remove();
     }
-    
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}`;
-    
+
     const avatar = role === 'assistant' ? '🤖' : '👤';
     let messageContent = content;
-    
+
     if (role === 'assistant' && typeof marked !== 'undefined') {
         messageContent = marked.parse(content);
     } else {
         messageContent = escapeHtml(content);
     }
-    
+
     messageDiv.innerHTML = `
         <div class="chat-message-avatar">${avatar}</div>
         <div class="chat-message-content">${messageContent}</div>
     `;
-    
+
     elements.chatMessages.appendChild(messageDiv);
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+
+    // Save state after adding message (unless restoring from storage)
+    if (shouldSave) {
+        saveState();
+    }
 }
 
 /**
