@@ -894,6 +894,9 @@ async function sendChatMessage() {
     // Add user message to UI
     appendChatMessage('user', message);
 
+    // IMPORTANT: Clear any old thinking indicators before showing new one
+    clearAllThinkingIndicators();
+
     // Show thinking indicator with train of thought
     const thinkingId = showThinkingIndicator();
 
@@ -1217,6 +1220,17 @@ function appendChatMessage(role, content, shouldSave = true) {
     if (shouldSave) {
         saveState();
     }
+}
+
+/**
+ * Clear all existing thinking indicators from chat
+ */
+function clearAllThinkingIndicators() {
+    const thinkingIndicators = elements.chatMessages.querySelectorAll('.chat-thinking');
+    thinkingIndicators.forEach(indicator => {
+        indicator.remove();
+    });
+    console.log('[Chat] Cleared old thinking indicators');
 }
 
 /**

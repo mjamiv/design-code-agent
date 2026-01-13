@@ -3673,6 +3673,7 @@ details[open] .about-toggle {
     display: flex;
     gap: var(--space-sm);
     margin-bottom: var(--space-md);
+    align-items: flex-start;
 }
 
 .chat-thinking-bubble {
@@ -3680,12 +3681,14 @@ details[open] .about-toggle {
     flex-direction: column;
     gap: var(--space-sm);
     padding: var(--space-md) var(--space-lg);
-    background: linear-gradient(135deg, rgba(212, 168, 83, 0.08), rgba(212, 168, 83, 0.02));
-    border: 1px solid rgba(212, 168, 83, 0.2);
+    background: linear-gradient(135deg, rgba(212, 168, 83, 0.1), rgba(212, 168, 83, 0.03));
+    border: 1px solid rgba(212, 168, 83, 0.25);
     border-radius: var(--radius-lg);
     border-top-left-radius: 4px;
-    min-width: 280px;
-    max-width: 450px;
+    min-width: 320px;
+    max-width: 600px;
+    width: 100%;
+    box-shadow: 0 2px 8px rgba(212, 168, 83, 0.1);
 }
 
 /* Header with dots and title */
@@ -3693,16 +3696,17 @@ details[open] .about-toggle {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding-bottom: var(--space-xs);
-    border-bottom: 1px solid rgba(212, 168, 83, 0.15);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid rgba(212, 168, 83, 0.2);
 }
 
 .thinking-title {
     color: var(--accent-primary);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
+    opacity: 0.95;
 }
 
 .thinking-dots {
@@ -3735,12 +3739,13 @@ details[open] .about-toggle {
 .thinking-log {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    max-height: 150px;
+    gap: 6px;
+    max-height: 200px;
     overflow-y: auto;
     padding: var(--space-xs) 0;
     scrollbar-width: thin;
     scrollbar-color: rgba(212, 168, 83, 0.3) transparent;
+    margin: var(--space-xs) 0;
 }
 
 .thinking-log::-webkit-scrollbar {
@@ -3760,10 +3765,11 @@ details[open] .about-toggle {
 .thinking-step {
     display: flex;
     align-items: flex-start;
-    gap: 6px;
-    font-size: 0.8rem;
-    line-height: 1.4;
+    gap: 8px;
+    font-size: 0.82rem;
+    line-height: 1.5;
     animation: stepFadeIn 0.3s ease-out;
+    padding: 2px 0;
 }
 
 @keyframes stepFadeIn {
@@ -3773,14 +3779,17 @@ details[open] .about-toggle {
 
 .thinking-step .step-icon {
     flex-shrink: 0;
-    font-size: 0.75rem;
-    width: 18px;
+    font-size: 0.85rem;
+    width: 20px;
     text-align: center;
+    line-height: 1.5;
 }
 
 .thinking-step .step-text {
     color: var(--text-secondary);
-    opacity: 0.9;
+    opacity: 0.95;
+    flex: 1;
+    word-wrap: break-word;
 }
 
 /* Step type colors */
@@ -3822,17 +3831,26 @@ details[open] .about-toggle {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    padding-top: var(--space-xs);
-    border-top: 1px solid rgba(212, 168, 83, 0.1);
+    padding-top: var(--space-sm);
+    margin-top: var(--space-xs);
+    border-top: 1px solid rgba(212, 168, 83, 0.15);
+}
+
+.thinking-current .thinking-text {
+    color: var(--accent-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    opacity: 0.9;
 }
 
 .thinking-spinner {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border: 2px solid rgba(212, 168, 83, 0.2);
     border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
 }
 
 @keyframes spin {
