@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=47">
+    <link rel="stylesheet" href="css/styles.css?v=49">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%230a0e17' width='32' height='32' rx='6'/%3E%3Ctext x='16' y='24' font-size='22' text-anchor='middle' fill='%23d4a853'%3E⭐%3C/text%3E%3C/svg%3E" type="image/svg+xml">
@@ -16,9 +16,32 @@
     <div class="gradient-bg"></div>
     
     <header>
-        <div class="logo">
-            <img src="images/k-northstar-logo.png" alt="northstar.LM" class="logo-image">
-            <h1>northstar.LM</h1>
+        <div class="header-content">
+            <div class="logo">
+                <img src="images/k-northstar-logo.png" alt="northstar.LM" class="logo-image">
+                <div class="logo-text">
+                    <h1>northstar.LM</h1>
+                    <span class="app-subtitle">Agent Builder</span>
+                </div>
+            </div>
+            <div class="about-dropdown-container">
+                <button class="about-btn" id="about-btn" title="About northstar.LM">
+                    <span>ℹ️</span> About
+                </button>
+                <div class="about-dropdown hidden" id="about-dropdown">
+                    <p class="about-intro">
+                        northstar.LM Agent Builder transforms recordings, videos, documents, images, and text into actionable insights using OpenAI's latest AI models.
+                    </p>
+                    <div class="about-models">
+                        <span class="model-tag">🎤 Whisper</span>
+                        <span class="model-tag">🧠 GPT-5.2</span>
+                        <span class="model-tag">👁️ Vision</span>
+                        <span class="model-tag">🔊 TTS</span>
+                        <span class="model-tag">🎨 Image</span>
+                    </div>
+                    <p class="about-privacy">🔒 Your API key stays local—data goes directly to OpenAI.</p>
+                </div>
+            </div>
         </div>
         <p class="tagline">Transform your meetings into actionable insights</p>
         <button id="help-btn" class="help-btn" title="How to use this app">?</button>
@@ -189,7 +212,7 @@
                 </div>
             </div>
 
-            <button id="analyze-btn" class="btn-primary" disabled title="Analyze your meeting recording, PDF, or text to extract insights">
+            <button id="analyze-btn" class="btn-primary btn-analyze" disabled title="Analyze your meeting recording, PDF, or text to extract insights">
                 <span class="btn-text">Analyze Meeting</span>
                 <span class="btn-loader hidden">
                     <span class="spinner"></span>
@@ -472,61 +495,6 @@
             </div>
         </section>
 
-        <!-- About Section -->
-        <section class="about-section">
-            <details class="about-card">
-                <summary class="about-header">
-                    <span class="about-icon">ℹ️</span>
-                    <span>About northstar.LM</span>
-                    <span class="about-toggle">▼</span>
-                </summary>
-                <div class="about-content">
-                    <p class="about-intro">
-                        northstar.LM transforms meeting recordings, videos, documents, images, and text into actionable insights using OpenAI's latest AI models.
-                    </p>
-                    <div class="models-grid">
-                        <div class="model-item">
-                            <span class="model-icon">🎤</span>
-                            <div class="model-info">
-                                <strong>Whisper</strong>
-                                <span>Audio & video transcription</span>
-                            </div>
-                        </div>
-                        <div class="model-item">
-                            <span class="model-icon">🧠</span>
-                            <div class="model-info">
-                                <strong>GPT-5.2</strong>
-                                <span>Analysis, reasoning & chat</span>
-                            </div>
-                        </div>
-                        <div class="model-item">
-                            <span class="model-icon">👁️</span>
-                            <div class="model-info">
-                                <strong>GPT-5.2 Vision</strong>
-                                <span>Image & PDF OCR analysis</span>
-                            </div>
-                        </div>
-                        <div class="model-item">
-                            <span class="model-icon">🔊</span>
-                            <div class="model-info">
-                                <strong>GPT-4o-mini-TTS</strong>
-                                <span>Audio generation</span>
-                            </div>
-                        </div>
-                        <div class="model-item">
-                            <span class="model-icon">🎨</span>
-                            <div class="model-info">
-                                <strong>GPT-Image-1.5</strong>
-                                <span>Infographic creation</span>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="about-privacy">
-                        🔒 Your API key stays local. All data goes directly to OpenAI—no third-party servers.
-                    </p>
-                </div>
-            </details>
-        </section>
     </main>
 
     <!-- How To Modal -->

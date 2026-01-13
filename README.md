@@ -4,6 +4,13 @@
 
 **Live Demo:** https://mjamiv.github.io/vox2txt/
 
+## Overview
+
+northstar.LM consists of two main applications:
+
+- **Agent Builder** (`index.html`) - Analyzes recordings, videos, documents, images, and text to create intelligent meeting agents with AI-powered insights
+- **Agent Orchestrator** (`orchestrator.html`) - Combines multiple agents for cross-meeting analysis using the RLM (Recursive Language Model) pipeline
+
 ## Application Workflow
 
 ```mermaid

@@ -4,14 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Project Overview
 
-**northstar.LM** is a client-side web application that transforms meeting recordings, videos, PDFs, images, or text into actionable insights using OpenAI's AI models. The entire application runs client-side with no backend server. Features include multi-meeting orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
+**northstar.LM** is a client-side web application that transforms meeting recordings, videos, PDFs, images, or text into actionable insights using OpenAI's AI models. The entire application runs client-side with no backend server.
+
+The application consists of two main pages:
+- **Agent Builder** (`index.html`) - Analyzes individual meetings and exports them as agents
+- **Agent Orchestrator** (`orchestrator.html`) - Combines multiple agents for cross-meeting insights using the RLM pipeline
+
+Features include multi-meeting orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
 
 ## Architecture
 
 ```
 northstar.LM/
-├── index.html          # Main application page (single-page app)
-├── orchestrator.html   # Multi-agent orchestrator page
+├── index.html          # Agent Builder - main single-page app
+├── orchestrator.html   # Agent Orchestrator - multi-agent analysis
 ├── northstar-overview.html # Product overview/marketing page
 ├── manifest.json       # PWA manifest
 ├── sw.js               # Service worker for offline support

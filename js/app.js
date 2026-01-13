@@ -206,7 +206,11 @@ async function init() {
         helpBtn: document.getElementById('help-btn'),
         helpModal: document.getElementById('help-modal'),
         helpCloseBtn: document.getElementById('help-close-btn'),
-        helpGotItBtn: document.getElementById('help-got-it-btn')
+        helpGotItBtn: document.getElementById('help-got-it-btn'),
+        
+        // About Dropdown
+        aboutBtn: document.getElementById('about-btn'),
+        aboutDropdown: document.getElementById('about-dropdown')
     };
     
     loadSavedApiKey();
@@ -359,6 +363,17 @@ function setupEventListeners() {
     elements.helpModal.addEventListener('click', (e) => {
         if (e.target === elements.helpModal) hideHelpModal();
     });
+    
+    // About Dropdown
+    if (elements.aboutBtn && elements.aboutDropdown) {
+        elements.aboutBtn.addEventListener('click', toggleAboutDropdown);
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!elements.aboutBtn.contains(e.target) && !elements.aboutDropdown.contains(e.target)) {
+                elements.aboutDropdown.classList.add('hidden');
+            }
+        });
+    }
     
     // Results Navigation
     setupResultsNav();
@@ -3420,6 +3435,10 @@ function showHelpModal() {
 
 function hideHelpModal() {
     elements.helpModal.classList.add('hidden');
+}
+
+function toggleAboutDropdown() {
+    elements.aboutDropdown.classList.toggle('hidden');
 }
 
 // ============================================

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=48">
+    <link rel="stylesheet" href="css/styles.css?v=49">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -20,12 +20,31 @@
     <header>
         <div class="header-content">
             <div class="logo">
-                <img src="images/orchestrator-logo.png" alt="Orchestrator" class="logo-image">
-                <h1>Agent Orchestrator</h1>
+                <img src="images/orchestrator-logo.png" alt="northstar.LM" class="logo-image">
+                <div class="logo-text">
+                    <h1>northstar.LM</h1>
+                    <span class="app-subtitle">Agent Orchestrator</span>
+                </div>
             </div>
-            <a href="index.html" class="back-link">
-                <span>←</span> Back to Main App
-            </a>
+            <div class="header-actions">
+                <div class="about-dropdown-container">
+                    <button class="about-btn" id="about-btn" title="About">
+                        <span>ℹ️</span> About
+                    </button>
+                    <div class="about-dropdown hidden" id="about-dropdown">
+                        <p class="about-intro">
+                            northstar.LM Agent Orchestrator combines multiple meeting agents for cross-meeting insights using AI-powered analysis.
+                        </p>
+                        <div class="about-models">
+                            <span class="model-tag">🧠 GPT-5.2</span>
+                            <span class="model-tag">🔄 RLM Pipeline</span>
+                            <span class="model-tag">🐍 Pyodide REPL</span>
+                        </div>
+                        <p class="about-privacy">🔒 Your API key stays local—data goes directly to OpenAI.</p>
+                    </div>
+                </div>
+                <a href="index.html" class="back-link">← Back to Agent Builder</a>
+            </div>
         </div>
         <p class="tagline">Combine multiple meeting agents for cross-meeting insights</p>
         <button id="help-btn" class="help-btn" title="How to use the Orchestrator">?</button>
@@ -262,40 +281,6 @@
             </div>
         </section>
 
-        <!-- About Section -->
-        <section class="about-section">
-            <details class="about-card">
-                <summary class="about-header">
-                    <span class="about-icon">ℹ️</span>
-                    <span>About Agent Orchestrator</span>
-                    <span class="about-toggle">▼</span>
-                </summary>
-                <div class="about-content">
-                    <p class="about-intro">
-                        The Agent Orchestrator combines multiple meeting agents exported from northstar.LM, enabling cross-meeting analysis and unified insights.
-                    </p>
-                    <div class="models-grid">
-                        <div class="model-item">
-                            <span class="model-icon">🧠</span>
-                            <div class="model-info">
-                                <strong>GPT-5.2</strong>
-                                <span>Cross-meeting analysis & chat</span>
-                            </div>
-                        </div>
-                        <div class="model-item">
-                            <span class="model-icon">🐍</span>
-                            <div class="model-info">
-                                <strong>RLM + Pyodide</strong>
-                                <span>Python REPL for code-assisted queries</span>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="about-privacy">
-                        🔒 Your API key stays local. All data goes directly to OpenAI—no third-party servers.
-                    </p>
-                </div>
-            </details>
-        </section>
     </main>
 
     <!-- How To Modal -->
@@ -368,7 +353,7 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=19" type="module"></script>
+    <script src="js/orchestrator.js?v=20" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>
