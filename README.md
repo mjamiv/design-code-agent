@@ -179,100 +179,188 @@ flowchart TB
 
 The Agent Orchestrator is powered by **RLM** (Recursive Language Model), based on the paper ["Recursive Language Models"](https://arxiv.org/abs/2512.24601) by Zhang, Kraska & Khattab.
 
-### How RLM Works
-
-```mermaid
-flowchart LR
-    subgraph Input["📥 INPUT"]
-        Q[User Query]
-    end
-
-    subgraph Decompose["1️⃣ DECOMPOSE"]
-        D1[Classify Intent]
-        D2[Select Strategy]
-        D3[Generate Sub-Queries]
-    end
-
-    subgraph Execute["2️⃣ EXECUTE"]
-        E1[Agent 1<br/>Sub-Query]
-        E2[Agent 2<br/>Sub-Query]
-        E3[Agent 3<br/>Sub-Query]
-    end
-
-    subgraph Aggregate["3️⃣ AGGREGATE"]
-        A1[Collect Results]
-        A2[Deduplicate]
-        A3[Synthesize]
-    end
-
-    subgraph Output["📤 OUTPUT"]
-        R[Final Response<br/>with Sources]
-    end
-
-    Q --> D1 --> D2 --> D3
-    D3 --> E1 & E2 & E3
-    E1 & E2 & E3 --> A1
-    A1 --> A2 --> A3 --> R
-
-    style Decompose fill:#1a2a1a,stroke:#4ade80,color:#fff
-    style Execute fill:#1a1a2a,stroke:#a855f7,color:#fff
-    style Aggregate fill:#2a1a1a,stroke:#ef4444,color:#fff
-```
-
-### True Recursive REPL (Phase 2)
-
-The RLM now includes **true recursive reasoning** via synchronous `sub_lm()` calls from within Python code:
+### Complete RLM Architecture
 
 ```mermaid
 flowchart TB
-    subgraph Browser["🌐 BROWSER"]
-        subgraph MainThread["Main Thread"]
-            M1[processWithREPL]
-            M2[Generate Python Code]
-            M3[LLM Callback Handler]
-            M4[Parse Final Answer]
+    subgraph UserInput["🎯 USER QUERY"]
+        Q["What patterns emerge across all meetings?"]
+    end
+
+    subgraph Phase1["━━━━━━━━━━ PHASE 1: QUERY ANALYSIS ━━━━━━━━━━"]
+        subgraph Classification["🏷️ QUERY CLASSIFICATION"]
+            C1["Detect Type"]
+            C2{"Query Type?"}
+            C3["FACTUAL"]
+            C4["COMPARATIVE"]
+            C5["AGGREGATIVE"]
+            C6["SEARCH"]
+            C7["RECURSIVE"]
         end
         
-        subgraph WebWorker["Web Worker - Pyodide"]
-            W1[Execute Python]
-            W2["sub_lm() called"]
-            W3[Atomics.wait - BLOCK]
-            W4[Resume with result]
-            W5[Continue execution]
-        end
-        
-        subgraph SharedMem["SharedArrayBuffer"]
-            S1[Signal Array]
-            S2[Response Buffer]
+        subgraph Strategy["📋 STRATEGY SELECTION"]
+            S1["Direct Path"]
+            S2["Parallel Path"]
+            S3["Map-Reduce Path"]
+            S4["REPL Path"]
         end
     end
-    
-    subgraph OpenAI["☁️ OpenAI API"]
-        API[GPT-5.2]
+
+    subgraph Phase2["━━━━━━━━━━ PHASE 2: EXECUTION ━━━━━━━━━━"]
+        subgraph CodeGen["🐍 CODE GENERATION"]
+            CG1["LLM generates Python"]
+            CG2["Validate code safety"]
+            CG3["Retry on failure"]
+        end
+
+        subgraph REPL["⚡ PYTHON REPL EXECUTION"]
+            direction TB
+            R1["Load meeting context"]
+            R2["Execute Python code"]
+            R3{"sub_lm called?"}
+            R4["Continue execution"]
+            R5["Parse FINAL result"]
+        end
+
+        subgraph Recursion["🔄 RECURSIVE LLM CALLS"]
+            direction TB
+            RC1["Python blocks"]
+            RC2["Send query to main thread"]
+            RC3["Main thread calls GPT-5.2"]
+            RC4["Write response to SharedBuffer"]
+            RC5["Signal worker to resume"]
+            RC6["Python receives result"]
+        end
     end
+
+    subgraph Phase3["━━━━━━━━━━ PHASE 3: OUTPUT ━━━━━━━━━━"]
+        subgraph Response["📤 RESPONSE GENERATION"]
+            O1["Format answer"]
+            O2["Add source attribution"]
+            O3["Return to user"]
+        end
+    end
+
+    Q --> C1 --> C2
+    C2 -->|simple| C3 --> S1
+    C2 -->|compare| C4 --> S2
+    C2 -->|aggregate| C5 --> S3
+    C2 -->|find| C6 --> S3
+    C2 -->|analyze| C7 --> S4
+
+    S4 --> CG1 --> CG2 --> CG3 --> R1
+    R1 --> R2 --> R3
+    R3 -->|No| R4 --> R5
+    R3 -->|Yes| RC1
     
-    M1 --> M2 --> W1
-    W1 --> W2 --> W3
-    W3 -.->|blocked| S1
-    W2 -->|SUB_LM request| M3
-    M3 --> API
-    API --> M3
-    M3 -->|write response| S2
-    M3 -->|notify| S1
-    S1 -.->|unblock| W3
-    W3 --> W4 --> W5 --> M4
+    RC1 --> RC2 --> RC3 --> RC4 --> RC5 --> RC6
+    RC6 --> R4
     
-    style MainThread fill:#1a2a1a,stroke:#4ade80,color:#fff
-    style WebWorker fill:#1a1a2a,stroke:#a855f7,color:#fff
-    style SharedMem fill:#2a2a1a,stroke:#fbbf24,color:#fff
-    style OpenAI fill:#2a1a2a,stroke:#d4a853,color:#fff
+    R5 --> O1 --> O2 --> O3
 ```
 
-**Key Capabilities:**
-- **Synchronous LLM Calls**: Python code can call `sub_lm()` and immediately use the result
-- **Multi-Level Reasoning**: Chain up to 3 levels of recursive LLM calls
-- **Conditional Logic**: Branch based on LLM responses within the same execution
-- **GitHub Pages Compatible**: COI Service Worker enables SharedArrayBuffer on static hosts
+### Synchronous sub_lm() - The Key Innovation
+
+The breakthrough of Phase 2 is **true synchronous LLM calls from within Python code**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant Main as Main Thread
+    participant Worker as Web Worker
+    participant Buffer as SharedArrayBuffer
+    participant API as OpenAI GPT-5.2
+
+    User->>Main: Submit query
+    Main->>Main: Generate Python code via LLM
+    Main->>Worker: Execute Python code
+    
+    rect rgb(40, 40, 60)
+        Note over Worker: Python Execution
+        Worker->>Worker: summaries = get_all_summaries()
+        Worker->>Worker: analysis = sub_lm(query, summaries)
+    end
+    
+    rect rgb(60, 40, 40)
+        Note over Worker,API: Recursive LLM Call
+        Worker->>Buffer: Store signal = 0
+        Worker->>Main: POST SUB_LM request
+        Worker->>Buffer: Atomics.wait() - BLOCKED
+        Main->>API: Call GPT-5.2
+        API-->>Main: Return response
+        Main->>Buffer: Write response data
+        Main->>Buffer: Set signal = 1
+        Main->>Buffer: Atomics.notify()
+        Buffer-->>Worker: UNBLOCKED
+        Worker->>Buffer: Read response
+    end
+    
+    rect rgb(40, 60, 40)
+        Note over Worker: Continue with result
+        Worker->>Worker: Use analysis result
+        Worker->>Worker: FINAL(formatted_answer)
+    end
+    
+    Worker-->>Main: Return final answer
+    Main-->>User: Display response
+```
+
+### Multi-Level Recursive Reasoning
+
+Python code can chain multiple `sub_lm()` calls for deep analysis:
+
+```mermaid
+flowchart TB
+    subgraph Depth0["DEPTH 0: Initial Code Execution"]
+        D0A["summaries = get_all_summaries()"]
+        D0B["themes = sub_lm('Find themes', summaries)"]
+    end
+
+    subgraph Depth1["DEPTH 1: First Recursive Call"]
+        D1A["Analyze themes across meetings"]
+        D1B["Return: 'Budget, Hiring, Timeline'"]
+    end
+
+    subgraph Depth0Continue["DEPTH 0: Continue Execution"]
+        D0C["Parse themes result"]
+        D0D{"'budget' in themes?"}
+        D0E["budget_analysis = sub_lm('Elaborate budget', themes)"]
+        D0F["general_result = themes"]
+    end
+
+    subgraph Depth1Budget["DEPTH 1: Second Recursive Call"]
+        D1C["Deep dive on budget concerns"]
+        D1D["Return: 'Q4 budget needs approval...'"]
+    end
+
+    subgraph Depth0Final["DEPTH 0: Final Output"]
+        D0G["FINAL(budget_analysis)"]
+        D0H["Return to user"]
+    end
+
+    D0A --> D0B
+    D0B -.->|"sub_lm()"| D1A
+    D1A --> D1B
+    D1B -.->|return| D0C
+    D0C --> D0D
+    D0D -->|Yes| D0E
+    D0D -->|No| D0F --> D0G
+    D0E -.->|"sub_lm()"| D1C
+    D1C --> D1D
+    D1D -.->|return| D0G
+    D0G --> D0H
+```
+
+### Key Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Synchronous Calls** | Python blocks until LLM responds - use result immediately |
+| **Multi-Level Depth** | Chain up to 3 recursive calls for complex reasoning |
+| **Conditional Logic** | Branch based on LLM responses within same execution |
+| **Error Recovery** | Retry with context on code generation failures |
+| **GitHub Pages** | COI Service Worker enables full features on static hosts |
 
 ### Query Classification
 
