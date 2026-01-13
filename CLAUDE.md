@@ -415,6 +415,9 @@ flowchart TB
 | **SubExecutor** | `sub-executor.js` | Runs sub-queries in parallel with concurrency control |
 | **Aggregator** | `aggregator.js` | Merges sub-responses into coherent final answer |
 | **RLMPipeline** | `index.js` | Main orchestration class tying all components together |
+| **REPLEnvironment** | `repl-environment.js` | Manages Pyodide Web Worker for Python code execution |
+| **REPLWorker** | `repl-worker.js` | Web Worker running sandboxed Python via Pyodide |
+| **CodeGenerator** | `code-generator.js` | LLM prompts for Python code generation and output parsing |
 
 ### Query Strategies
 
@@ -431,19 +434,52 @@ flowchart TB
 const RLM_CONFIG = {
     maxSubQueries: 5,        // Max sub-queries per decomposition
     maxConcurrent: 3,        // Parallel execution limit
-    maxDepth: 2,             // For future recursive implementation
+    maxDepth: 2,             // For recursive implementation
     tokensPerSubQuery: 800,  // Token budget per sub-query
-    enableLLMSynthesis: true // Use LLM to synthesize results
+    enableLLMSynthesis: true,// Use LLM to synthesize results
+    enableREPL: true,        // Enable REPL-based code execution
+    replTimeout: 30000,      // REPL execution timeout (30s)
+    autoInitREPL: false,     // Auto-initialize REPL on first use
+    preferREPL: false        // Prefer REPL over decomposition
 };
 ```
 
-### Future Full RLM Features (Placeholders)
+### REPL Environment (Phase 1)
 
-The RLM-Lite implementation includes hooks for future full RLM:
-- `executeInContext()` - REPL code execution against context
-- `generateREPLCode()` - Generate Python/JS code for queries
-- `executeRecursive()` - Recursive sub-LM calls (depth > 1)
+The RLM now includes a Python REPL environment powered by Pyodide:
+
+**Architecture:**
+- Web Worker sandbox for isolated Python execution
+- Pyodide loaded lazily (~10MB, cached by browser)
+- Context stored as Python variable for programmatic access
+- LLM generates Python code to analyze meeting data
+
+**Available Python API:**
+```python
+context        # Dict with all meeting data
+partition(text, chunk_size)  # Split text into chunks
+grep(pattern, text)          # Regex search with context
+search_agents(keyword)       # Search all agents
+get_agent(agent_id)          # Get specific agent
+list_agents()                # List all agents
+get_all_action_items()       # Extract all action items
+get_all_summaries()          # Get all summaries
+sub_lm(query, context)       # Queue sub-LLM call
+FINAL(answer)                # Return final answer
+FINAL_VAR(var_name)          # Return variable as answer
+```
+
+**When REPL is used:**
+- Queries with: search, find, grep, list all, count, filter, sort, combine
+- Pipeline routes to `processWithREPL()` instead of decomposition
+
+### Future Full RLM Features
+
+Remaining items for full RLM implementation:
+- `executeRecursive()` - True recursive sub-LM calls (depth > 1)
 - `aggregateHierarchical()` - Multi-depth result aggregation
+- Async parallel execution for sub-LM calls
+- Prefix caching for performance
 
 ## Data Flow: Agent Export/Import
 
@@ -497,6 +533,7 @@ sequenceDiagram
 - **docx.js** (`8.5.0`) - Client-side DOCX generation with professional formatting
 - **PDF.js** (`4.0.379`) - Client-side PDF text extraction and page-to-image rendering
 - **marked.js** - Markdown parsing for chat message formatting (lists, headings, code blocks)
+- **Pyodide** (`0.25.0`) - In-browser Python runtime for REPL code execution (loaded lazily in Web Worker)
 
 ## Common Development Tasks
 

@@ -235,21 +235,104 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}`;
     }
 
     /**
-     * Future RLM hook: Execute a query in REPL context
-     * This is a placeholder for full RLM implementation
-     * @param {string} code - Code to execute against context
-     * @returns {Promise<any>} Execution result
+     * Export context in Python-friendly dictionary format
+     * Used by the REPL environment to set up the Python context variable
+     * @param {Object} options - Export options
+     * @returns {Object} Python-compatible context object
      */
-    async executeInContext(code) {
-        // Placeholder for future REPL integration
-        // In full RLM, this would execute generated Python/JS code
-        // against the context store
-        console.warn('executeInContext: REPL execution not yet implemented');
+    toPythonDict(options = {}) {
+        const {
+            activeOnly = true,
+            includeTranscript = true,
+            maxTranscriptLength = 10000
+        } = options;
+
+        const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
+
         return {
-            success: false,
-            error: 'REPL execution not implemented in RLM-Lite',
-            _futureFeature: true
+            agents: agents.map(agent => {
+                const pythonAgent = {
+                    id: agent.id,
+                    displayName: agent.displayName || agent.title || 'Untitled',
+                    title: agent.title || '',
+                    date: agent.date || null,
+                    sourceType: agent.sourceType || 'unknown',
+                    enabled: agent.enabled !== false,
+                    summary: agent.summary || '',
+                    keyPoints: agent.keyPoints || '',
+                    actionItems: agent.actionItems || '',
+                    sentiment: agent.sentiment || ''
+                };
+
+                // Include transcript with optional truncation
+                if (includeTranscript && agent.transcript) {
+                    pythonAgent.transcript = agent.transcript.length > maxTranscriptLength
+                        ? agent.transcript.substring(0, maxTranscriptLength) + '...[truncated]'
+                        : agent.transcript;
+                } else {
+                    pythonAgent.transcript = '';
+                }
+
+                return pythonAgent;
+            }),
+            metadata: {
+                totalAgents: this.metadata.totalAgents,
+                activeAgents: this.metadata.activeAgents,
+                exportedAt: new Date().toISOString(),
+                agentNames: agents.map(a => a.displayName || a.title || 'Untitled')
+            }
         };
+    }
+
+    /**
+     * Get agent names for REPL context summary
+     * @returns {Array} Array of agent display names
+     */
+    getAgentNames() {
+        return this.getActiveAgents().map(a => a.displayName || a.title || 'Untitled');
+    }
+
+    /**
+     * Execute a query in REPL context
+     * Now integrated with the REPL environment
+     * @param {string} code - Code to execute against context
+     * @param {Object} replEnvironment - REPL environment instance
+     * @returns {Promise<Object>} Execution result
+     */
+    async executeInContext(code, replEnvironment = null) {
+        if (!replEnvironment) {
+            console.warn('executeInContext: No REPL environment provided');
+            return {
+                success: false,
+                error: 'No REPL environment provided',
+                _futureFeature: false
+            };
+        }
+
+        try {
+            // Ensure context is set in REPL
+            const contextData = this.toPythonDict();
+            await replEnvironment.setContext(contextData.agents);
+
+            // Execute the code
+            const result = await replEnvironment.execute(code);
+
+            return {
+                success: result.success,
+                result: result.result,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                error: result.error,
+                finalAnswer: result.finalAnswer,
+                subLmCalls: result.subLmCalls
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
+        }
     }
 }
 

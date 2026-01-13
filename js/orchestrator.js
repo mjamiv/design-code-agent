@@ -787,18 +787,23 @@ async function sendChatMessage() {
     const thinkingId = showThinkingIndicator();
     
     try {
-        // Check if RLM will be used
-        const useRLM = rlmPipeline.shouldUseRLM(message);
+        // Check execution mode
+        const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message);
+        const useRLM = !useREPL && rlmPipeline.shouldUseRLM(message);
 
         // Step 1: Understanding
         updateThinkingStatus(thinkingId, 'Understanding your question...');
         await sleep(300);
 
-        if (useRLM) {
+        if (useREPL) {
+            // REPL-specific status updates
+            updateThinkingStatus(thinkingId, 'Generating analysis code...');
+            await sleep(200);
+            updateThinkingStatus(thinkingId, 'Executing Python analysis...');
+        } else if (useRLM) {
             // RLM-specific status updates
             updateThinkingStatus(thinkingId, 'Decomposing query...');
             await sleep(200);
-
             updateThinkingStatus(thinkingId, `Analyzing ${state.agents.filter(a => a.enabled).length} meetings in parallel...`);
         } else {
             // Legacy status
@@ -806,12 +811,14 @@ async function sendChatMessage() {
             await sleep(200);
         }
 
-        // Step 3: Execute (RLM or legacy)
-        updateThinkingStatus(thinkingId, useRLM ? 'Running sub-queries...' : 'Analyzing with AI...');
+        // Step 3: Execute
+        const modeLabel = useREPL ? 'Running Python code...' : (useRLM ? 'Running sub-queries...' : 'Analyzing with AI...');
+        updateThinkingStatus(thinkingId, modeLabel);
         const response = await chatWithAgents(message);
 
         // Step 4: Preparing response
-        updateThinkingStatus(thinkingId, useRLM ? 'Aggregating insights...' : 'Preparing response...');
+        const prepLabel = useREPL ? 'Processing results...' : (useRLM ? 'Aggregating insights...' : 'Preparing response...');
+        updateThinkingStatus(thinkingId, prepLabel);
         await sleep(150);
 
         removeThinkingIndicator(thinkingId);
@@ -827,6 +834,14 @@ async function sendChatMessage() {
 }
 
 async function chatWithAgents(userMessage) {
+    // Check if REPL should be used (code-assisted queries)
+    const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(userMessage);
+
+    if (useREPL) {
+        console.log('[Chat] Using REPL-assisted processing for query');
+        return await chatWithREPL(userMessage);
+    }
+
     // Check if RLM should be used for this query
     const useRLM = rlmPipeline.shouldUseRLM(userMessage);
 
@@ -837,6 +852,40 @@ async function chatWithAgents(userMessage) {
         console.log('[Chat] Using legacy processing for query');
         return await chatWithAgentsLegacy(userMessage);
     }
+}
+
+/**
+ * Process chat using REPL-based code execution
+ */
+async function chatWithREPL(userMessage) {
+    // Create a wrapper for the LLM call
+    const llmCallWrapper = async (systemPrompt, userContent, context) => {
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+        ];
+
+        return callGPTWithMessages(messages, `REPL: ${userMessage.substring(0, 20)}...`);
+    };
+
+    // Process through REPL pipeline
+    const result = await rlmPipeline.processWithREPL(userMessage, llmCallWrapper, {
+        apiKey: state.apiKey
+    });
+
+    // Store in history
+    state.chatHistory.push({ role: 'user', content: userMessage });
+    state.chatHistory.push({ role: 'assistant', content: result.response });
+
+    // Log REPL metadata for debugging
+    if (result.metadata) {
+        console.log('[REPL] Query processed:', {
+            replUsed: result.metadata.replUsed,
+            time: result.metadata.pipelineTime + 'ms'
+        });
+    }
+
+    return result.response;
 }
 
 /**
