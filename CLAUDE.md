@@ -484,15 +484,20 @@ Phase 2 adds synchronous `sub_lm()` calls that enable true recursive reasoning:
 sequenceDiagram
     participant Main as Main Thread
     participant Worker as REPL Worker
+    participant Buffer as SharedArrayBuffer
     participant LLM as OpenAI API
     
     Main->>Worker: execute(pythonCode)
     Worker->>Worker: Run Python code
     Note over Worker: code calls sub_lm(query)
+    Worker->>Buffer: Atomics.wait - BLOCK
     Worker->>Main: SUB_LM request
     Main->>LLM: API call
     LLM-->>Main: Response
-    Main->>Worker: SUB_LM_RESPONSE
+    Main->>Buffer: Write response
+    Main->>Buffer: Atomics.notify
+    Buffer-->>Worker: UNBLOCK
+    Worker->>Buffer: Read response
     Note over Worker: Resume with result
     Worker-->>Main: Execution complete
 ```
@@ -500,8 +505,49 @@ sequenceDiagram
 **Key Features:**
 - **SharedArrayBuffer Sync**: Uses `Atomics.wait()` for true blocking in Web Worker
 - **Depth Tracking**: MAX_DEPTH = 3 prevents infinite recursion
-- **COI Service Worker**: Enables SharedArrayBuffer on GitHub Pages via `coi-serviceworker.js`
+- **Unified Service Worker**: `sw.js` injects COOP/COEP headers for SharedArrayBuffer on GitHub Pages
 - **Async Fallback**: Graceful degradation when SharedArrayBuffer unavailable
+
+### Enhanced Train of Thought (Phase 2.3) ✅
+
+The chat displays detailed real-time progress during query processing:
+
+```mermaid
+flowchart TB
+    subgraph ThinkingUI["🤖 Train of Thought Display"]
+        direction TB
+        T1["🏷️ Query: What decisions were made?"]
+        T2["🏷️ Mode: REPL with 3 agents"]
+        T3["🏷️ Query type: AGGREGATIVE"]
+        T4["🐍 Generating Python code..."]
+        T5["✓ Code generated"]
+        T6["⚡ Executing in Pyodide..."]
+        T7["✓ Execution complete"]
+        T8["📊 Extracting FINAL answer"]
+        T9["✓ Response ready"]
+        
+        T1 --> T2 --> T3 --> T4 --> T5 --> T6 --> T7 --> T8 --> T9
+    end
+    
+    subgraph Pipeline["RLM Pipeline"]
+        P1[setProgressCallback]
+        P2[_emitProgress]
+    end
+    
+    Pipeline -->|real-time updates| ThinkingUI
+```
+
+**Step Types:**
+| Icon | Type | Color | Description |
+|------|------|-------|-------------|
+| 🏷️ | classify | Purple | Query classification |
+| 🔀 | decompose | Blue | Query decomposition |
+| 🐍 | code | Green | Code generation |
+| ⚡ | execute | Amber | Execution |
+| 🔄 | recurse | Pink | Recursive LLM calls |
+| 📊 | aggregate | Cyan | Result aggregation |
+| ✓ | success | Bright green | Completion |
+| ⚠️ | warning | Orange | Warnings |
 
 **Query Classification (Phase 2.1):**
 ```javascript

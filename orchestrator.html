@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Orchestrator | northstar.LM</title>
-    <!-- COI Service Worker: Enables SharedArrayBuffer for synchronous sub_lm() calls -->
-    <!-- Required for RLM Phase 2 true recursion on static hosts like GitHub Pages -->
-    <script src="coi-serviceworker.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -389,8 +386,9 @@
                         
                         newWorker.addEventListener('statechange', () => {
                             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                // New version ready - reload to activate
+                                // New version ready - mark as updating and reload
                                 console.log('[PWA] New version ready, reloading...');
+                                sessionStorage.setItem('swUpdating', 'true');
                                 window.location.reload();
                             }
                         });
@@ -408,11 +406,13 @@
                 }
             });
             
-            // Reload when the controlling service worker changes
+            // Only reload when explicitly updating, not on initial registration
+            // This prevents unexpected refreshes when the SW first takes control
             let refreshing = false;
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (!refreshing) {
+                if (!refreshing && sessionStorage.getItem('swUpdating')) {
                     refreshing = true;
+                    sessionStorage.removeItem('swUpdating');
                     window.location.reload();
                 }
             });

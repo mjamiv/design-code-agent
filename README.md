@@ -360,7 +360,47 @@ flowchart TB
 | **Multi-Level Depth** | Chain up to 3 recursive calls for complex reasoning |
 | **Conditional Logic** | Branch based on LLM responses within same execution |
 | **Error Recovery** | Retry with context on code generation failures |
-| **GitHub Pages** | COI Service Worker enables full features on static hosts |
+| **GitHub Pages** | Unified `sw.js` v4 injects COOP/COEP headers, no reload loops |
+
+### Enhanced Train of Thought
+
+The orchestrator displays detailed real-time progress during query processing:
+
+```mermaid
+flowchart LR
+    subgraph TrainOfThought["🤖 RLM: Code-Assisted Analysis"]
+        direction TB
+        S1["→ Query received"]
+        S2["🏷️ Mode: REPL with 3 agents"]
+        S3["🏷️ Query type: AGGREGATIVE"]
+        S4["🐍 Generating Python code..."]
+        S5["✓ Code generated"]
+        S6["⚡ Executing in sandbox..."]
+        S7["✓ Execution complete"]
+        S8["📊 Extracting answer..."]
+        S9["✓ Response ready"]
+    end
+    
+    subgraph Pipeline["RLM Pipeline"]
+        P1[processWithREPL]
+        P2[_emitProgress]
+    end
+    
+    Pipeline -->|callbacks| TrainOfThought
+```
+
+**Progress Types:**
+
+| Icon | Type | Description |
+|------|------|-------------|
+| 🏷️ | classify | Query classification and mode selection |
+| 🔀 | decompose | Breaking query into sub-queries |
+| 🐍 | code | Python code generation via LLM |
+| ⚡ | execute | Code execution in Pyodide sandbox |
+| 🔄 | recurse | Recursive `sub_lm()` calls |
+| 📊 | aggregate | Result synthesis and aggregation |
+| ✓ | success | Step completed successfully |
+| ⚠️ | warning | Fallback or retry triggered |
 
 ### Query Classification
 

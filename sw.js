@@ -5,8 +5,29 @@
  * IMPORTANT: Increment CACHE_VERSION when deploying new changes!
  */
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_NAME = `northstar-lm-v${CACHE_VERSION}`;
+
+/**
+ * Add Cross-Origin Isolation headers to enable SharedArrayBuffer
+ * Required for synchronous sub_lm() calls in the RLM REPL
+ */
+function addCOIHeaders(response) {
+    // Opaque responses (status 0) cannot be modified
+    if (response.status === 0) {
+        return response;
+    }
+    
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set("Cross-Origin-Embedder-Policy", "require-corp");
+    newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+    
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+    });
+}
 
 // Core app files - always try to get fresh versions
 const CORE_FILES = [
@@ -122,19 +143,20 @@ async function networkFirst(request) {
     try {
         const networkResponse = await fetch(request, { cache: 'no-cache' });
         
-        // Cache the fresh response
+        // Cache the fresh response (without COI headers for storage)
         if (networkResponse.ok) {
             const cache = await caches.open(CACHE_NAME);
             cache.put(request, networkResponse.clone());
         }
         
-        return networkResponse;
+        // Add COI headers for the response we return
+        return addCOIHeaders(networkResponse);
     } catch (error) {
         // Network failed, try cache
         const cachedResponse = await caches.match(request);
         if (cachedResponse) {
             console.log('[SW] Serving from cache (offline):', request.url);
-            return cachedResponse;
+            return addCOIHeaders(cachedResponse);
         }
         
         // Nothing in cache either
@@ -150,7 +172,7 @@ async function networkFirst(request) {
 async function cacheFirst(request) {
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
-        return cachedResponse;
+        return addCOIHeaders(cachedResponse);
     }
     
     try {
@@ -161,7 +183,8 @@ async function cacheFirst(request) {
             cache.put(request, networkResponse.clone());
         }
         
-        return networkResponse;
+        // Add COI headers for the response we return
+        return addCOIHeaders(networkResponse);
     } catch (error) {
         return new Response('Resource unavailable', {
             status: 503,

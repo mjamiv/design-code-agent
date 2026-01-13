@@ -790,36 +790,39 @@ async function sendChatMessage() {
         // Check execution mode
         const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message);
         const useRLM = !useREPL && rlmPipeline.shouldUseRLM(message);
+        const activeAgentCount = state.agents.filter(a => a.enabled).length;
 
-        // Step 1: Understanding
-        updateThinkingStatus(thinkingId, 'Understanding your question...');
-        await sleep(300);
-
+        // Update title based on mode
         if (useREPL) {
-            // REPL-specific status updates
-            updateThinkingStatus(thinkingId, 'Generating analysis code...');
-            await sleep(200);
-            updateThinkingStatus(thinkingId, 'Executing Python analysis...');
+            updateThinkingTitle(thinkingId, 'RLM: Code-Assisted Analysis');
         } else if (useRLM) {
-            // RLM-specific status updates
-            updateThinkingStatus(thinkingId, 'Decomposing query...');
-            await sleep(200);
-            updateThinkingStatus(thinkingId, `Analyzing ${state.agents.filter(a => a.enabled).length} meetings in parallel...`);
+            updateThinkingTitle(thinkingId, 'RLM: Recursive Processing');
         } else {
-            // Legacy status
-            updateThinkingStatus(thinkingId, `Searching ${state.agents.length} meetings...`);
-            await sleep(200);
+            updateThinkingTitle(thinkingId, 'Direct Query Processing');
         }
 
-        // Step 3: Execute
-        const modeLabel = useREPL ? 'Running Python code...' : (useRLM ? 'Running sub-queries...' : 'Analyzing with AI...');
-        updateThinkingStatus(thinkingId, modeLabel);
-        const response = await chatWithAgents(message);
+        // Initial step: Query received
+        addThinkingStep(thinkingId, `Query: "${message.substring(0, 60)}${message.length > 60 ? '...' : ''}"`, 'info');
+        
+        // Show initial mode selection
+        if (useREPL) {
+            addThinkingStep(thinkingId, `Mode: REPL with ${activeAgentCount} agents`, 'classify');
+            updateThinkingStatus(thinkingId, 'Starting Python code execution pipeline...');
+        } else if (useRLM) {
+            addThinkingStep(thinkingId, `Mode: RLM with ${activeAgentCount} agents`, 'classify');
+            updateThinkingStatus(thinkingId, 'Starting recursive decomposition...');
+        } else {
+            addThinkingStep(thinkingId, `Mode: Direct analysis`, 'classify');
+            updateThinkingStatus(thinkingId, 'Analyzing with LLM...');
+            addThinkingStep(thinkingId, `Building context from ${state.agents.length} meetings`, 'info');
+        }
 
-        // Step 4: Preparing response
-        const prepLabel = useREPL ? 'Processing results...' : (useRLM ? 'Aggregating insights...' : 'Preparing response...');
-        updateThinkingStatus(thinkingId, prepLabel);
-        await sleep(150);
+        // Execute the actual chat processing (pass thinkingId for real-time updates from RLM)
+        const response = await chatWithAgents(message, thinkingId);
+
+        // Final step
+        addThinkingStep(thinkingId, 'Response ready', 'success');
+        updateThinkingStatus(thinkingId, 'Formatting...');
 
         removeThinkingIndicator(thinkingId);
         appendChatMessage('assistant', response);
@@ -833,13 +836,13 @@ async function sendChatMessage() {
     }
 }
 
-async function chatWithAgents(userMessage) {
+async function chatWithAgents(userMessage, thinkingId = null) {
     // Check if REPL should be used (code-assisted queries)
     const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(userMessage);
 
     if (useREPL) {
         console.log('[Chat] Using REPL-assisted processing for query');
-        return await chatWithREPL(userMessage);
+        return await chatWithREPL(userMessage, thinkingId);
     }
 
     // Check if RLM should be used for this query
@@ -847,7 +850,7 @@ async function chatWithAgents(userMessage) {
 
     if (useRLM) {
         console.log('[Chat] Using RLM pipeline for query');
-        return await chatWithRLM(userMessage);
+        return await chatWithRLM(userMessage, thinkingId);
     } else {
         console.log('[Chat] Using legacy processing for query');
         return await chatWithAgentsLegacy(userMessage);
@@ -857,7 +860,7 @@ async function chatWithAgents(userMessage) {
 /**
  * Process chat using REPL-based code execution
  */
-async function chatWithREPL(userMessage) {
+async function chatWithREPL(userMessage, thinkingId = null) {
     // Create a wrapper for the LLM call
     const llmCallWrapper = async (systemPrompt, userContent, context) => {
         const messages = [
@@ -868,10 +871,20 @@ async function chatWithREPL(userMessage) {
         return callGPTWithMessages(messages, `REPL: ${userMessage.substring(0, 20)}...`);
     };
 
+    // Set up progress callback if we have a thinking ID
+    if (thinkingId) {
+        rlmPipeline.setProgressCallback((step, type, details) => {
+            addThinkingStep(thinkingId, step, type);
+        });
+    }
+
     // Process through REPL pipeline
     const result = await rlmPipeline.processWithREPL(userMessage, llmCallWrapper, {
         apiKey: state.apiKey
     });
+
+    // Clear progress callback
+    rlmPipeline.setProgressCallback(null);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -891,7 +904,7 @@ async function chatWithREPL(userMessage) {
 /**
  * Process chat using RLM pipeline (decompose → parallel → aggregate)
  */
-async function chatWithRLM(userMessage) {
+async function chatWithRLM(userMessage, thinkingId = null) {
     // Create a wrapper for the LLM call that the RLM pipeline can use
     const llmCallWrapper = async (systemPrompt, userContent, context) => {
         const messages = [
@@ -908,10 +921,20 @@ async function chatWithRLM(userMessage) {
         return callGPTWithMessages(messages, `RLM: ${userMessage.substring(0, 20)}...`);
     };
 
+    // Set up progress callback if we have a thinking ID
+    if (thinkingId) {
+        rlmPipeline.setProgressCallback((step, type, details) => {
+            addThinkingStep(thinkingId, step, type);
+        });
+    }
+
     // Process through RLM pipeline
     const result = await rlmPipeline.process(userMessage, llmCallWrapper, {
         apiKey: state.apiKey
     });
+
+    // Clear progress callback
+    rlmPipeline.setProgressCallback(null);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -1065,20 +1088,31 @@ function appendChatMessage(role, content) {
     elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
+/**
+ * Enhanced Train of Thought System
+ * Shows detailed RLM process steps in real-time
+ */
 function showThinkingIndicator() {
     const id = 'thinking-' + Date.now();
     const thinkingDiv = document.createElement('div');
     thinkingDiv.id = id;
-    thinkingDiv.className = 'chat-thinking';
+    thinkingDiv.className = 'chat-thinking enhanced';
     thinkingDiv.innerHTML = `
         <div class="chat-message-avatar">🤖</div>
         <div class="chat-thinking-bubble">
-            <div class="thinking-dots">
-                <span></span>
-                <span></span>
-                <span></span>
+            <div class="thinking-header">
+                <div class="thinking-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span class="thinking-title">Processing with RLM</span>
             </div>
-            <span class="thinking-text">Thinking...</span>
+            <div class="thinking-log"></div>
+            <div class="thinking-current">
+                <span class="thinking-spinner"></span>
+                <span class="thinking-text">Initializing...</span>
+            </div>
         </div>
     `;
     elements.chatMessages.appendChild(thinkingDiv);
@@ -1086,6 +1120,42 @@ function showThinkingIndicator() {
     return id;
 }
 
+/**
+ * Add a step to the thinking log (persists in the log)
+ */
+function addThinkingStep(id, step, type = 'info') {
+    const thinkingDiv = document.getElementById(id);
+    if (thinkingDiv) {
+        const logDiv = thinkingDiv.querySelector('.thinking-log');
+        if (logDiv) {
+            const stepEl = document.createElement('div');
+            stepEl.className = `thinking-step ${type}`;
+            
+            // Icon based on type
+            const icons = {
+                'classify': '🏷️',
+                'decompose': '🔀',
+                'code': '🐍',
+                'execute': '⚡',
+                'recurse': '🔄',
+                'aggregate': '📊',
+                'success': '✓',
+                'info': '→',
+                'warning': '⚠️'
+            };
+            
+            stepEl.innerHTML = `<span class="step-icon">${icons[type] || icons.info}</span><span class="step-text">${step}</span>`;
+            logDiv.appendChild(stepEl);
+            
+            // Auto-scroll
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+    }
+}
+
+/**
+ * Update the current thinking status (the active step)
+ */
 function updateThinkingStatus(id, status) {
     const thinkingDiv = document.getElementById(id);
     if (thinkingDiv) {
@@ -1094,6 +1164,19 @@ function updateThinkingStatus(id, status) {
             textSpan.textContent = status;
         }
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    }
+}
+
+/**
+ * Update the thinking title
+ */
+function updateThinkingTitle(id, title) {
+    const thinkingDiv = document.getElementById(id);
+    if (thinkingDiv) {
+        const titleSpan = thinkingDiv.querySelector('.thinking-title');
+        if (titleSpan) {
+            titleSpan.textContent = title;
+        }
     }
 }
 

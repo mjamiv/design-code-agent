@@ -107,6 +107,31 @@ export class RLMPipeline {
             subLmCalls: 0,
             subLmErrors: 0
         };
+
+        // Progress callback for train-of-thought UI updates
+        this._progressCallback = null;
+    }
+
+    /**
+     * Set a callback for progress updates during pipeline execution
+     * @param {Function} callback - Function(step, type, details) to call on progress
+     */
+    setProgressCallback(callback) {
+        this._progressCallback = callback;
+    }
+
+    /**
+     * Emit a progress update
+     * @private
+     */
+    _emitProgress(step, type = 'info', details = {}) {
+        if (this._progressCallback) {
+            try {
+                this._progressCallback(step, type, details);
+            } catch (e) {
+                console.warn('[RLM] Progress callback error:', e);
+            }
+        }
     }
 
     /**
@@ -255,14 +280,18 @@ If the information is not available in the provided context, say so briefly.`;
 
         try {
             console.log('[RLM] Starting pipeline for query:', query.substring(0, 50) + '...');
+            this._emitProgress('Starting RLM pipeline...', 'info');
 
             // Step 1: Decompose the query
             console.log('[RLM] Step 1: Decomposing query...');
+            this._emitProgress('Analyzing query structure and intent', 'decompose');
             const decomposition = await this.decomposer.decompose(query, context);
             console.log(`[RLM] Decomposed into ${decomposition.subQueries.length} sub-queries using ${decomposition.strategy.type} strategy`);
+            this._emitProgress(`Strategy: ${decomposition.strategy.type} (${decomposition.subQueries.length} sub-queries)`, 'decompose');
 
             // Step 2: Execute sub-queries
             console.log('[RLM] Step 2: Executing sub-queries...');
+            this._emitProgress(`Executing ${decomposition.subQueries.length} sub-queries in parallel`, 'execute');
             const executionResult = await this.executor.execute(
                 decomposition,
                 this._wrapLLMCall(llmCall),
@@ -274,9 +303,11 @@ If the information is not available in the provided context, say so briefly.`;
             }
 
             console.log(`[RLM] Executed ${executionResult.results.length} sub-queries in ${executionResult.executionTime}ms`);
+            this._emitProgress(`Completed ${executionResult.results.length} sub-queries (${executionResult.executionTime}ms)`, 'success');
 
             // Step 3: Aggregate results
             console.log('[RLM] Step 3: Aggregating results...');
+            this._emitProgress('Synthesizing results via LLM aggregation', 'aggregate');
             const aggregation = await this.aggregator.aggregate(
                 executionResult,
                 decomposition,
@@ -398,10 +429,12 @@ Use the following meeting data to answer questions accurately and comprehensivel
             }
 
             console.log('[RLM:REPL] Processing query with code execution...');
+            this._emitProgress('Initializing REPL code execution pipeline', 'info');
             
             // Classify the query for better code generation
             const classification = classifyQuery(query);
             console.log(`[RLM:REPL] Query classified as: ${classification.type} (confidence: ${classification.confidence.toFixed(2)})`);
+            this._emitProgress(`Query type: ${classification.type} (${(classification.confidence * 100).toFixed(0)}% confidence)`, 'classify');
 
             // Step 1: Generate code prompt
             const stats = this.contextStore.getStats();
@@ -413,6 +446,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             // Step 2: Call LLM to generate code (with retry support)
             console.log('[RLM:REPL] Generating Python code...');
+            this._emitProgress('Calling GPT to generate Python analysis code', 'code');
             const codeResult = await this.codeGenerator.generateWithRetry(
                 query,
                 { activeAgents: stats.activeAgents, agentNames },
@@ -421,23 +455,30 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             if (!codeResult.success) {
                 console.warn('[RLM:REPL] Code generation failed after retries:', codeResult.error);
+                this._emitProgress('Code generation failed, falling back to RLM', 'warning');
                 // Fallback to standard processing
                 return this.process(query, llmCall, context);
             }
 
             console.log(`[RLM:REPL] Code generated (${codeResult.attempts} attempt(s)):`, codeResult.code.substring(0, 100) + '...');
+            this._emitProgress(`Python code generated (${codeResult.attempts} attempt${codeResult.attempts > 1 ? 's' : ''})`, 'success');
 
             // Step 3: Execute the code in REPL
+            this._emitProgress('Executing Python in Pyodide sandbox', 'execute');
             const execResult = await this.repl.execute(codeResult.code, this.config.replTimeout);
 
             if (!execResult.success) {
                 console.warn('[RLM:REPL] Code execution failed:', execResult.error);
                 this.stats.replErrors++;
+                this._emitProgress('Python execution failed, falling back to RLM', 'warning');
                 // Fallback to standard processing
                 return this.process(query, llmCall, context);
             }
 
+            this._emitProgress('Python code executed successfully', 'success');
+
             // Step 4: Parse the final answer
+            this._emitProgress('Extracting FINAL answer from output', 'aggregate');
             const finalAnswer = parseFinalAnswer(execResult);
 
             this.stats.replExecutions++;
@@ -446,6 +487,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
             // (these are queued calls that weren't processed synchronously)
             if (finalAnswer.subLmCalls && finalAnswer.subLmCalls.length > 0) {
                 console.log(`[RLM:REPL] Processing ${finalAnswer.subLmCalls.length} async fallback sub-LM calls...`);
+                this._emitProgress(`Processing ${finalAnswer.subLmCalls.length} recursive sub_lm() calls`, 'recurse');
                 // Process sub-LM calls and aggregate results
                 const subResults = await this._processSubLmCalls(finalAnswer.subLmCalls, llmCall, context);
                 
@@ -454,6 +496,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 if (subResults.length > 0) {
                     combinedAnswer += '\n\n---\n\n**Additional Analysis:**\n\n';
                     combinedAnswer += subResults.map(r => r.response).join('\n\n');
+                    this._emitProgress(`Aggregated ${subResults.length} recursive results`, 'success');
                 }
                 finalAnswer.answer = combinedAnswer;
             }
@@ -465,6 +508,10 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 syncEnabled: execResult.syncEnabled,
                 subLmCalls: subLmStats.totalCalls
             });
+
+            if (subLmStats.totalCalls > 0) {
+                this._emitProgress(`Completed with ${subLmStats.totalCalls} recursive LLM call${subLmStats.totalCalls > 1 ? 's' : ''}`, 'recurse');
+            }
 
             return {
                 success: true,

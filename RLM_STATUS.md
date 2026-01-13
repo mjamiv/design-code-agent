@@ -1,13 +1,13 @@
 # RLM Implementation Status
 
-> **Last Updated:** January 13, 2026  
+> **Last Updated:** January 13, 2026 (Phase 2.4 Complete)  
 > **Based on:** "Recursive Language Models" by Zhang, Kraska & Khattab ([arXiv:2512.24601](https://arxiv.org/abs/2512.24601))
 
 ---
 
 ## Executive Summary
 
-The northstar.LM Agent Orchestrator now includes a functional **RLM-Lite** implementation with **Phase 1: REPL Environment** complete. This enables intelligent query decomposition, parallel execution, response aggregation, and in-browser Python code execution via Pyodide.
+The northstar.LM Agent Orchestrator now includes a full **RLM** implementation with **Phase 1: REPL Environment** and **Phase 2: True Recursion** complete. This enables intelligent query decomposition, parallel execution, response aggregation, in-browser Python code execution via Pyodide, and **synchronous recursive LLM calls from within Python code**.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -15,9 +15,12 @@ The northstar.LM Agent Orchestrator now includes a functional **RLM-Lite** imple
 | Sub-Query Execution | ✅ Complete | Parallel execution with concurrency control |
 | Response Aggregation | ✅ Complete | LLM synthesis with source attribution |
 | REPL Environment | ✅ Complete | Pyodide-based Python execution in Web Worker |
-| Code Generator | ✅ Complete | Prompt templates and output parsing |
-| True Recursion | 🔲 Planned | `sub_lm()` calls with depth > 1 |
-| Async Execution | 🔲 Planned | Non-blocking parallel sub-queries |
+| Code Generator | ✅ Complete | Query classification, retry logic, few-shot examples |
+| True Recursion | ✅ Complete | `sub_lm()` calls with SharedArrayBuffer sync, depth limit 3 |
+| Async Fallback | ✅ Complete | Graceful degradation without SharedArrayBuffer |
+| Train of Thought UI | ✅ Complete | Enhanced UI with step logging and progress callbacks |
+| Unified Service Worker | ✅ Complete | COI + PWA merged into `sw.js` v4, no reload loops |
+| Progress Callbacks | ✅ Complete | Real-time updates from RLM pipeline to UI |
 
 ---
 
@@ -156,310 +159,205 @@ Queries containing these patterns trigger REPL-based processing:
 
 ---
 
-## Phase 2: Full RLM Integration Plan
+## Phase 2: True Recursion ✅ COMPLETE
 
-### Overview
+### What Was Implemented
 
-Phase 2 transforms RLM-Lite into a complete RLM implementation with true recursion, async execution, and LLM-driven code generation.
+#### Phase 2.1: Enhanced LLM Code Generation
+
+**File: `js/rlm/code-generator.js`**
+
+1. **Query Classification** - Automatic detection of query type:
+   - `FACTUAL` - Simple fact-finding queries
+   - `AGGREGATIVE` - Queries that gather data across meetings
+   - `COMPARATIVE` - Queries comparing multiple meetings
+   - `SEARCH` - Queries looking for specific content
+   - `RECURSIVE` - Complex analysis requiring `sub_lm()`
+
+2. **Retry Logic** - `generateWithRetry()` regenerates code on validation failure with error context
+
+3. **Enhanced Examples** - Few-shot examples for each query type, including recursive patterns
+
+#### Phase 2.2: True Recursion with `sub_lm()`
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Main Thread                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │               REPL Environment                           │    │
+│  │  - SharedArrayBuffer (64KB)                              │    │
+│  │  - LLM callback handler                                  │    │
+│  │  - Atomics.notify() to signal worker                     │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                            ▲                                     │
+│                            │ SUB_LM request/response             │
+│                            ▼                                     │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │               REPL Worker (Pyodide)                      │    │
+│  │  - Python sub_lm() function                              │    │
+│  │  - Atomics.wait() for blocking                           │    │
+│  │  - Depth tracking (MAX_DEPTH = 3)                        │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+
+1. **SharedArrayBuffer Sync** (`js/rlm/repl-worker.js`)
+   - 64KB shared buffer for LLM responses
+   - `Atomics.wait()` for synchronous blocking in worker
+   - Response encoding/decoding via TextEncoder
+
+2. **SUB_LM Handler** (`js/rlm/repl-environment.js`)
+   - Receives `SUB_LM` messages from worker
+   - Calls LLM via registered callback
+   - Writes response to shared buffer
+   - Signals worker via `Atomics.notify()`
+
+3. **Python Integration** (`js/rlm/repl-worker.js`)
+   ```python
+   def sub_lm(query, context_slice=None):
+       """Synchronous recursive LLM call."""
+       if _current_depth >= MAX_DEPTH:
+           raise RecursionError("Max depth exceeded")
+       _current_depth += 1
+       try:
+           return _sub_lm_sync(query, context_slice)
+       finally:
+           _current_depth -= 1
+   ```
+
+4. **Pipeline Integration** (`js/rlm/index.js`)
+   - `processWithREPL()` sets LLM callback before execution
+   - Query classification for optimal code generation
+   - Sub-LM stats tracking
+
+### Browser Requirements
+
+SharedArrayBuffer requires:
+- HTTPS or localhost
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Embedder-Policy: require-corp`
+
+**GitHub Pages Solution:** COI headers are now injected by the unified service worker (`sw.js`). The service worker adds COOP/COEP headers to all responses, enabling SharedArrayBuffer on static hosts like GitHub Pages.
+
+**Fallback:** If SharedArrayBuffer is unavailable, `sub_lm()` returns placeholders that are processed after code execution completes.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `js/rlm/code-generator.js` | Query classification, retry logic, recursive examples |
+| `js/rlm/repl-worker.js` | SharedArrayBuffer sync, Python `sub_lm()` with depth tracking |
+| `js/rlm/repl-environment.js` | SUB_LM handler, LLM callback, sync buffer management |
+| `js/rlm/index.js` | Pipeline integration, progress callbacks, stats, exports |
+
+---
+
+## Phase 2.3: Enhanced Train of Thought & Service Worker Unification ✅ COMPLETE
+
+### What Was Implemented
+
+#### 1. Enhanced Train of Thought UI
+
+The chat now displays a detailed, real-time train of thought during query processing:
+
+```
+┌─────────────────────────────────────────────┐
+│ 🤖  RLM: Code-Assisted Analysis             │
+├─────────────────────────────────────────────┤
+│ → Query: "What decisions were made?"        │
+│ 🏷️ Mode: REPL with 3 agents                 │
+│ 🏷️ Query type: AGGREGATIVE (95% confidence) │
+│ 🐍 Calling GPT to generate Python code      │
+│ ✓ Python code generated (1 attempt)         │
+│ ⚡ Executing Python in Pyodide sandbox       │
+│ ✓ Python code executed successfully          │
+│ 📊 Extracting FINAL answer from output       │
+│ ✓ Response ready                             │
+├─────────────────────────────────────────────┤
+│ ⏳ Formatting...                             │
+└─────────────────────────────────────────────┘
+```
+
+**Step Types with Icons:**
+| Type | Icon | Color | Description |
+|------|------|-------|-------------|
+| `classify` | 🏷️ | Purple | Query classification |
+| `decompose` | 🔀 | Blue | Query decomposition |
+| `code` | 🐍 | Green | Code generation |
+| `execute` | ⚡ | Amber | Execution |
+| `recurse` | 🔄 | Pink | Recursive LLM calls |
+| `aggregate` | 📊 | Cyan | Result aggregation |
+| `success` | ✓ | Bright green | Completion |
+| `warning` | ⚠️ | Orange | Warnings/fallbacks |
+
+#### 2. Progress Callbacks from RLM Pipeline
+
+The RLM pipeline now emits real-time progress updates:
+
+```javascript
+// Set progress callback
+rlmPipeline.setProgressCallback((step, type, details) => {
+    addThinkingStep(thinkingId, step, type);
+});
+
+// Pipeline emits progress at key stages:
+// - Query classification
+// - Code generation start/complete
+// - Execution start/complete
+// - Sub-LM calls
+// - Aggregation
+```
+
+#### 3. Unified Service Worker
+
+The COI and PWA service workers were merged into a single `sw.js`:
+
+**Before (problematic):**
+```
+coi-serviceworker.js  ← Registered first, added headers
+sw.js                 ← PWA caching, could conflict
+→ Two SWs competing for same scope caused reload loops
+```
+
+**After (fixed):**
+```
+sw.js (v4)            ← Single SW handles both:
+                         - COOP/COEP header injection
+                         - PWA caching & offline support
+```
+
+**Key changes:**
+- `addCOIHeaders()` function injects isolation headers
+- `networkFirst()` and `cacheFirst()` wrap responses with headers
+- Removed `coi-serviceworker.js` entirely
+- Fixed `controllerchange` listener to prevent reload loops
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `js/orchestrator.js` | Enhanced thinking UI, progress callback integration |
+| `js/rlm/index.js` | `setProgressCallback()`, `_emitProgress()` methods |
+| `css/styles.css` | New thinking indicator styles with colors and animations |
+| `sw.js` | COI header injection, version bump to 4 |
+| `orchestrator.html` | Removed COI script, fixed reload logic |
+| `index.html` | Fixed reload logic |
+
+---
+
+## Phase 3: Future Enhancements (Planned)
 
 ### Timeline Estimate
 
 | Phase | Duration | Dependencies |
 |-------|----------|--------------|
-| 2.1 LLM Code Generation | 1-2 days | Phase 1 ✅ |
-| 2.2 True Recursion | 2-3 days | Phase 2.1 |
-| 2.3 Async Execution | 1-2 days | Phase 2.2 |
-| 2.4 Optimization | 1-2 days | Phase 2.3 |
-| 2.5 Testing & Polish | 2-3 days | Phase 2.4 |
-| **Total** | **7-12 days** | |
-
----
-
-### Phase 2.1: LLM-Driven Code Generation
-
-**Goal:** Replace template-based code generation with LLM-generated Python.
-
-#### Tasks
-
-1. **Create Code Generation Prompt**
-   ```javascript
-   // code-generator.js
-   generateCodePrompt(query, agentsMetadata, contextHint) {
-       return `You are a Python expert. Write code to answer this query:
-       
-       Query: "${query}"
-       
-       Available data:
-       - agents_data: List[Dict] with keys: id, displayName, summary, keyPoints, actionItems
-       
-       Available functions:
-       - partition(predicate): Filter agents
-       - grep(pattern, field): Search content
-       - FINAL(answer): Return final answer
-       
-       Write ONLY Python code. No explanations.`;
-   }
-   ```
-
-2. **Integrate with OpenAI API**
-   ```javascript
-   async generateCode(query, context) {
-       const prompt = this.generateCodePrompt(query, this.contextStore.getAgentsMetadata());
-       const response = await llmCall(prompt, { model: 'gpt-5.2', temperature: 0.2 });
-       return this.extractCode(response);
-   }
-   ```
-
-3. **Code Validation Pipeline**
-   - Syntax check before execution
-   - Security scan for dangerous patterns
-   - Timeout enforcement
-   - Error recovery with retry
-
-#### Success Criteria
-- [ ] LLM generates valid Python for 90%+ of test queries
-- [ ] Code executes successfully in REPL
-- [ ] Fallback to template generation if LLM fails
-
----
-
-### Phase 2.2: True Recursion (`sub_lm`)
-
-**Goal:** Enable recursive LLM calls from within Python code.
-
-#### The `sub_lm()` Function
-
-```python
-# Available in REPL environment
-def sub_lm(query: str, context: dict = None) -> str:
-    """
-    Make a recursive LLM call from within Python code.
-    
-    Args:
-        query: Natural language question
-        context: Optional context override
-    
-    Returns:
-        LLM response as string
-    """
-    # Implemented via postMessage to main thread
-    pass
-```
-
-#### Implementation
-
-1. **Worker-to-Main Communication**
-   ```javascript
-   // repl-worker.js
-   function sub_lm(query, context) {
-       return new Promise((resolve) => {
-           const id = generateId();
-           pendingSubLM.set(id, resolve);
-           self.postMessage({ type: 'SUB_LM', id, query, context });
-       });
-   }
-   ```
-
-2. **Main Thread Handler**
-   ```javascript
-   // repl-environment.js
-   worker.onmessage = async (event) => {
-       if (event.data.type === 'SUB_LM') {
-           const { id, query, context } = event.data;
-           const response = await this.llmCall(query, context);
-           worker.postMessage({ type: 'SUB_LM_RESPONSE', id, response });
-       }
-   };
-   ```
-
-3. **Depth Tracking**
-   ```javascript
-   // Prevent infinite recursion
-   const MAX_DEPTH = 3;
-   let currentDepth = 0;
-   
-   async function sub_lm(query, context) {
-       if (currentDepth >= MAX_DEPTH) {
-           throw new Error('Max recursion depth exceeded');
-       }
-       currentDepth++;
-       try {
-           return await _sub_lm_impl(query, context);
-       } finally {
-           currentDepth--;
-       }
-   }
-   ```
-
-#### Example Use Case
-
-```python
-# User query: "Compare action items across all meetings"
-
-agents = list_agents()
-comparisons = []
-
-for agent in agents:
-    # Recursive LLM call for each agent
-    analysis = sub_lm(f"Analyze priority of action items in {agent['displayName']}")
-    comparisons.append({
-        'agent': agent['displayName'],
-        'analysis': analysis
-    })
-
-# Final synthesis
-summary = sub_lm(f"Synthesize these analyses: {comparisons}")
-FINAL(summary)
-```
-
-#### Success Criteria
-- [ ] `sub_lm()` calls work from Python code
-- [ ] Depth limit enforced
-- [ ] Results properly returned to Python context
-- [ ] Token usage tracked across recursive calls
-
----
-
-### Phase 2.3: Async Parallel Execution
-
-**Goal:** Execute sub-queries in parallel without blocking.
-
-#### Implementation
-
-1. **Async Sub-Executor**
-   ```javascript
-   // sub-executor.js
-   async executeParallel(subQueries, llmCall, options = {}) {
-       const { maxConcurrent = 3, timeout = 30000 } = options;
-       
-       const results = [];
-       const executing = new Set();
-       
-       for (const subQuery of subQueries) {
-           if (executing.size >= maxConcurrent) {
-               // Wait for one to complete
-               await Promise.race([...executing]);
-           }
-           
-           const promise = this.executeOne(subQuery, llmCall, timeout)
-               .finally(() => executing.delete(promise));
-           
-           executing.add(promise);
-           results.push(promise);
-       }
-       
-       return Promise.all(results);
-   }
-   ```
-
-2. **Progress Streaming**
-   ```javascript
-   // Report progress as sub-queries complete
-   onProgress(completed, total, latestResult) {
-       this.emit('progress', { completed, total, latestResult });
-   }
-   ```
-
-3. **Cancellation Support**
-   ```javascript
-   const controller = new AbortController();
-   const { signal } = controller;
-   
-   // User can cancel long-running queries
-   executeWithCancellation(subQueries, llmCall, { signal });
-   ```
-
-#### Success Criteria
-- [ ] Parallel execution with configurable concurrency
-- [ ] Progress updates during execution
-- [ ] Cancellation support
-- [ ] Proper error handling for partial failures
-
----
-
-### Phase 2.4: Optimization & Caching
-
-**Goal:** Improve performance and reduce API costs.
-
-#### 1. Result Caching
-```javascript
-class ResultCache {
-    constructor(ttl = 300000) { // 5 minutes
-        this.cache = new Map();
-        this.ttl = ttl;
-    }
-    
-    getKey(query, agentIds) {
-        return `${query}::${agentIds.sort().join(',')}`;
-    }
-    
-    get(query, agentIds) {
-        const key = this.getKey(query, agentIds);
-        const entry = this.cache.get(key);
-        if (entry && Date.now() - entry.timestamp < this.ttl) {
-            return entry.result;
-        }
-        return null;
-    }
-    
-    set(query, agentIds, result) {
-        const key = this.getKey(query, agentIds);
-        this.cache.set(key, { result, timestamp: Date.now() });
-    }
-}
-```
-
-#### 2. Token Optimization
-- Compress agent data before sending to LLM
-- Use summaries instead of full content when possible
-- Batch similar sub-queries
-
-#### 3. REPL Preloading
-- Preload Pyodide when user opens Orchestrator
-- Keep REPL warm between queries
-- Cache compiled Python code
-
-#### Success Criteria
-- [ ] 50%+ cache hit rate for repeated queries
-- [ ] 30%+ token reduction for typical queries
-- [ ] Pyodide initialization < 3 seconds on repeat visits
-
----
-
-### Phase 2.5: Testing & Polish
-
-**Goal:** Ensure reliability and improve UX.
-
-#### Test Cases
-
-| Category | Test |
-|----------|------|
-| Decomposition | Simple query → direct strategy |
-| Decomposition | "Compare X and Y" → parallel strategy |
-| Decomposition | "All action items" → map-reduce strategy |
-| REPL | Basic Python execution |
-| REPL | Context access via `agents_data` |
-| REPL | `FINAL()` output parsing |
-| Recursion | Single `sub_lm()` call |
-| Recursion | Nested `sub_lm()` calls |
-| Recursion | Max depth enforcement |
-| Error | Invalid Python syntax |
-| Error | REPL timeout |
-| Error | API rate limiting |
-
-#### UX Improvements
-
-1. **Progress Indicators**
-   - "Decomposing query..." → "Analyzing 3 agents..." → "Synthesizing..."
-   - Show which agent is currently being processed
-
-2. **Source Attribution**
-   - "[From Q4 Planning meeting]" inline citations
-   - Expandable source details
-
-3. **Fallback Transparency**
-   - Notify user when falling back to legacy
-   - Explain why (e.g., "REPL unavailable")
+| 3.1 Optimization & Caching | 1-2 days | Phase 2 ✅ |
+| 3.2 Testing & Polish | 2-3 days | Phase 3.1 |
+| **Total** | **3-5 days** | |
 
 ---
 
@@ -475,7 +373,7 @@ class ResultCache {
     
     // Execution
     maxConcurrent: 3,        // Parallel execution limit
-    maxDepth: 2,             // Max recursion depth
+    maxDepth: 3,             // Max recursion depth for sub_lm calls
     tokensPerSubQuery: 800,  // Token budget per sub-query
     timeout: 30000,          // Execution timeout (ms)
     
@@ -489,10 +387,12 @@ class ResultCache {
     replTimeout: 30000,      // REPL execution timeout
     autoInitREPL: false,     // Lazy vs eager init
     preferREPL: false,       // REPL over decomposition
+    subLmTimeout: 60000,     // Timeout for sub_lm calls
     
     // Feature Flags
     enableRLM: true,         // Master RLM switch
-    fallbackToLegacy: true   // Fallback on error
+    fallbackToLegacy: true,  // Fallback on error
+    enableSyncSubLm: true    // Enable synchronous sub_lm
 }
 ```
 
@@ -538,10 +438,21 @@ store.toPythonDict();           // Export for REPL
 ```javascript
 const repl = getREPLEnvironment(options);
 
+// Set LLM callback for sub_lm calls (Phase 2.2)
+repl.setLLMCallback(async (query, context) => {
+    return await callLLM(query, context);
+});
+
 await repl.initialize();
 const result = await repl.execute(pythonCode);
 await repl.setContext(agentsData);
+
+// Status checks
 repl.isReady();
+repl.isSyncEnabled();       // SharedArrayBuffer available?
+repl.getCapabilities();     // Full capability info
+repl.getSubLmStats();       // sub_lm call statistics
+
 repl.terminate();
 ```
 
@@ -565,7 +476,24 @@ pipeline.getStats();
         iterative: 4
     },
     replExecutions: 15,
-    replErrors: 2
+    replErrors: 2,
+    subLmCalls: 28,        // Phase 2.2
+    subLmErrors: 1,
+    repl: {
+        isReady: true,
+        syncEnabled: true,
+        subLm: {
+            totalCalls: 28,
+            successfulCalls: 27,
+            failedCalls: 1,
+            avgTime: 1250
+        },
+        capabilities: {
+            syncEnabled: true,
+            sharedArrayBufferSupported: true,
+            maxRecursionDepth: 3
+        }
+    }
 }
 ```
 
@@ -575,18 +503,19 @@ pipeline.getStats();
 
 1. **Pyodide Size**: ~10MB initial download (cached after first load)
 2. **No NumPy/Pandas**: Only standard library available in REPL
-3. **Synchronous Python**: Async Python not supported in Pyodide
+3. **SharedArrayBuffer Requirements**: Requires HTTPS and COOP/COEP headers for sync sub_lm
 4. **Context Size**: Large agent data may slow REPL operations
 5. **No Persistence**: REPL state resets on page reload
+6. **Recursion Depth**: Limited to 3 levels to prevent runaway LLM calls
 
 ---
 
 ## Next Steps
 
-1. **Immediate**: Complete Phase 2.1 (LLM Code Generation)
-2. **Short-term**: Implement Phase 2.2 (True Recursion)
-3. **Medium-term**: Add async execution and caching
-4. **Long-term**: Explore fine-tuning for domain-specific queries
+1. **Immediate**: Add result caching for repeated queries
+2. **Short-term**: Implement progress indicators during sub_lm execution
+3. **Medium-term**: Token optimization and batch similar sub-queries
+4. **Long-term**: Explore fine-tuning for domain-specific code generation
 
 ---
 
