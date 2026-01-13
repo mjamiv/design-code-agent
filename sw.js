@@ -1,53 +1,84 @@
 /**
  * Service Worker for northstar.LM
- * Provides offline support and faster repeat loads via caching
+ * Provides offline support and automatic cache clearing on updates
+ * 
+ * IMPORTANT: Increment CACHE_VERSION when deploying new changes!
  */
 
-const CACHE_NAME = 'northstar-lm-v2';
-const urlsToCache = [
+const CACHE_VERSION = 3;
+const CACHE_NAME = `northstar-lm-v${CACHE_VERSION}`;
+
+// Core app files - always try to get fresh versions
+const CORE_FILES = [
     './',
     './index.html',
     './orchestrator.html',
+    './northstar-overview.html',
     './css/styles.css',
     './js/app.js',
     './js/orchestrator.js',
-    // Fonts will be cached on first load
+    './js/rlm/index.js',
+    './js/rlm/context-store.js',
+    './js/rlm/query-decomposer.js',
+    './js/rlm/sub-executor.js',
+    './js/rlm/aggregator.js',
+    './js/rlm/repl-environment.js',
+    './js/rlm/repl-worker.js',
+    './js/rlm/code-generator.js',
 ];
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
+    console.log(`[SW] Installing version ${CACHE_VERSION}`);
+    
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            console.log('[SW] Caching static assets');
-            return cache.addAll(urlsToCache.map(url => {
-                // Handle query params in cache
+            console.log('[SW] Caching core assets');
+            return cache.addAll(CORE_FILES.map(url => {
                 return new Request(url, { cache: 'reload' });
             })).catch(err => {
                 console.warn('[SW] Failed to cache some assets:', err);
             });
         })
     );
+    
+    // Activate immediately without waiting for old SW to finish
     self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up ALL old caches
 self.addEventListener('activate', (event) => {
+    console.log(`[SW] Activating version ${CACHE_VERSION}`);
+    
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
+                    // Delete ANY cache that doesn't match current version
                     if (cacheName !== CACHE_NAME) {
                         console.log('[SW] Deleting old cache:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
+        }).then(() => {
+            // Notify all clients that cache has been cleared
+            return self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                    client.postMessage({
+                        type: 'CACHE_CLEARED',
+                        version: CACHE_VERSION
+                    });
+                });
+            });
         })
     );
+    
+    // Take control of all clients immediately
     self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - Network-first for core files, Cache-first for others
 self.addEventListener('fetch', (event) => {
     // Skip non-GET requests
     if (event.request.method !== 'GET') {
@@ -59,47 +90,109 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Skip external CDN resources (let browser handle)
+    // Skip external CDN resources
     if (event.request.url.includes('cdn.') ||
         event.request.url.includes('unpkg.com') ||
         event.request.url.includes('googleapis.com') ||
-        event.request.url.includes('gstatic.com')) {
+        event.request.url.includes('gstatic.com') ||
+        event.request.url.includes('pyodide')) {
         return;
     }
 
-    event.respondWith(
-        caches.match(event.request).then((response) => {
-            // Cache hit - return cached version
-            if (response) {
-                return response;
-            }
-
-            // Not in cache - fetch from network
-            return fetch(event.request).then((response) => {
-                // Don't cache non-successful responses
-                if (!response || response.status !== 200 || response.type !== 'basic') {
-                    return response;
-                }
-
-                // Clone the response (can only be consumed once)
-                const responseToCache = response.clone();
-
-                // Cache the fetched resource
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, responseToCache);
-                });
-
-                return response;
-            }).catch(() => {
-                // Network failed - could return offline page here
-                return new Response('Offline - please check your connection', {
-                    status: 503,
-                    statusText: 'Service Unavailable',
-                    headers: new Headers({
-                        'Content-Type': 'text/plain'
-                    })
-                });
-            });
-        })
+    const url = new URL(event.request.url);
+    const isCoreFile = CORE_FILES.some(file => 
+        url.pathname.endsWith(file.replace('./', '/')) || 
+        url.pathname === '/' ||
+        url.pathname.endsWith('.html') ||
+        url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.css')
     );
+
+    if (isCoreFile) {
+        // Network-first for core files (always try to get fresh version)
+        event.respondWith(networkFirst(event.request));
+    } else {
+        // Cache-first for other assets (images, fonts, etc.)
+        event.respondWith(cacheFirst(event.request));
+    }
+});
+
+// Network-first strategy: Try network, fall back to cache
+async function networkFirst(request) {
+    try {
+        const networkResponse = await fetch(request, { cache: 'no-cache' });
+        
+        // Cache the fresh response
+        if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
+        }
+        
+        return networkResponse;
+    } catch (error) {
+        // Network failed, try cache
+        const cachedResponse = await caches.match(request);
+        if (cachedResponse) {
+            console.log('[SW] Serving from cache (offline):', request.url);
+            return cachedResponse;
+        }
+        
+        // Nothing in cache either
+        return new Response('Offline - please check your connection', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain' }
+        });
+    }
+}
+
+// Cache-first strategy: Try cache, fall back to network
+async function cacheFirst(request) {
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+        return cachedResponse;
+    }
+    
+    try {
+        const networkResponse = await fetch(request);
+        
+        if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
+        }
+        
+        return networkResponse;
+    } catch (error) {
+        return new Response('Resource unavailable', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+        });
+    }
+}
+
+// Handle messages from the app
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+    
+    if (event.data && event.data.type === 'GET_VERSION') {
+        event.source.postMessage({
+            type: 'VERSION',
+            version: CACHE_VERSION
+        });
+    }
+    
+    // Force clear all caches
+    if (event.data && event.data.type === 'CLEAR_ALL_CACHES') {
+        event.waitUntil(
+            caches.keys().then(cacheNames => {
+                return Promise.all(
+                    cacheNames.map(cacheName => caches.delete(cacheName))
+                );
+            }).then(() => {
+                event.source.postMessage({ type: 'CACHES_CLEARED' });
+            })
+        );
+    }
 });
