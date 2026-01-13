@@ -1,13 +1,13 @@
 # RLM Implementation Status
 
-> **Last Updated:** January 13, 2026 (Phase 2.4 Complete)  
+> **Last Updated:** January 13, 2026 (Phase 3 Complete)  
 > **Based on:** "Recursive Language Models" by Zhang, Kraska & Khattab ([arXiv:2512.24601](https://arxiv.org/abs/2512.24601))
 
 ---
 
 ## Executive Summary
 
-The northstar.LM Agent Orchestrator now includes a full **RLM** implementation with **Phase 1: REPL Environment** and **Phase 2: True Recursion** complete. This enables intelligent query decomposition, parallel execution, response aggregation, in-browser Python code execution via Pyodide, and **synchronous recursive LLM calls from within Python code**.
+The northstar.LM Agent Orchestrator now includes a full **RLM** implementation with **Phase 1: REPL Environment**, **Phase 2: True Recursion**, and **Phase 3: Optimization & Caching** complete. This enables intelligent query decomposition, parallel execution, response aggregation, in-browser Python code execution via Pyodide, **synchronous recursive LLM calls from within Python code**, and **LRU-based query result caching for improved performance**.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -21,6 +21,9 @@ The northstar.LM Agent Orchestrator now includes a full **RLM** implementation w
 | Train of Thought UI | ✅ Complete | Enhanced UI with step logging and progress callbacks |
 | Unified Service Worker | ✅ Complete | COI + PWA merged into `sw.js` v4, no reload loops |
 | Progress Callbacks | ✅ Complete | Real-time updates from RLM pipeline to UI |
+| Query Result Cache | ✅ Complete | LRU cache with TTL, auto-invalidation on agent changes |
+| sub_lm Progress UI | ✅ Complete | Real-time progress for recursive calls with depth indicators |
+| Token Optimization | ✅ Complete | Compact context methods, token budget management |
 
 ---
 
@@ -349,15 +352,93 @@ sw.js (v4)            ← Single SW handles both:
 
 ---
 
-## Phase 3: Future Enhancements (Planned)
+## Phase 3: Optimization & Caching ✅ COMPLETE
 
-### Timeline Estimate
+### What Was Implemented
 
-| Phase | Duration | Dependencies |
-|-------|----------|--------------|
-| 3.1 Optimization & Caching | 1-2 days | Phase 2 ✅ |
-| 3.2 Testing & Polish | 2-3 days | Phase 3.1 |
-| **Total** | **3-5 days** | |
+#### Phase 3.1: Query Result Caching
+
+**File: `js/rlm/query-cache.js`** (New)
+
+1. **LRU Cache** - Least Recently Used eviction policy with configurable max entries (default: 50)
+2. **TTL-based Expiration** - Time-to-live for cache entries (default: 5 minutes)
+3. **Smart Cache Keys** - Generated from normalized query + active agent IDs + processing mode
+4. **Optional Fuzzy Matching** - Levenshtein distance-based similarity matching for near-duplicate queries
+5. **Cache Statistics** - Hit rate, evictions, expirations tracking
+
+**Integration in `js/rlm/index.js`:**
+- Cache checked before processing in `process()` and `processWithREPL()`
+- Results stored in cache after successful processing
+- Auto-invalidation when agents are added/removed/toggled
+- `clearCache()` and `getCacheStats()` methods for management
+
+**UI Integration in `orchestrator.html`:**
+- "Clear Cache" button added to Knowledge Base header
+- Visual feedback on cache clear
+
+#### Phase 3.2: Real-time sub_lm Progress
+
+**Enhanced `js/rlm/repl-environment.js`:**
+- `onSubLmStart` callback - Emits when sub_lm call begins with query and depth
+- `onSubLmComplete` callback - Emits when call completes with duration and success status
+
+**Enhanced `js/orchestrator.js`:**
+- `addThinkingStep()` now supports depth-based indentation
+- Displays depth level badges (L1, L2, L3) for recursive calls
+- Shows timing badges for completed steps
+
+**Enhanced `css/styles.css`:**
+- Depth-based indentation classes (`.depth-1`, `.depth-2`, `.depth-3`)
+- Depth badge styling with pink/purple theme
+- Timing badge styling with green (success) or orange (warning)
+
+#### Phase 3.3: Token Optimization
+
+**Enhanced `js/rlm/context-store.js`:**
+
+1. **`getCompactContext()`** - Summary-only format for reduced token usage
+2. **`getRelevantCompactContext(query)`** - Relevance-filtered context with score-based selection
+3. **`getOptimizedREPLContext()`** - Token-optimized context for REPL with transcript limits
+4. **`getContextWithBudget(tokenBudget)`** - Automatic context level selection based on token budget
+5. **`estimateTokens(text)`** - Rough token estimation for budget management
+6. **Helper methods**: `_truncateText()`, `_countBulletPoints()`
+
+### Files Created/Modified
+
+| File | Type | Description |
+|------|------|-------------|
+| `js/rlm/query-cache.js` | New | LRU cache with TTL and fuzzy matching |
+| `js/rlm/index.js` | Modified | Cache integration, new config options |
+| `js/rlm/repl-environment.js` | Modified | onSubLmStart/onSubLmComplete callbacks |
+| `js/rlm/context-store.js` | Modified | Token optimization methods |
+| `js/orchestrator.js` | Modified | Depth-aware thinking steps, clear cache button |
+| `css/styles.css` | Modified | Depth indentation, badges, timing styles |
+| `orchestrator.html` | Modified | Clear Cache button |
+
+### Cache Configuration
+
+```javascript
+// js/rlm/index.js - Cache settings in RLM_CONFIG
+{
+    enableCache: true,         // Enable query result caching
+    cacheMaxEntries: 50,       // Maximum cache entries
+    cacheTTL: 5 * 60 * 1000,   // Cache TTL (5 minutes)
+    enableFuzzyCache: false    // Enable fuzzy matching for similar queries
+}
+```
+
+### Cache API
+
+```javascript
+const pipeline = getRLMPipeline();
+
+// Clear cache manually
+pipeline.clearCache();
+
+// Get cache statistics
+const cacheStats = pipeline.getCacheStats();
+// Returns: { enabled, hits, misses, evictions, size, hitRate }
+```
 
 ---
 
@@ -392,7 +473,13 @@ sw.js (v4)            ← Single SW handles both:
     // Feature Flags
     enableRLM: true,         // Master RLM switch
     fallbackToLegacy: true,  // Fallback on error
-    enableSyncSubLm: true    // Enable synchronous sub_lm
+    enableSyncSubLm: true,   // Enable synchronous sub_lm
+    
+    // Cache Settings (Phase 3.1)
+    enableCache: true,       // Enable query result caching
+    cacheMaxEntries: 50,     // Maximum cache entries
+    cacheTTL: 300000,        // Cache TTL (5 minutes)
+    enableFuzzyCache: false  // Enable fuzzy matching
 }
 ```
 
@@ -429,8 +516,15 @@ const store = getContextStore();
 
 store.loadAgents(agents);
 store.getActiveAgents();
-store.getAgentsForQuery(query); // Returns relevance-scored agents
+store.queryAgents(query);       // Returns relevance-scored agents
 store.toPythonDict();           // Export for REPL
+
+// Phase 3.3: Token optimization methods
+store.getCompactContext();                  // Summary-only format
+store.getRelevantCompactContext(query);     // Relevance-filtered
+store.getOptimizedREPLContext();            // Token-limited for REPL
+store.getContextWithBudget(4000);           // Auto-select detail level
+store.estimateTokens(text);                 // Rough token count
 ```
 
 ### REPLEnvironment
@@ -479,6 +573,8 @@ pipeline.getStats();
     replErrors: 2,
     subLmCalls: 28,        // Phase 2.2
     subLmErrors: 1,
+    cacheHits: 15,         // Phase 3.1
+    cacheMisses: 27,
     repl: {
         isReady: true,
         syncEnabled: true,
@@ -493,6 +589,14 @@ pipeline.getStats();
             sharedArrayBufferSupported: true,
             maxRecursionDepth: 3
         }
+    },
+    cache: {               // Phase 3.1
+        enabled: true,
+        size: 12,
+        maxSize: 50,
+        hits: 15,
+        misses: 27,
+        hitRate: '35.7%'
     }
 }
 ```
@@ -512,10 +616,12 @@ pipeline.getStats();
 
 ## Next Steps
 
-1. **Immediate**: Add result caching for repeated queries
-2. **Short-term**: Implement progress indicators during sub_lm execution
-3. **Medium-term**: Token optimization and batch similar sub-queries
-4. **Long-term**: Explore fine-tuning for domain-specific code generation
+1. ~~**Immediate**: Add result caching for repeated queries~~ ✅ Phase 3.1
+2. ~~**Short-term**: Implement progress indicators during sub_lm execution~~ ✅ Phase 3.2
+3. ~~**Medium-term**: Token optimization~~ ✅ Phase 3.3
+4. **Future**: Sub-query batching for similar questions
+5. **Long-term**: Explore fine-tuning for domain-specific code generation
+6. **Long-term**: Persistent cache using IndexedDB
 
 ---
 

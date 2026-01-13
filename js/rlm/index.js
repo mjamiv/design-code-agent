@@ -28,6 +28,7 @@ import { SubExecutor, createExecutor } from './sub-executor.js';
 import { ResponseAggregator, createAggregator } from './aggregator.js';
 import { REPLEnvironment, getREPLEnvironment, resetREPLEnvironment, isREPLSupported, isSharedArrayBufferSupported } from './repl-environment.js';
 import { CodeGenerator, createCodeGenerator, generateCodePrompt, parseCodeOutput, parseFinalAnswer, validateCode, classifyQuery, QueryType } from './code-generator.js';
+import { QueryCache, getQueryCache, resetQueryCache, CACHE_CONFIG } from './query-cache.js';
 
 /**
  * RLM Configuration
@@ -58,7 +59,13 @@ export const RLM_CONFIG = {
     // Feature flags
     enableRLM: true,           // Master switch for RLM processing
     fallbackToLegacy: true,    // Fall back to legacy if RLM fails
-    enableSyncSubLm: true      // Enable synchronous sub_lm (requires SharedArrayBuffer)
+    enableSyncSubLm: true,     // Enable synchronous sub_lm (requires SharedArrayBuffer)
+
+    // Cache settings (Phase 3.1)
+    enableCache: true,         // Enable query result caching
+    cacheMaxEntries: 50,       // Maximum cache entries
+    cacheTTL: 5 * 60 * 1000,   // Cache TTL (5 minutes)
+    enableFuzzyCache: false    // Enable fuzzy matching for similar queries
 };
 
 /**
@@ -97,6 +104,13 @@ export class RLMPipeline {
         this._currentLlmCall = null;
         this._currentContext = null;
 
+        // Phase 3.1: Query result cache
+        this.cache = this.config.enableCache ? getQueryCache({
+            maxEntries: this.config.cacheMaxEntries,
+            defaultTTL: this.config.cacheTTL,
+            enableFuzzyMatch: this.config.enableFuzzyCache
+        }) : null;
+
         this.stats = {
             queriesProcessed: 0,
             totalSubQueries: 0,
@@ -105,7 +119,9 @@ export class RLMPipeline {
             replExecutions: 0,
             replErrors: 0,
             subLmCalls: 0,
-            subLmErrors: 0
+            subLmErrors: 0,
+            cacheHits: 0,
+            cacheMisses: 0
         };
 
         // Progress callback for train-of-thought UI updates
@@ -179,7 +195,29 @@ export class RLMPipeline {
                 return this._handleSubLmCallback(query, contextSlice);
             });
             
-            // Set up sub_lm call tracking
+            // Phase 3.2: Set up sub_lm progress callbacks for UI updates
+            this.repl.onSubLmStart = (data) => {
+                console.log(`[RLM] sub_lm #${data.id} started at depth ${data.depth}: ${data.query.substring(0, 50)}...`);
+                this._emitProgress(`sub_lm(${data.depth}): "${data.query.substring(0, 40)}..."`, 'recurse', {
+                    subLmId: data.id,
+                    depth: data.depth,
+                    query: data.query
+                });
+            };
+            
+            this.repl.onSubLmComplete = (data) => {
+                const status = data.success ? '✓' : '✗';
+                console.log(`[RLM] sub_lm #${data.id} ${data.success ? 'completed' : 'failed'} in ${data.duration}ms`);
+                this._emitProgress(`${status} sub_lm(${data.depth}) completed (${data.duration}ms)`, 
+                    data.success ? 'success' : 'warning', {
+                    subLmId: data.id,
+                    depth: data.depth,
+                    duration: data.duration,
+                    success: data.success
+                });
+            };
+            
+            // Legacy callback (deprecated, for backward compatibility)
             this.repl.onSubLmCall = (data) => {
                 console.log(`[RLM] sub_lm call at depth ${data.depth}: ${data.query.substring(0, 50)}...`);
             };
@@ -254,6 +292,13 @@ If the information is not available in the provided context, say so briefly.`;
         this.contextStore.loadAgents(agents);
         console.log(`[RLM] Loaded ${agents.length} agents into context store`);
 
+        // Phase 3.1: Invalidate cache when agents change
+        // Cache keys include agent IDs, so changing agents invalidates cached results
+        if (this.cache) {
+            this.cache.clear();
+            console.log('[RLM] Cache invalidated due to agent change');
+        }
+
         // Sync to REPL if initialized
         if (this.repl && this.repl.isReady()) {
             const contextData = this.contextStore.toPythonDict();
@@ -277,6 +322,22 @@ If the information is not available in the provided context, say so briefly.`;
             console.log('[RLM] RLM disabled, using legacy processing');
             return this._legacyProcess(query, llmCall, context);
         }
+
+        // Phase 3.1: Check cache for existing result
+        const cachedResult = this._checkCache(query, 'rlm');
+        if (cachedResult) {
+            this.stats.cacheHits++;
+            this._emitProgress('Cache hit - returning cached result', 'success');
+            return {
+                ...cachedResult,
+                metadata: {
+                    ...cachedResult.metadata,
+                    cached: true,
+                    cacheTime: Date.now() - startTime
+                }
+            };
+        }
+        this.stats.cacheMisses++;
 
         try {
             console.log('[RLM] Starting pipeline for query:', query.substring(0, 50) + '...');
@@ -323,7 +384,7 @@ If the information is not available in the provided context, say so briefly.`;
 
             console.log(`[RLM] Pipeline complete in ${Date.now() - startTime}ms`);
 
-            return {
+            const result = {
                 success: true,
                 response: finalResponse,
                 metadata: {
@@ -332,6 +393,11 @@ If the information is not available in the provided context, say so briefly.`;
                     pipelineTime: Date.now() - startTime
                 }
             };
+
+            // Phase 3.1: Store result in cache
+            this._storeInCache(query, result, 'rlm');
+
+            return result;
 
         } catch (error) {
             console.error('[RLM] Pipeline error:', error);
@@ -414,6 +480,22 @@ Use the following meeting data to answer questions accurately and comprehensivel
      */
     async processWithREPL(query, llmCall, context = {}) {
         const startTime = Date.now();
+
+        // Phase 3.1: Check cache for existing result
+        const cachedResult = this._checkCache(query, 'repl');
+        if (cachedResult) {
+            this.stats.cacheHits++;
+            this._emitProgress('Cache hit - returning cached result', 'success');
+            return {
+                ...cachedResult,
+                metadata: {
+                    ...cachedResult.metadata,
+                    cached: true,
+                    cacheTime: Date.now() - startTime
+                }
+            };
+        }
+        this.stats.cacheMisses++;
 
         // Phase 2.2: Store the LLM callback for sub_lm calls
         this._currentLlmCall = llmCall;
@@ -513,7 +595,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 this._emitProgress(`Completed with ${subLmStats.totalCalls} recursive LLM call${subLmStats.totalCalls > 1 ? 's' : ''}`, 'recurse');
             }
 
-            return {
+            const result = {
                 success: true,
                 response: finalAnswer.answer || 'No result from code execution',
                 metadata: {
@@ -528,6 +610,11 @@ Use the following meeting data to answer questions accurately and comprehensivel
                     stderr: finalAnswer.stderr
                 }
             };
+
+            // Phase 3.1: Store result in cache
+            this._storeInCache(query, result, 'repl');
+
+            return result;
 
         } catch (error) {
             console.error('[RLM:REPL] Error:', error);
@@ -590,6 +677,97 @@ Be concise and focus only on information relevant to the question.`;
         return results;
     }
 
+    // ==========================================
+    // Phase 3.1: Cache Methods
+    // ==========================================
+
+    /**
+     * Check cache for a query result
+     * @private
+     * @param {string} query - User query
+     * @param {string} mode - Processing mode ('rlm' or 'repl')
+     * @returns {Object|null} Cached result or null
+     */
+    _checkCache(query, mode = 'rlm') {
+        if (!this.cache || !this.config.enableCache) {
+            return null;
+        }
+
+        // Get active agent IDs for cache key
+        const activeAgents = this.contextStore.getActiveAgents();
+        const agentIds = activeAgents.map(a => a.id);
+
+        // Generate cache key
+        const cacheKey = this.cache.generateKey(query, agentIds, mode);
+
+        // Try exact match first
+        let cached = this.cache.get(cacheKey);
+
+        // Try fuzzy match if enabled and no exact match
+        if (!cached && this.config.enableFuzzyCache) {
+            cached = this.cache.getFuzzy(query, agentIds, mode);
+        }
+
+        if (cached) {
+            console.log(`[RLM:Cache] HIT for query: ${query.substring(0, 40)}...`);
+        }
+
+        return cached;
+    }
+
+    /**
+     * Store a result in the cache
+     * @private
+     * @param {string} query - User query
+     * @param {Object} result - Result to cache
+     * @param {string} mode - Processing mode ('rlm' or 'repl')
+     */
+    _storeInCache(query, result, mode = 'rlm') {
+        if (!this.cache || !this.config.enableCache) {
+            return;
+        }
+
+        // Only cache successful results
+        if (!result.success) {
+            return;
+        }
+
+        // Get active agent IDs for cache key
+        const activeAgents = this.contextStore.getActiveAgents();
+        const agentIds = activeAgents.map(a => a.id);
+
+        // Generate cache key and store
+        const cacheKey = this.cache.generateKey(query, agentIds, mode);
+        this.cache.set(cacheKey, result, this.config.cacheTTL);
+
+        console.log(`[RLM:Cache] Stored result for query: ${query.substring(0, 40)}...`);
+    }
+
+    /**
+     * Clear the query result cache
+     * Call this when agents are modified
+     */
+    clearCache() {
+        if (this.cache) {
+            this.cache.clear();
+            console.log('[RLM] Query cache cleared');
+        }
+    }
+
+    /**
+     * Get cache statistics
+     * @returns {Object} Cache statistics
+     */
+    getCacheStats() {
+        if (!this.cache) {
+            return { enabled: false };
+        }
+        return {
+            enabled: true,
+            ...this.cache.getStats()
+        };
+    }
+
     /**
      * Check if a query should use REPL execution
      * @param {string} query - User query
@@ -641,10 +819,14 @@ Be concise and focus only on information relevant to the question.`;
             capabilities: this.repl.getCapabilities()
         } : null;
         
+        // Phase 3.1: Include cache stats
+        const cacheStats = this.getCacheStats();
+        
         return {
             ...this.stats,
             contextStore: this.contextStore.getStats(),
             repl: replStats,
+            cache: cacheStats,
             config: this.config
         };
     }
@@ -685,13 +867,23 @@ Be concise and focus only on information relevant to the question.`;
             this.repl.reset().catch(() => {});
         }
 
+        // Phase 3.1: Clear cache on reset
+        if (this.cache) {
+            this.cache.clear();
+            this.cache.resetStats();
+        }
+
         this.stats = {
             queriesProcessed: 0,
             totalSubQueries: 0,
             avgExecutionTime: 0,
             strategies: {},
             replExecutions: 0,
-            replErrors: 0
+            replErrors: 0,
+            subLmCalls: 0,
+            subLmErrors: 0,
+            cacheHits: 0,
+            cacheMisses: 0
         };
     }
 
@@ -771,5 +963,11 @@ export {
     parseFinalAnswer,
     validateCode,
     classifyQuery,
-    QueryType
+    QueryType,
+
+    // Query Cache (Phase 3.1)
+    QueryCache,
+    getQueryCache,
+    resetQueryCache,
+    CACHE_CONFIG
 };

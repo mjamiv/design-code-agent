@@ -3826,6 +3826,69 @@ details[open] .about-toggle {
     color: #fb923c; /* Orange */
 }
 
+.thinking-step.cache .step-text {
+    color: #c084fc; /* Purple for cache hits */
+}
+
+/* Phase 3.2: Depth-based indentation for nested sub_lm calls */
+.thinking-step.depth-1 {
+    margin-left: 16px;
+    padding-left: 8px;
+    border-left: 2px solid rgba(244, 114, 182, 0.3);
+}
+
+.thinking-step.depth-2 {
+    margin-left: 32px;
+    padding-left: 8px;
+    border-left: 2px solid rgba(244, 114, 182, 0.2);
+}
+
+.thinking-step.depth-3 {
+    margin-left: 48px;
+    padding-left: 8px;
+    border-left: 2px solid rgba(244, 114, 182, 0.15);
+}
+
+/* Depth badge for recursive sub_lm calls */
+.thinking-step .depth-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 1px 4px;
+    margin-right: 4px;
+    border-radius: 3px;
+    background: rgba(244, 114, 182, 0.2);
+    color: #f472b6;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.thinking-step.depth-1 .depth-badge { background: rgba(244, 114, 182, 0.25); }
+.thinking-step.depth-2 .depth-badge { background: rgba(244, 114, 182, 0.20); }
+.thinking-step.depth-3 .depth-badge { background: rgba(244, 114, 182, 0.15); }
+
+/* Timing badge for completed steps */
+.thinking-step .timing-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 1px 5px;
+    margin-left: 6px;
+    border-radius: 3px;
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+    font-family: 'Source Code Pro', monospace;
+}
+
+.thinking-step.warning .timing-badge {
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;
+}
+
 /* Current active step */
 .thinking-current {
     display: flex;

@@ -234,6 +234,260 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}`;
         };
     }
 
+    // ==========================================
+    // Phase 3.3: Token Optimization Methods
+    // ==========================================
+
+    /**
+     * Get compact context for token-efficient initial queries
+     * Returns summary-only format to reduce token usage
+     * 
+     * @param {Object} options - Options for compact context
+     * @returns {Object} Compact context object
+     */
+    getCompactContext(options = {}) {
+        const {
+            activeOnly = true,
+            maxSummaryLength = 500,
+            includeSentiment = false
+        } = options;
+
+        const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
+
+        return {
+            agents: agents.map(agent => ({
+                id: agent.id,
+                name: agent.displayName || agent.title || 'Untitled',
+                date: agent.date || null,
+                summary: this._truncateText(agent.summary || '', maxSummaryLength),
+                sentiment: includeSentiment ? (agent.sentiment || '') : undefined,
+                keyPointsCount: this._countBulletPoints(agent.keyPoints || ''),
+                actionItemsCount: this._countBulletPoints(agent.actionItems || ''),
+                hasTranscript: !!agent.transcript && agent.transcript.length > 100
+            })),
+            stats: {
+                total: agents.length,
+                withTranscripts: agents.filter(a => a.transcript && a.transcript.length > 100).length
+            }
+        };
+    }
+
+    /**
+     * Get relevance-filtered compact context based on query
+     * Only includes agents that match the query, reducing token usage
+     * 
+     * @param {string} query - User query for relevance filtering
+     * @param {Object} options - Options for filtered context
+     * @returns {Object} Filtered compact context
+     */
+    getRelevantCompactContext(query, options = {}) {
+        const {
+            maxAgents = 3,
+            minScore = 2,
+            maxSummaryLength = 800
+        } = options;
+
+        // Get relevance-scored agents
+        const relevantAgents = this.queryAgents(query, {
+            maxResults: maxAgents,
+            activeOnly: true,
+            minScore
+        });
+
+        return {
+            agents: relevantAgents.map(agent => ({
+                id: agent.id,
+                name: agent.displayName || agent.title || 'Untitled',
+                date: agent.date || null,
+                relevanceScore: agent._relevanceScore,
+                summary: this._truncateText(agent.summary || '', maxSummaryLength),
+                keyPoints: this._truncateText(agent.keyPoints || '', 600),
+                actionItems: this._truncateText(agent.actionItems || '', 400)
+            })),
+            stats: {
+                returned: relevantAgents.length,
+                totalActive: this.metadata.activeAgents,
+                query: query.substring(0, 50)
+            }
+        };
+    }
+
+    /**
+     * Get token-optimized REPL context
+     * Limits transcript size and removes empty fields
+     * 
+     * @param {Object} options - Options for optimized context
+     * @returns {Object} Token-optimized context for REPL
+     */
+    getOptimizedREPLContext(options = {}) {
+        const {
+            maxTranscriptLength = 3000,  // Reduced from default 10000
+            includeEmptyFields = false,
+            activeOnly = true
+        } = options;
+
+        const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
+
+        return {
+            agents: agents.map(agent => {
+                const optimized = {
+                    id: agent.id,
+                    displayName: agent.displayName || agent.title || 'Untitled',
+                    date: agent.date || null
+                };
+
+                // Only include non-empty fields
+                if (agent.summary || includeEmptyFields) {
+                    optimized.summary = agent.summary || '';
+                }
+                if (agent.keyPoints || includeEmptyFields) {
+                    optimized.keyPoints = agent.keyPoints || '';
+                }
+                if (agent.actionItems || includeEmptyFields) {
+                    optimized.actionItems = agent.actionItems || '';
+                }
+                if (agent.sentiment || includeEmptyFields) {
+                    optimized.sentiment = agent.sentiment || '';
+                }
+
+                // Truncated transcript
+                if (agent.transcript && agent.transcript.length > 0) {
+                    optimized.transcript = agent.transcript.length > maxTranscriptLength
+                        ? agent.transcript.substring(0, maxTranscriptLength) + '...[truncated]'
+                        : agent.transcript;
+                    optimized.transcriptTruncated = agent.transcript.length > maxTranscriptLength;
+                    optimized.originalTranscriptLength = agent.transcript.length;
+                }
+
+                return optimized;
+            }),
+            metadata: {
+                totalAgents: this.metadata.totalAgents,
+                activeAgents: this.metadata.activeAgents,
+                optimizedAt: new Date().toISOString()
+            }
+        };
+    }
+
+    /**
+     * Truncate text to a maximum length, respecting word boundaries
+     * @private
+     */
+    _truncateText(text, maxLength) {
+        if (!text || text.length <= maxLength) {
+            return text;
+        }
+
+        // Find a good breaking point (sentence or word boundary)
+        let truncated = text.substring(0, maxLength);
+        const lastSentence = truncated.lastIndexOf('. ');
+        const lastSpace = truncated.lastIndexOf(' ');
+
+        if (lastSentence > maxLength * 0.7) {
+            truncated = truncated.substring(0, lastSentence + 1);
+        } else if (lastSpace > maxLength * 0.8) {
+            truncated = truncated.substring(0, lastSpace);
+        }
+
+        return truncated + '...';
+    }
+
+    /**
+     * Count bullet points in text (for metadata)
+     * @private
+     */
+    _countBulletPoints(text) {
+        if (!text) return 0;
+        // Count lines starting with -, *, •, or numbered patterns like "1."
+        const bulletPattern = /^[\s]*[-*•]|\d+\./gm;
+        const matches = text.match(bulletPattern);
+        return matches ? matches.length : 0;
+    }
+
+    /**
+     * Estimate token count for context (rough approximation)
+     * Useful for deciding which context method to use
+     * @param {string} text - Text to estimate
+     * @returns {number} Estimated token count
+     */
+    estimateTokens(text) {
+        if (!text) return 0;
+        // Rough estimate: ~4 characters per token for English text
+        return Math.ceil(text.length / 4);
+    }
+
+    /**
+     * Get context with automatic token budget management
+     * Chooses the appropriate detail level based on token budget
+     * 
+     * @param {number} tokenBudget - Maximum tokens to use
+     * @param {Object} options - Options
+     * @returns {Object} Context optimized for token budget
+     */
+    getContextWithBudget(tokenBudget = 4000, options = {}) {
+        const { query = '', prioritizeRecent = true } = options;
+        
+        const agents = this.getActiveAgents();
+        if (agents.length === 0) {
+            return { agents: [], tokenEstimate: 0 };
+        }
+
+        // Sort by relevance or recency
+        let sortedAgents = query 
+            ? this.queryAgents(query, { activeOnly: true, maxResults: agents.length })
+            : agents;
+
+        if (prioritizeRecent && !query) {
+            sortedAgents = [...sortedAgents].sort((a, b) => {
+                const dateA = a.date ? new Date(a.date) : new Date(0);
+                const dateB = b.date ? new Date(b.date) : new Date(0);
+                return dateB - dateA;
+            });
+        }
+
+        const result = { agents: [], tokenEstimate: 0 };
+        let remainingBudget = tokenBudget;
+
+        for (const agent of sortedAgents) {
+            // Try full context first
+            const fullContext = this.getContextSlice(agent.id, 'full');
+            const fullTokens = this.estimateTokens(fullContext);
+
+            if (fullTokens <= remainingBudget) {
+                result.agents.push({ ...agent, _contextLevel: 'full', _tokens: fullTokens });
+                remainingBudget -= fullTokens;
+                result.tokenEstimate += fullTokens;
+                continue;
+            }
+
+            // Try standard context
+            const standardContext = this.getContextSlice(agent.id, 'standard');
+            const standardTokens = this.estimateTokens(standardContext);
+
+            if (standardTokens <= remainingBudget) {
+                result.agents.push({ ...agent, _contextLevel: 'standard', _tokens: standardTokens });
+                remainingBudget -= standardTokens;
+                result.tokenEstimate += standardTokens;
+                continue;
+            }
+
+            // Try summary only
+            const summaryContext = this.getContextSlice(agent.id, 'summary');
+            const summaryTokens = this.estimateTokens(summaryContext);
+
+            if (summaryTokens <= remainingBudget) {
+                result.agents.push({ ...agent, _contextLevel: 'summary', _tokens: summaryTokens });
+                remainingBudget -= summaryTokens;
+                result.tokenEstimate += summaryTokens;
+            }
+
+            // If we can't fit even the summary, stop
+            if (remainingBudget < 100) break;
+        }
+
+        return result;
+    }
+
     /**
      * Export context in Python-friendly dictionary format
      * Used by the REPL environment to set up the Python context variable

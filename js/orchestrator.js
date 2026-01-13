@@ -70,6 +70,7 @@ function initElements() {
         agentsCount: document.getElementById('agents-count'),
         activeAgentsCount: document.getElementById('active-agents-count'),
         chainEmptyState: document.getElementById('chain-empty-state'),
+        clearCacheBtn: document.getElementById('clear-cache-btn'),
         clearAllBtn: document.getElementById('clear-all-agents'),
         generateInsightsBtn: document.getElementById('generate-insights-btn'),
         orchestratorBrain: document.getElementById('orchestrator-brain'),
@@ -236,6 +237,9 @@ function setupEventListeners() {
     elements.agentsDropZone.addEventListener('dragleave', handleDragLeave);
     elements.agentsDropZone.addEventListener('drop', handleDrop);
     elements.agentFilesInput.addEventListener('change', handleFileSelect);
+    if (elements.clearCacheBtn) {
+        elements.clearCacheBtn.addEventListener('click', clearQueryCache);
+    }
     elements.clearAllBtn.addEventListener('click', clearAllAgents);
 
     // Generate Insights
@@ -524,6 +528,27 @@ function clearAllAgents() {
     rlmPipeline.reset(); // Reset RLM pipeline state
     clearSavedState(); // Clear sessionStorage
     updateUI();
+}
+
+/**
+ * Clear the RLM query result cache
+ * Phase 3.1: Cache management
+ */
+function clearQueryCache() {
+    rlmPipeline.clearCache();
+    
+    // Show temporary feedback on button
+    if (elements.clearCacheBtn) {
+        const originalText = elements.clearCacheBtn.textContent;
+        elements.clearCacheBtn.textContent = 'Cleared!';
+        elements.clearCacheBtn.disabled = true;
+        setTimeout(() => {
+            elements.clearCacheBtn.textContent = originalText;
+            elements.clearCacheBtn.disabled = false;
+        }, 1500);
+    }
+    
+    console.log('[Orchestrator] Query cache cleared');
 }
 
 // ============================================
@@ -1001,9 +1026,10 @@ async function chatWithREPL(userMessage, thinkingId = null) {
     };
 
     // Set up progress callback if we have a thinking ID
+    // Phase 3.2: Now passes details for depth-based indentation
     if (thinkingId) {
         rlmPipeline.setProgressCallback((step, type, details) => {
-            addThinkingStep(thinkingId, step, type);
+            addThinkingStep(thinkingId, step, type, details);
         });
     }
 
@@ -1051,9 +1077,10 @@ async function chatWithRLM(userMessage, thinkingId = null) {
     };
 
     // Set up progress callback if we have a thinking ID
+    // Phase 3.2: Now passes details for depth-based indentation
     if (thinkingId) {
         rlmPipeline.setProgressCallback((step, type, details) => {
-            addThinkingStep(thinkingId, step, type);
+            addThinkingStep(thinkingId, step, type, details);
         });
     }
 
@@ -1267,14 +1294,25 @@ function showThinkingIndicator() {
 
 /**
  * Add a step to the thinking log (persists in the log)
+ * Phase 3.2: Enhanced to support depth-based indentation for sub_lm calls
+ * 
+ * @param {string} id - Thinking indicator ID
+ * @param {string} step - Step text to display
+ * @param {string} type - Step type ('info', 'classify', 'code', 'execute', 'recurse', 'success', 'warning')
+ * @param {Object} details - Optional details object with depth, subLmId, etc.
  */
-function addThinkingStep(id, step, type = 'info') {
+function addThinkingStep(id, step, type = 'info', details = {}) {
     const thinkingDiv = document.getElementById(id);
     if (thinkingDiv) {
         const logDiv = thinkingDiv.querySelector('.thinking-log');
         if (logDiv) {
             const stepEl = document.createElement('div');
-            stepEl.className = `thinking-step ${type}`;
+            
+            // Determine depth for indentation (sub_lm calls show depth)
+            const depth = details.depth || 0;
+            const depthClass = depth > 0 ? `depth-${Math.min(depth, 3)}` : '';
+            
+            stepEl.className = `thinking-step ${type} ${depthClass}`.trim();
             
             // Icon based on type
             const icons = {
@@ -1286,10 +1324,23 @@ function addThinkingStep(id, step, type = 'info') {
                 'aggregate': '📊',
                 'success': '✓',
                 'info': '→',
-                'warning': '⚠️'
+                'warning': '⚠️',
+                'cache': '💾'
             };
             
-            stepEl.innerHTML = `<span class="step-icon">${icons[type] || icons.info}</span><span class="step-text">${step}</span>`;
+            // Add depth badge for recursive calls
+            let depthBadge = '';
+            if (type === 'recurse' && depth > 0) {
+                depthBadge = `<span class="depth-badge">L${depth}</span>`;
+            }
+            
+            // Add timing badge if duration is provided
+            let timingBadge = '';
+            if (details.duration) {
+                timingBadge = `<span class="timing-badge">${details.duration}ms</span>`;
+            }
+            
+            stepEl.innerHTML = `<span class="step-icon">${icons[type] || icons.info}</span>${depthBadge}<span class="step-text">${step}</span>${timingBadge}`;
             logDiv.appendChild(stepEl);
             
             // Auto-scroll

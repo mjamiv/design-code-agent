@@ -77,7 +77,11 @@ export class REPLEnvironment {
         this.onReady = null;
         this.onError = null;
         this.onOutput = null;
-        this.onSubLmCall = null;  // Called when sub_lm is invoked
+        this.onSubLmCall = null;      // Called when sub_lm is invoked (deprecated, use onSubLmStart)
+        
+        // Phase 3.2: Enhanced progress callbacks for sub_lm
+        this.onSubLmStart = null;     // Called when sub_lm starts: (id, query, depth) => void
+        this.onSubLmComplete = null;  // Called when sub_lm completes: (id, success, duration) => void
     }
     
     /**
@@ -433,12 +437,27 @@ export class REPLEnvironment {
         
         console.log(`[REPL] sub_lm request #${id} at depth ${depth}:`, query.substring(0, 50) + '...');
         
-        // Notify callback if set
+        // Phase 3.2: Emit start callback for UI progress
+        if (this.onSubLmStart) {
+            try {
+                this.onSubLmStart({
+                    id,
+                    query,
+                    depth,
+                    context: contextSlice ? contextSlice.substring(0, 100) + '...' : null
+                });
+            } catch (e) {
+                console.warn('[REPL] onSubLmStart callback error:', e);
+            }
+        }
+        
+        // Legacy callback (deprecated but still supported)
         if (this.onSubLmCall) {
             this.onSubLmCall({ id, query, context: contextSlice, depth });
         }
         
         let response = '';
+        let success = false;
         
         try {
             if (!this.llmCallback) {
@@ -455,6 +474,7 @@ export class REPLEnvironment {
             
             this.subLmStats.successfulCalls++;
             this.subLmStats.totalTime += Date.now() - startTime;
+            success = true;
             
             console.log(`[REPL] sub_lm #${id} completed in ${Date.now() - startTime}ms`);
             
@@ -462,6 +482,24 @@ export class REPLEnvironment {
             console.error(`[REPL] sub_lm #${id} failed:`, error.message);
             this.subLmStats.failedCalls++;
             response = `[Error: ${error.message}]`;
+            success = false;
+        }
+        
+        const duration = Date.now() - startTime;
+        
+        // Phase 3.2: Emit complete callback for UI progress
+        if (this.onSubLmComplete) {
+            try {
+                this.onSubLmComplete({
+                    id,
+                    success,
+                    duration,
+                    depth,
+                    responseLength: response.length
+                });
+            } catch (e) {
+                console.warn('[REPL] onSubLmComplete callback error:', e);
+            }
         }
         
         // Write response to shared buffer and signal worker
