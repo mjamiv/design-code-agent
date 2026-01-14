@@ -997,6 +997,10 @@ ${agent.actionItems}
 
 SENTIMENT:
 ${agent.sentiment}
+${agent.transcript ? `
+TRANSCRIPT:
+${agent.transcript}
+` : ''}
 `).join('\n\n---\n\n');
 }
 
@@ -1365,20 +1369,32 @@ function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
 function buildChatContext(userQuery = '') {
     // Only use active agents
     const activeAgents = state.agents.filter(a => a.enabled);
-    
+
     // Select only relevant agents for this query
     const relevantAgents = userQuery ?
         selectRelevantAgents(userQuery, activeAgents, 5) :
         activeAgents.slice(0, 5); // Default to first 5 if no query
 
-    return relevantAgents.map((agent, index) => `
+    // Dynamic transcript limit based on number of agents (more agents = less transcript per agent)
+    // Total context budget ~50k chars, reserve ~30k for transcripts across all agents
+    const transcriptLimit = Math.floor(30000 / Math.max(relevantAgents.length, 1));
+
+    return relevantAgents.map((agent, index) => {
+        const transcriptSection = agent.transcript
+            ? (agent.transcript.length > transcriptLimit
+                ? `Transcript: ${agent.transcript.substring(0, transcriptLimit)}...[truncated]`
+                : `Transcript: ${agent.transcript}`)
+            : '';
+
+        return `
 --- Meeting ${index + 1}: ${agent.displayName || agent.title} (${agent.date || 'No date'}) ---
 Summary: ${agent.summary}
 Key Points: ${agent.keyPoints}
 Action Items: ${agent.actionItems}
 Sentiment: ${agent.sentiment}
-${agent.transcript ? `Transcript excerpt: ${agent.transcript.substring(0, 1500)}...` : ''}
-`).join('\n\n');
+${transcriptSection}
+`;
+    }).join('\n\n');
 }
 
 function appendChatMessage(role, content, shouldSave = true) {

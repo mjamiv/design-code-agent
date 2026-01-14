@@ -50,7 +50,8 @@ export class ContextStore {
             agent.summary || '',
             agent.keyPoints || '',
             agent.actionItems || '',
-            agent.sentiment || ''
+            agent.sentiment || '',
+            agent.transcript || ''  // Include transcript in search index
         ].join(' ').toLowerCase();
 
         return {
@@ -153,7 +154,11 @@ export class ContextStore {
             if ((agent.actionItems || '').toLowerCase().includes(keyword)) {
                 score += 3;
             }
-            // General text match
+            // Transcript match (lower weight but still valuable)
+            if ((agent.transcript || '').toLowerCase().includes(keyword)) {
+                score += 2;
+            }
+            // General text match (catches anything in search index)
             if (searchIndex.text.includes(keyword)) {
                 score += 1;
             }
