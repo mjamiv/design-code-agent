@@ -26,12 +26,14 @@ These settings enable A/B testing to compare results between models and evaluate
 | Feature | GPT-5.2 | GPT-5-mini | GPT-5-nano |
 |---------|---------|------------|------------|
 | Reasoning Effort Control | ✅ | ❌ | ❌ |
-| Custom Temperature | ✅ | ❌ | ❌ |
+| Custom Temperature | ✅* | ❌ | ❌ |
 | RLM Pipeline Support | ✅ | ✅ | ✅ |
+
+*\*Temperature is only available when reasoning effort is set to "None". Temperature and reasoning effort are mutually exclusive.*
 
 ## Reasoning Effort (GPT-5.2 Only)
 
-The `reasoning.effort` parameter controls how deeply the model reasons before generating a response.
+The `reasoning_effort` parameter controls how deeply the model reasons before generating a response.
 
 | Level | Description |
 |-------|-------------|
@@ -45,21 +47,20 @@ The `reasoning.effort` parameter controls how deeply the model reasons before ge
 
 ### API Format
 
-Per OpenAI 2026 guidance, reasoning effort uses a nested object format:
+Per OpenAI 2026 guidance, the Chat Completions API uses a **top-level** `reasoning_effort` parameter:
 
 ```json
 {
   "model": "gpt-5.2",
   "messages": [...],
   "max_completion_tokens": 4000,
-  "temperature": 0.7,
-  "reasoning": {
-    "effort": "medium"
-  }
+  "reasoning_effort": "medium"
 }
 ```
 
-When effort is set to "None", the `reasoning` object is omitted entirely (uses API default).
+> **Important:** When `reasoning_effort` is set to any value other than "none", the `temperature` parameter is **NOT supported** and will cause an API error. Temperature can only be used when reasoning is disabled.
+
+When effort is set to "None", the `reasoning_effort` parameter is omitted and `temperature: 0.7` is used instead.
 
 ## RLM Toggle
 
