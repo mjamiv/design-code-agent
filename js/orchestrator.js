@@ -27,16 +27,18 @@ const state = {
     chatHistory: [],
     isProcessing: false,
     settings: {
-        model: 'gpt-5.2',      // 'gpt-5.2' or 'gpt-5-nano'
+        model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
         effort: 'medium',      // 'low', 'medium', 'high' (only for gpt-5.2)
         useRLM: true           // Enable/disable RLM processing
     }
 };
 
 // Model pricing (per 1M tokens)
+// Model pricing (per 1M tokens) - from OpenAI docs
 const PRICING = {
-    'gpt-5.2': { input: 2.50, output: 10.00 },
-    'gpt-5-nano': { input: 0.10, output: 0.40 }
+    'gpt-5.2': { input: 2.50, output: 10.00 },      // Full reasoning model
+    'gpt-5-mini': { input: 0.25, output: 2.00 },    // Fast, cost-efficient
+    'gpt-5-nano': { input: 0.05, output: 0.40 }     // Fastest, cheapest
 };
 
 // Metrics tracking for current session
@@ -1062,7 +1064,8 @@ async function sendChatMessage() {
         const useREPL = rlmEnabled && rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message);
         const useRLM = rlmEnabled && !useREPL && rlmPipeline.shouldUseRLM(message);
         const activeAgentCount = state.agents.filter(a => a.enabled).length;
-        const modelName = state.settings.model === 'gpt-5-nano' ? 'GPT-5-nano' : 'GPT-5.2';
+        const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
+        const modelName = modelNames[state.settings.model] || 'GPT-5.2';
 
         // Update title based on mode
         if (useREPL) {
