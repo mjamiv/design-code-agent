@@ -1592,23 +1592,28 @@ async function callAPIWithRetry(fn, maxRetries = 3, operation = 'API call') {
  * - reasoning.effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh'
  *   - Default is 'none' (favors speed)
  *   - 'xhigh' is new in GPT-5.2 for deeper reasoning
- * - Only GPT-5.2 supports reasoning effort (not mini)
+ * - Only GPT-5.2 supports reasoning effort and temperature
+ * - GPT-5-mini and GPT-5-nano only support temperature=1 (default)
  */
 function buildAPIRequestBody(messages, maxTokens = 4000) {
     const model = state.settings.model;
     const body = {
         model: model,
         messages: messages,
-        max_completion_tokens: maxTokens,
-        temperature: 0.7
+        max_completion_tokens: maxTokens
     };
     
-    // Add reasoning.effort for GPT-5.2 (not supported on mini)
-    // Format: { reasoning: { effort: "value" } }
-    if (model === 'gpt-5.2' && state.settings.effort && state.settings.effort !== 'none') {
-        body.reasoning = {
-            effort: state.settings.effort
-        };
+    // Only GPT-5.2 supports custom temperature (mini/nano only support default=1)
+    if (model === 'gpt-5.2') {
+        body.temperature = 0.7;
+        
+        // Add reasoning.effort for GPT-5.2
+        // Format: { reasoning: { effort: "value" } }
+        if (state.settings.effort && state.settings.effort !== 'none') {
+            body.reasoning = {
+                effort: state.settings.effort
+            };
+        }
     }
     
     return body;
