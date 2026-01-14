@@ -2291,7 +2291,26 @@ function validateAndExtractResponse(data, model) {
         }
 
         const finishReason = choice.finish_reason || 'stop';
-        const content = choice.message.content;
+        let content = choice.message.content;
+
+        if (Array.isArray(content)) {
+            content = content
+                .map((item) => {
+                    if (typeof item === 'string') {
+                        return item;
+                    }
+                    if (item && typeof item === 'object') {
+                        return item.text || item.content || '';
+                    }
+                    return '';
+                })
+                .join('');
+        } else if (content && typeof content === 'object') {
+            content = content.text || content.content || content.value || content;
+        }
+        if (content !== null && content !== undefined && typeof content !== 'string') {
+            content = String(content);
+        }
 
         // Check for null/undefined content
         if (content === null || content === undefined) {
