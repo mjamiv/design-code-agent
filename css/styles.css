@@ -3559,6 +3559,111 @@ details[open] .about-toggle {
     box-shadow: 0 0 0 2px rgba(212, 168, 83, 0.2);
 }
 
+/* Context Window Gauge */
+.context-gauge {
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(10, 14, 23, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.context-gauge-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+}
+
+.context-gauge-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.context-gauge-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.context-gauge-status {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+    font-weight: 600;
+}
+
+.context-gauge-status.warn {
+    background: rgba(234, 179, 8, 0.15);
+    color: #facc15;
+}
+
+.context-gauge-status.critical {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.context-gauge-bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.context-gauge-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 56px;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.context-gauge-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.context-gauge-bar {
+    position: relative;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.context-gauge-bar-raw {
+    background: rgba(96, 165, 250, 0.15);
+}
+
+.context-gauge-fill {
+    position: absolute;
+    inset: 0;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(212, 168, 83, 0.9), rgba(250, 204, 21, 0.8));
+    border-radius: inherit;
+    transition: width 0.3s ease;
+}
+
+.context-gauge-fill-raw {
+    background: linear-gradient(90deg, rgba(96, 165, 250, 0.9), rgba(59, 130, 246, 0.8));
+}
+
+.context-gauge-value {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.context-gauge-footnote {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
 /* Toggle Switch Styling */
 .toggle-switch {
     position: relative;

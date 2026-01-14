@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=59">
+    <link rel="stylesheet" href="css/styles.css?v=60">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -181,6 +181,36 @@
                             <input type="checkbox" id="rlm-auto-toggle" checked>
                             <span class="toggle-slider"></span>
                         </label>
+                    </div>
+                </div>
+
+                <!-- Context Window Gauge -->
+                <div class="context-gauge" id="context-gauge">
+                    <div class="context-gauge-header">
+                        <div class="context-gauge-title">Context Window Gauge</div>
+                        <div class="context-gauge-meta">
+                            <span class="context-gauge-status" id="context-gauge-status">Healthy</span>
+                            <span class="context-gauge-usage" id="context-gauge-usage">0 / 0</span>
+                        </div>
+                    </div>
+                    <div class="context-gauge-bars">
+                        <div class="context-gauge-row">
+                            <span class="context-gauge-label">ROM method (summary-first)</span>
+                            <div class="context-gauge-bar">
+                                <div class="context-gauge-fill" id="context-gauge-rom-fill"></div>
+                            </div>
+                            <span class="context-gauge-value" id="context-gauge-rom-value">0%</span>
+                        </div>
+                        <div class="context-gauge-row">
+                            <span class="context-gauge-label">Raw context (full transcripts)</span>
+                            <div class="context-gauge-bar context-gauge-bar-raw">
+                                <div class="context-gauge-fill context-gauge-fill-raw" id="context-gauge-raw-fill"></div>
+                            </div>
+                            <span class="context-gauge-value" id="context-gauge-raw-value">0%</span>
+                        </div>
+                    </div>
+                    <div class="context-gauge-footnote" id="context-gauge-footnote">
+                        ROM savings will appear here.
                     </div>
                 </div>
                 

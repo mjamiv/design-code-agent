@@ -57,6 +57,13 @@ const MODEL_TOKEN_LIMITS = {
     'gpt-5-nano': 2000    // Increased from 1000 - may have been too restrictive
 };
 
+// Estimated context window sizes for visualization (tokens)
+const MODEL_CONTEXT_WINDOWS = {
+    'gpt-5.2': 128000,
+    'gpt-5-mini': 64000,
+    'gpt-5-nano': 32000
+};
+
 // Metrics tracking for current session - ENHANCED per-prompt logging
 let currentMetrics = {
     // Running totals
@@ -386,7 +393,17 @@ function initElements() {
         effortGroup: document.getElementById('effort-group'),
         effortSelect: document.getElementById('effort-select'),
         rlmToggle: document.getElementById('rlm-toggle'),
-        rlmAutoToggle: document.getElementById('rlm-auto-toggle')
+        rlmAutoToggle: document.getElementById('rlm-auto-toggle'),
+
+        // Context Window Gauge
+        contextGauge: document.getElementById('context-gauge'),
+        contextGaugeStatus: document.getElementById('context-gauge-status'),
+        contextGaugeUsage: document.getElementById('context-gauge-usage'),
+        contextGaugeRomFill: document.getElementById('context-gauge-rom-fill'),
+        contextGaugeRawFill: document.getElementById('context-gauge-raw-fill'),
+        contextGaugeRomValue: document.getElementById('context-gauge-rom-value'),
+        contextGaugeRawValue: document.getElementById('context-gauge-raw-value'),
+        contextGaugeFootnote: document.getElementById('context-gauge-footnote')
     };
 }
 
@@ -697,6 +714,7 @@ function handleModelChange(e) {
     state.settings.model = e.target.value;
     updateEffortVisibility();
     saveSettings();
+    updateContextGauge();
     console.log('[Settings] Model changed to:', state.settings.model);
 }
 
@@ -1013,6 +1031,8 @@ function clearChatAndCache() {
             elements.clearCacheBtn.disabled = false;
         }, 1500);
     }
+
+    updateContextGauge();
     
     console.log('[Orchestrator] Chat history and query cache cleared');
 }
@@ -1025,6 +1045,7 @@ function updateUI() {
     updateAgentsList();
     updateButtonStates();
     updateSectionsVisibility();
+    updateContextGauge();
     syncAgentsToRLM();
     saveState(); // Save state after UI updates
 }
@@ -1157,6 +1178,7 @@ function autoResizeTextarea() {
     
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    updateContextGauge();
 }
 
 function updateButtonStates() {
@@ -1210,6 +1232,114 @@ function updateSectionsVisibility() {
             elements.chatInput.disabled = true;
             elements.chatSendBtn.disabled = true;
         }
+    }
+}
+
+// ============================================
+// Context Window Gauge
+// ============================================
+
+function estimateTokens(text) {
+    if (!text) return 0;
+    const trimmed = String(text).trim();
+    if (!trimmed) return 0;
+    return Math.ceil(trimmed.length / 4);
+}
+
+function formatTokenCount(value) {
+    if (value >= 1000000) {
+        return `${(value / 1000000).toFixed(1)}M`;
+    }
+    if (value >= 1000) {
+        return `${Math.round(value / 100) / 10}k`;
+    }
+    return `${value}`;
+}
+
+function getAgentTokenCounts() {
+    const activeAgents = state.agents.filter(a => a.enabled);
+    let romTokens = 0;
+    let rawTokens = 0;
+
+    activeAgents.forEach(agent => {
+        const header = agent.displayName || agent.title || '';
+        const romFields = [
+            header,
+            agent.summary,
+            agent.keyPoints,
+            agent.actionItems,
+            agent.sentiment
+        ];
+
+        const romTotal = romFields.reduce((sum, field) => sum + estimateTokens(field), 0);
+        romTokens += romTotal;
+        rawTokens += romTotal + estimateTokens(agent.transcript);
+    });
+
+    return { romTokens, rawTokens };
+}
+
+function getChatTokenCount() {
+    const historyTokens = state.chatHistory.reduce((sum, entry) => {
+        return sum + estimateTokens(entry.content);
+    }, 0);
+    const draftTokens = elements.chatInput ? estimateTokens(elements.chatInput.value) : 0;
+    return historyTokens + draftTokens;
+}
+
+function updateContextGauge() {
+    if (!elements.contextGauge) return;
+
+    const modelLimit = MODEL_CONTEXT_WINDOWS[state.settings.model] || 64000;
+    const chatTokens = getChatTokenCount();
+    const agentTokens = getAgentTokenCounts();
+
+    const romTotal = chatTokens + agentTokens.romTokens;
+    const rawTotal = chatTokens + agentTokens.rawTokens;
+
+    const romPercent = Math.min((romTotal / modelLimit) * 100, 100);
+    const rawPercent = Math.min((rawTotal / modelLimit) * 100, 100);
+
+    if (elements.contextGaugeRomFill) {
+        elements.contextGaugeRomFill.style.width = `${romPercent}%`;
+    }
+    if (elements.contextGaugeRawFill) {
+        elements.contextGaugeRawFill.style.width = `${rawPercent}%`;
+    }
+    if (elements.contextGaugeRomValue) {
+        elements.contextGaugeRomValue.textContent = `${Math.round(romPercent)}%`;
+    }
+    if (elements.contextGaugeRawValue) {
+        elements.contextGaugeRawValue.textContent = `${Math.round(rawPercent)}%`;
+    }
+
+    if (elements.contextGaugeUsage) {
+        elements.contextGaugeUsage.textContent = `ROM ${formatTokenCount(romTotal)} / ${formatTokenCount(modelLimit)}`;
+    }
+
+    const statusEl = elements.contextGaugeStatus;
+    if (statusEl) {
+        statusEl.classList.remove('warn', 'critical');
+        let statusLabel = 'Healthy';
+        const maxPercent = Math.max(romPercent, rawPercent);
+        if (maxPercent >= 90) {
+            statusLabel = 'Critical';
+            statusEl.classList.add('critical');
+        } else if (maxPercent >= 70) {
+            statusLabel = 'Tight';
+            statusEl.classList.add('warn');
+        }
+        statusEl.textContent = statusLabel;
+    }
+
+    if (elements.contextGaugeFootnote) {
+        const savings = Math.max(agentTokens.rawTokens - agentTokens.romTokens, 0);
+        const savingsPercent = agentTokens.rawTokens > 0
+            ? Math.round((savings / agentTokens.rawTokens) * 100)
+            : 0;
+        elements.contextGaugeFootnote.textContent = savings > 0
+            ? `ROM uses ${formatTokenCount(romTotal)} tokens vs raw ${formatTokenCount(rawTotal)}. Savings: ${formatTokenCount(savings)} (~${savingsPercent}%).`
+            : `ROM uses ${formatTokenCount(romTotal)} tokens vs raw ${formatTokenCount(rawTotal)}. Savings will appear once transcripts are added.`;
     }
 }
 
@@ -1566,6 +1696,8 @@ async function chatWithREPL(userMessage, thinkingId = null) {
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: result.response });
+    updateContextGauge();
+    updateContextGauge();
 
     // Log REPL metadata for debugging
     if (result.metadata) {
@@ -1666,6 +1798,7 @@ ${context}`;
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: response });
+    updateContextGauge();
 
     return response;
 }
@@ -1786,6 +1919,8 @@ function appendChatMessage(role, content, shouldSave = true) {
     if (shouldSave) {
         saveState();
     }
+
+    updateContextGauge();
 }
 
 /**
