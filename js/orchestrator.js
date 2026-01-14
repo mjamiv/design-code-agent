@@ -45,7 +45,7 @@ const PRICING = {
 const MODEL_TOKEN_LIMITS = {
     'gpt-5.2': 4000,      // Full model, higher limit
     'gpt-5-mini': 2000,   // Medium limit
-    'gpt-5-nano': 1000    // Lower limit to prevent truncation
+    'gpt-5-nano': 2000    // Increased from 1000 - may have been too restrictive
 };
 
 // Metrics tracking for current session - ENHANCED per-prompt logging
@@ -1916,8 +1916,9 @@ function buildAPIRequestBody(messages, maxTokens = null) {
             body.top_logprobs = 1;  // Get top 1 logprob for each token
         }
     } else {
-        // For gpt-5-mini and gpt-5-nano, set temperature to 1
-        body.temperature = 1;
+        // For gpt-5-mini and gpt-5-nano, don't set temperature
+        // These models may not support temperature parameter or may have different defaults
+        // Omitting temperature lets the model use its default behavior
     }
 
     return body;
@@ -2318,11 +2319,23 @@ function validateAndExtractResponse(data, model) {
 
         // Check for empty string content
         if (typeof content === 'string' && content.trim().length === 0) {
+            // Log detailed response for debugging GPT-5-nano issues
+            console.warn(`[API] ${model} returned empty string. Response details:`, {
+                finish_reason: finishReason,
+                usage: data.usage,
+                has_choices: !!data.choices,
+                choice_count: data.choices?.length
+            });
+            
+            // For GPT-5-nano, don't retry empty responses - they're likely a model limitation
+            // Retrying doesn't help if the model consistently returns empty strings
+            const shouldRetry = model !== 'gpt-5-nano';
+            
             return {
                 content: '',
                 finishReason: finishReason,
-                error: `${model} returned empty string content`,
-                shouldRetry: true
+                error: `${model} returned empty string content (finish_reason: ${finishReason})${model === 'gpt-5-nano' ? '. GPT-5-nano may not support this query type - try GPT-5-mini or GPT-5.2.' : ''}`,
+                shouldRetry: shouldRetry
             };
         }
 
