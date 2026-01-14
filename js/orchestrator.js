@@ -41,6 +41,14 @@ const PRICING = {
     'gpt-5-nano': { input: 0.05, output: 0.40 }     // Fastest, cheapest
 };
 
+const MODEL_DISPLAY_NAMES = {
+    'gpt-5.2': 'GPT-5.2',
+    'gpt-5-mini': 'GPT-5-mini',
+    'gpt-5-nano': 'GPT-5-nano'
+};
+
+const fallbackNoticeKeys = new Set();
+
 // Model-specific max completion token limits
 // Smaller models may have stricter limits to prevent truncation issues
 const MODEL_TOKEN_LIMITS = {
@@ -76,6 +84,38 @@ function generatePromptLogId() {
     return `prompt-${++promptLogIdCounter}-${Date.now()}`;
 }
 
+function formatModelName(model) {
+    return MODEL_DISPLAY_NAMES[model] || model || 'unknown';
+}
+
+function recordModelFallback(requestedModel, actualModel, callName = 'API Call') {
+    if (!requestedModel || !actualModel || requestedModel === actualModel) {
+        return;
+    }
+
+    if (activePromptGroup) {
+        if (!activePromptGroup.modelFallbackNotified) {
+            activePromptGroup.modelFallbackNotified = true;
+            appendChatMessage(
+                'assistant',
+                `⚠️ Model fallback detected: requested ${formatModelName(requestedModel)}, but the API responded with ${formatModelName(actualModel)}. Metrics will record the actual model.`
+            );
+        }
+        return;
+    }
+
+    const noticeKey = `${requestedModel}->${actualModel}`;
+    if (fallbackNoticeKeys.has(noticeKey)) {
+        return;
+    }
+
+    fallbackNoticeKeys.add(noticeKey);
+    appendChatMessage(
+        'assistant',
+        `⚠️ Model fallback detected: requested ${formatModelName(requestedModel)}, but the API responded with ${formatModelName(actualModel)}. Metrics will record the actual model.`
+    );
+}
+
 /**
  * Start a new prompt group for tracking a user query
  * All API calls within this group will be aggregated together
@@ -92,6 +132,7 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         usesRLM: usesRLM,
         mode: mode,  // 'direct', 'rlm', or 'repl'
         model: state.settings.model,
+        requestedModel: state.settings.model,
         effort: state.settings.model === 'gpt-5.2' ? state.settings.effort : 'N/A',
         startTime: performance.now(),
         subCalls: [],  // Individual API calls within this group
@@ -99,7 +140,10 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         cost: { input: 0, output: 0, total: 0 },
         confidence: { available: false, samples: [] },
         emptyResponse: false,  // Track if any sub-call had empty response
-        maxRetryAttempt: 0  // Track maximum retry attempts across sub-calls
+        maxRetryAttempt: 0,  // Track maximum retry attempts across sub-calls
+        actualModels: [],
+        modelFallbacks: [],
+        modelFallbackNotified: false
     };
     return activePromptGroup.id;
 }
@@ -162,6 +206,18 @@ function endPromptGroup() {
             }
         }
     }
+
+    if (activePromptGroup.actualModels && activePromptGroup.actualModels.length > 0) {
+        if (activePromptGroup.actualModels.length === 1) {
+            activePromptGroup.model = activePromptGroup.actualModels[0];
+            if (activePromptGroup.model !== 'gpt-5.2') {
+                activePromptGroup.effort = 'N/A';
+            }
+        } else {
+            activePromptGroup.model = 'mixed';
+            activePromptGroup.effort = 'N/A';
+        }
+    }
     
     // Add to prompt logs
     currentMetrics.promptLogs.push(activePromptGroup);
@@ -197,6 +253,19 @@ function addAPICallToMetrics(callData) {
         activePromptGroup.cost.input += callData.cost.input;
         activePromptGroup.cost.output += callData.cost.output;
         activePromptGroup.cost.total += callData.cost.total;
+
+        if (callData.actualModel) {
+            if (!activePromptGroup.actualModels.includes(callData.actualModel)) {
+                activePromptGroup.actualModels.push(callData.actualModel);
+            }
+        }
+        if (callData.modelFallback) {
+            activePromptGroup.modelFallbacks.push({
+                requestedModel: callData.requestedModel,
+                actualModel: callData.actualModel,
+                callName: callData.name
+            });
+        }
         
         // Track empty responses and retry attempts
         if (callData.emptyResponse) {
@@ -219,9 +288,16 @@ function addAPICallToMetrics(callData) {
             usesRLM: false,
             mode: 'direct',
             model: callData.model,
+            requestedModel: callData.requestedModel,
             effort: callData.effort,
             responseTime: callData.responseTime,
             subCalls: [callData],
+            actualModels: callData.actualModel ? [callData.actualModel] : [],
+            modelFallbacks: callData.modelFallback ? [{
+                requestedModel: callData.requestedModel,
+                actualModel: callData.actualModel,
+                callName: callData.name
+            }] : [],
             tokens: callData.tokens,
             cost: callData.cost,
             confidence: callData.confidence,
@@ -1981,9 +2057,15 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
             }
 
             const data = await response.json();
+            const actualModel = data.model || model;
+            const modelFallback = actualModel !== model;
+
+            if (modelFallback) {
+                recordModelFallback(model, actualModel, callName);
+            }
             
             // Validate and extract response using helper
-            const validationResult = validateAndExtractResponse(data, model);
+            const validationResult = validateAndExtractResponse(data, actualModel);
             
             // Check if we have valid content first
             if (validationResult.content && typeof validationResult.content === 'string' && validationResult.content.trim().length > 0) {
@@ -1993,7 +2075,7 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
                     const outputTokens = data.usage.completion_tokens || 0;
                     
                     // Calculate cost for this call
-                    const pricing = PRICING[model] || PRICING['gpt-5.2'];
+                    const pricing = PRICING[actualModel] || PRICING[model] || PRICING['gpt-5.2'];
                     const inputCost = (inputTokens / 1000000) * pricing.input;
                     const outputCost = (outputTokens / 1000000) * pricing.output;
                     const callCost = inputCost + outputCost;
@@ -2002,8 +2084,11 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
                     const callData = {
                         timestamp: new Date().toISOString(),
                         name: callName,
-                        model: model,
-                        effort: model === 'gpt-5.2' ? effort : 'N/A',
+                        model: actualModel,
+                        requestedModel: model,
+                        actualModel: actualModel,
+                        modelFallback: modelFallback,
+                        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
                         tokens: {
                             input: inputTokens,
                             output: outputTokens,
@@ -2105,9 +2190,15 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
             }
 
             const data = await response.json();
+            const actualModel = data.model || model;
+            const modelFallback = actualModel !== model;
+
+            if (modelFallback) {
+                recordModelFallback(model, actualModel, callName);
+            }
             
             // Validate and extract response using helper
-            const validationResult = validateAndExtractResponse(data, model);
+            const validationResult = validateAndExtractResponse(data, actualModel);
             
             // Check if we have valid content first
             if (validationResult.content && typeof validationResult.content === 'string' && validationResult.content.trim().length > 0) {
@@ -2117,7 +2208,7 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
                     const outputTokens = data.usage.completion_tokens || 0;
                     
                     // Calculate cost for this call
-                    const pricing = PRICING[model] || PRICING['gpt-5.2'];
+                    const pricing = PRICING[actualModel] || PRICING[model] || PRICING['gpt-5.2'];
                     const inputCost = (inputTokens / 1000000) * pricing.input;
                     const outputCost = (outputTokens / 1000000) * pricing.output;
                     const callCost = inputCost + outputCost;
@@ -2132,8 +2223,11 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
                     const callData = {
                         timestamp: new Date().toISOString(),
                         name: callName,
-                        model: model,
-                        effort: model === 'gpt-5.2' ? effort : 'N/A',
+                        model: actualModel,
+                        requestedModel: model,
+                        actualModel: actualModel,
+                        modelFallback: modelFallback,
+                        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
                         tokens: {
                             input: inputTokens,
                             output: outputTokens,
@@ -2590,6 +2684,16 @@ function buildPromptLogsHtml(promptLogs) {
                         ${subCallsDisplay}
                     </span>
                 </div>
+                ${log.actualModels && log.actualModels.length > 1 ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">🧭 Actual:</span>
+                    <span class="log-value">${log.actualModels.map(formatModelName).join(', ')}</span>
+                </div>` : ''}
+                ${log.modelFallbacks && log.modelFallbacks.length > 0 ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">⚠️ Fallback:</span>
+                    <span class="log-value warning-text">${formatModelFallbacks(log.modelFallbacks)}</span>
+                </div>` : ''}
                 <div class="prompt-log-row">
                     <span class="log-label">🔀 Mode:</span>
                     <span class="log-value">
@@ -2733,6 +2837,25 @@ function formatTimestamp(isoString) {
         minute: '2-digit', 
         second: '2-digit' 
     });
+}
+
+function formatModelFallbacks(modelFallbacks) {
+    if (!Array.isArray(modelFallbacks) || modelFallbacks.length === 0) {
+        return '';
+    }
+
+    const seen = new Set();
+    const formatted = [];
+
+    modelFallbacks.forEach(({ requestedModel, actualModel }) => {
+        if (!requestedModel || !actualModel) return;
+        const key = `${requestedModel}->${actualModel}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        formatted.push(`${formatModelName(requestedModel)} → ${formatModelName(actualModel)}`);
+    });
+
+    return formatted.join(', ');
 }
 
 function scheduleAutoCollapse() {
