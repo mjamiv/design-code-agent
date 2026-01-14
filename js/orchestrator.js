@@ -339,7 +339,7 @@ function setupEventListeners() {
     elements.agentsDropZone.addEventListener('drop', handleDrop);
     elements.agentFilesInput.addEventListener('change', handleFileSelect);
     if (elements.clearCacheBtn) {
-        elements.clearCacheBtn.addEventListener('click', clearQueryCache);
+        elements.clearCacheBtn.addEventListener('click', clearChatAndCache);
     }
     elements.clearAllBtn.addEventListener('click', clearAllAgents);
 
@@ -688,24 +688,61 @@ function clearAllAgents() {
 }
 
 /**
- * Clear the RLM query result cache
- * Phase 3.1: Cache management
+ * Clear the chat and query caches
+ * Clears: RLM query cache, chat history, and resets chat UI
  */
-function clearQueryCache() {
+function clearChatAndCache() {
+    // Clear RLM query cache
     rlmPipeline.clearCache();
+    
+    // Clear chat history
+    state.chatHistory = [];
+    
+    // Clear chat session storage
+    sessionStorage.removeItem(STORAGE_KEYS.CHAT_HISTORY);
+    
+    // Reset chat UI to welcome state
+    if (elements.chatMessages) {
+        elements.chatMessages.innerHTML = `
+            <div class="chat-welcome-card">
+                <div class="welcome-avatar">🤖</div>
+                <div class="welcome-content">
+                    <p class="welcome-title">Hello! I'm your Orchestrator AI</p>
+                    <p class="welcome-text">I have access to your knowledge base. Ask me about decisions, action items, patterns, or insights from your meeting agents.</p>
+                    <div class="welcome-suggestions">
+                        <button class="suggestion-chip" data-query="What are the key action items across all meetings?">📋 Key action items</button>
+                        <button class="suggestion-chip" data-query="What common themes appear in these meetings?">🔗 Common themes</button>
+                        <button class="suggestion-chip" data-query="Summarize the main decisions made">✅ Main decisions</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Re-attach suggestion chip listeners
+        elements.chatMessages.querySelectorAll('.suggestion-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const query = chip.dataset.query;
+                if (query) {
+                    elements.chatInput.value = query;
+                    autoResizeTextarea();
+                    sendChatMessage();
+                }
+            });
+        });
+    }
     
     // Show temporary feedback on button
     if (elements.clearCacheBtn) {
-        const originalText = elements.clearCacheBtn.textContent;
-        elements.clearCacheBtn.textContent = 'Cleared!';
+        const originalHtml = elements.clearCacheBtn.innerHTML;
+        elements.clearCacheBtn.innerHTML = '✓ Cleared!';
         elements.clearCacheBtn.disabled = true;
         setTimeout(() => {
-            elements.clearCacheBtn.textContent = originalText;
+            elements.clearCacheBtn.innerHTML = originalHtml;
             elements.clearCacheBtn.disabled = false;
         }, 1500);
     }
     
-    console.log('[Orchestrator] Query cache cleared');
+    console.log('[Orchestrator] Chat history and query cache cleared');
 }
 
 // ============================================

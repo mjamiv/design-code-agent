@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=56">
+    <link rel="stylesheet" href="css/styles.css?v=57">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -97,9 +97,6 @@
                         <span class="kb-count"><span id="agents-count">0</span> agents</span>
                         <span class="kb-active">(<span id="active-agents-count">0</span> active)</span>
                     </div>
-                    <button id="clear-cache-btn" class="btn-text btn-sm" title="Clear query result cache">
-                        Clear Cache
-                    </button>
                     <button id="clear-all-agents" class="btn-text-danger btn-sm" title="Remove all agents">
                         Clear All
                     </button>
@@ -140,9 +137,14 @@
                             Waiting for agents...
                         </span>
                     </div>
-                    <div class="chatbot-badge" id="chat-kb-indicator">
-                        <span class="badge-icon">🧠</span>
-                        <span class="badge-count" id="chat-agent-count">0</span>
+                    <div class="chatbot-header-actions">
+                        <button id="clear-cache-btn" class="btn-text btn-sm chatbot-clear-btn" title="Clear chat history and query cache">
+                            🗑️ Clear
+                        </button>
+                        <div class="chatbot-badge" id="chat-kb-indicator">
+                            <span class="badge-icon">🧠</span>
+                            <span class="badge-count" id="chat-agent-count">0</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -382,7 +384,7 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=28" type="module"></script>
+    <script src="js/orchestrator.js?v=29" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>

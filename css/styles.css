@@ -3456,6 +3456,38 @@ details[open] .about-toggle {
     box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
 }
 
+.chatbot-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-left: auto;
+}
+
+.chatbot-clear-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-md);
+    color: #ef4444;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chatbot-clear-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.chatbot-clear-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .chatbot-badge {
     display: flex;
     align-items: center;
@@ -4280,10 +4312,14 @@ details[open] .about-toggle {
         gap: var(--space-sm);
     }
     
-    .chatbot-badge {
+    .chatbot-header-actions {
         order: -1;
         width: 100%;
         justify-content: center;
+    }
+    
+    .chatbot-badge {
+        /* Already in header-actions, no need for separate mobile rules */
     }
     
     .chatbot-messages {
