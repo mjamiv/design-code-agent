@@ -29,7 +29,8 @@ const state = {
     settings: {
         model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
         effort: 'none',        // 'none', 'low', 'medium', 'high' (only for gpt-5.2) - default 'none' for compatibility
-        useRLM: true           // Enable/disable RLM processing
+        useRLM: true,          // Enable/disable RLM processing
+        rlmAuto: true          // Auto-route RLM only for ambiguous prompts
     }
 };
 
@@ -308,7 +309,8 @@ function initElements() {
         modelSelect: document.getElementById('model-select'),
         effortGroup: document.getElementById('effort-group'),
         effortSelect: document.getElementById('effort-select'),
-        rlmToggle: document.getElementById('rlm-toggle')
+        rlmToggle: document.getElementById('rlm-toggle'),
+        rlmAutoToggle: document.getElementById('rlm-auto-toggle')
     };
 }
 
@@ -451,6 +453,10 @@ function updateSettingsUI() {
     }
     if (elements.rlmToggle) {
         elements.rlmToggle.checked = state.settings.useRLM;
+    }
+    if (elements.rlmAutoToggle) {
+        elements.rlmAutoToggle.checked = state.settings.rlmAuto;
+        elements.rlmAutoToggle.disabled = !state.settings.useRLM;
     }
     // Show/hide effort dropdown based on model
     updateEffortVisibility();
@@ -599,6 +605,9 @@ function setupEventListeners() {
     if (elements.rlmToggle) {
         elements.rlmToggle.addEventListener('change', handleRLMToggle);
     }
+    if (elements.rlmAutoToggle) {
+        elements.rlmAutoToggle.addEventListener('change', handleRLMAutoToggle);
+    }
 }
 
 // ============================================
@@ -631,6 +640,16 @@ function handleRLMToggle(e) {
     state.settings.useRLM = e.target.checked;
     saveSettings();
     console.log('[Settings] RLM toggled:', state.settings.useRLM ? 'enabled' : 'disabled');
+    updateSettingsUI();
+}
+
+/**
+ * Handle RLM auto-routing toggle change
+ */
+function handleRLMAutoToggle(e) {
+    state.settings.rlmAuto = e.target.checked;
+    saveSettings();
+    console.log('[Settings] RLM auto-routing toggled:', state.settings.rlmAuto ? 'enabled' : 'disabled');
 }
 
 // ============================================
@@ -1303,8 +1322,9 @@ async function sendChatMessage() {
     try {
         // Check execution mode (respects RLM toggle setting)
         const rlmEnabled = state.settings.useRLM;
-        const useREPL = rlmEnabled && rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message);
-        const useRLM = rlmEnabled && !useREPL && rlmPipeline.shouldUseRLM(message);
+        const rlmAuto = state.settings.rlmAuto;
+        const useREPL = rlmEnabled && rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message, { auto: rlmAuto });
+        const useRLM = rlmEnabled && !useREPL && rlmPipeline.shouldUseRLM(message, { auto: rlmAuto });
         const activeAgentCount = state.agents.filter(a => a.enabled).length;
         const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
         const modelName = modelNames[state.settings.model] || 'GPT-5.2';
@@ -1413,7 +1433,7 @@ async function chatWithAgents(userMessage, thinkingId = null) {
     }
     
     // Check if REPL should be used (code-assisted queries)
-    const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(userMessage);
+    const useREPL = rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(userMessage, { auto: state.settings.rlmAuto });
 
     if (useREPL) {
         console.log('[Chat] Using REPL-assisted processing for query');
@@ -1421,7 +1441,7 @@ async function chatWithAgents(userMessage, thinkingId = null) {
     }
 
     // Check if RLM should be used for this query
-    const useRLM = rlmPipeline.shouldUseRLM(userMessage);
+    const useRLM = rlmPipeline.shouldUseRLM(userMessage, { auto: state.settings.rlmAuto });
 
     if (useRLM) {
         console.log('[Chat] Using RLM pipeline for query');
