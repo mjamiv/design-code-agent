@@ -48,9 +48,12 @@ let currentMetrics = {
     totalCost: 0,
     totalResponseTime: 0,
     
-    // Per-prompt detailed logs (each API call tracked separately)
+    // Per-prompt detailed logs (grouped by user query)
     promptLogs: []
 };
+
+// Active prompt group for tracking RLM sub-calls together
+let activePromptGroup = null;
 
 // Metrics card state
 let metricsState = {
@@ -62,6 +65,121 @@ let metricsState = {
 let promptLogIdCounter = 0;
 function generatePromptLogId() {
     return `prompt-${++promptLogIdCounter}-${Date.now()}`;
+}
+
+/**
+ * Start a new prompt group for tracking a user query
+ * All API calls within this group will be aggregated together
+ * @param {string} queryName - Name/description of the user query
+ * @param {boolean} usesRLM - Whether this query uses RLM processing
+ * @param {string} mode - Processing mode ('direct', 'rlm', 'repl')
+ */
+function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
+    activePromptGroup = {
+        id: generatePromptLogId(),
+        timestamp: new Date().toISOString(),
+        name: queryName,
+        usesRLM: usesRLM,
+        mode: mode,  // 'direct', 'rlm', or 'repl'
+        model: state.settings.model,
+        effort: state.settings.model === 'gpt-5.2' ? state.settings.effort : 'N/A',
+        startTime: performance.now(),
+        subCalls: [],  // Individual API calls within this group
+        tokens: { input: 0, output: 0, total: 0 },
+        cost: { input: 0, output: 0, total: 0 },
+        confidence: { available: false, samples: [] }
+    };
+    return activePromptGroup.id;
+}
+
+/**
+ * End the current prompt group and add it to the logs
+ */
+function endPromptGroup() {
+    if (!activePromptGroup) return;
+    
+    // Calculate total response time
+    activePromptGroup.responseTime = Math.round(performance.now() - activePromptGroup.startTime);
+    
+    // Aggregate confidence from sub-calls
+    if (activePromptGroup.confidence.samples.length > 0) {
+        activePromptGroup.confidence.available = true;
+        // Average the confidence scores
+        const validSamples = activePromptGroup.confidence.samples.filter(s => s.avgLogprob !== null);
+        if (validSamples.length > 0) {
+            activePromptGroup.confidence.avgLogprob = 
+                validSamples.reduce((sum, s) => sum + s.avgLogprob, 0) / validSamples.length;
+        }
+        // Check for any truncations
+        activePromptGroup.confidence.truncated = 
+            activePromptGroup.confidence.samples.some(s => s.truncated);
+        // Get reasoning tokens total
+        const reasoningTotal = activePromptGroup.confidence.samples
+            .filter(s => s.reasoningTokens !== null)
+            .reduce((sum, s) => sum + s.reasoningTokens, 0);
+        if (reasoningTotal > 0) {
+            activePromptGroup.confidence.reasoningTokens = reasoningTotal;
+        }
+    }
+    
+    // Add to prompt logs
+    currentMetrics.promptLogs.push(activePromptGroup);
+    
+    // Update running totals
+    currentMetrics.totalResponseTime += activePromptGroup.responseTime;
+    
+    // Clear active group
+    activePromptGroup = null;
+    
+    // Update display
+    updateMetricsDisplay();
+}
+
+/**
+ * Add an API call to the current prompt group (or create standalone if no group)
+ * @param {Object} callData - API call data
+ */
+function addAPICallToMetrics(callData) {
+    // Update running totals
+    currentMetrics.gptInputTokens += callData.tokens.input;
+    currentMetrics.gptOutputTokens += callData.tokens.output;
+    currentMetrics.totalCost += callData.cost.total;
+    
+    if (activePromptGroup) {
+        // Add to current group
+        activePromptGroup.subCalls.push(callData);
+        activePromptGroup.tokens.input += callData.tokens.input;
+        activePromptGroup.tokens.output += callData.tokens.output;
+        activePromptGroup.tokens.total += callData.tokens.total;
+        activePromptGroup.cost.input += callData.cost.input;
+        activePromptGroup.cost.output += callData.cost.output;
+        activePromptGroup.cost.total += callData.cost.total;
+        
+        // Collect confidence samples
+        if (callData.confidence) {
+            activePromptGroup.confidence.samples.push(callData.confidence);
+        }
+    } else {
+        // No active group - create standalone entry
+        const standaloneEntry = {
+            id: generatePromptLogId(),
+            timestamp: callData.timestamp,
+            name: callData.name,
+            usesRLM: false,
+            mode: 'direct',
+            model: callData.model,
+            effort: callData.effort,
+            responseTime: callData.responseTime,
+            subCalls: [callData],
+            tokens: callData.tokens,
+            cost: callData.cost,
+            confidence: callData.confidence,
+            promptPreview: callData.promptPreview
+        };
+        currentMetrics.promptLogs.push(standaloneEntry);
+        currentMetrics.totalResponseTime += callData.responseTime;
+        updateMetricsDisplay();
+    }
 }
 
 // ============================================
@@ -1132,6 +1250,13 @@ async function sendChatMessage() {
         const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
         const modelName = modelNames[state.settings.model] || 'GPT-5.2';
 
+        // Determine processing mode for metrics
+        const processingMode = useREPL ? 'repl' : (useRLM ? 'rlm' : 'direct');
+        
+        // Start a prompt group to aggregate all API calls for this user query
+        const queryPreview = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+        startPromptGroup(`Chat: ${queryPreview}`, useRLM || useREPL, processingMode);
+
         // Update title based on mode
         if (useREPL) {
             updateThinkingTitle(thinkingId, 'RLM: Code-Assisted Analysis');
@@ -1159,6 +1284,11 @@ async function sendChatMessage() {
 
         // Execute the actual chat processing (pass thinkingId for real-time updates from RLM)
         const response = await chatWithAgents(message, thinkingId);
+        
+        // Store prompt preview in the active group
+        if (activePromptGroup) {
+            activePromptGroup.promptPreview = queryPreview;
+        }
 
         // Final step
         addThinkingStep(thinkingId, 'Response ready', 'success');
@@ -1170,6 +1300,9 @@ async function sendChatMessage() {
         removeThinkingIndicator(thinkingId);
         appendChatMessage('assistant', `Sorry, I encountered an error: ${error.message}`);
     } finally {
+        // End prompt group and finalize metrics
+        endPromptGroup();
+        
         elements.chatInput.disabled = false;
         elements.chatSendBtn.disabled = false;
         elements.chatInput.focus();
@@ -1677,7 +1810,10 @@ function buildAPIRequestBody(messages, maxTokens = 4000) {
     const body = {
         model: model,
         messages: messages,
-        max_completion_tokens: maxTokens
+        max_completion_tokens: maxTokens,
+        // Enable logprobs for confidence/fidelity tracking
+        logprobs: true,
+        top_logprobs: 1  // Get top 1 logprob for each token
     };
 
     // Only GPT-5.2 supports reasoning_effort
@@ -1730,7 +1866,7 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
 
         const data = await response.json();
 
-        // Track detailed metrics per prompt
+        // Track detailed metrics per API call
         if (data.usage) {
             const inputTokens = data.usage.prompt_tokens || 0;
             const outputTokens = data.usage.completion_tokens || 0;
@@ -1741,22 +1877,12 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
             const outputCost = (outputTokens / 1000000) * pricing.output;
             const callCost = inputCost + outputCost;
             
-            // Update running totals
-            currentMetrics.gptInputTokens += inputTokens;
-            currentMetrics.gptOutputTokens += outputTokens;
-            currentMetrics.totalCost += callCost;
-            currentMetrics.totalResponseTime += responseTime;
-            
-            // Create detailed prompt log entry
-            const promptLog = {
-                id: generatePromptLogId(),
+            // Create API call data
+            const callData = {
                 timestamp: new Date().toISOString(),
                 name: callName,
                 model: model,
-                settings: {
-                    effort: model === 'gpt-5.2' ? effort : 'N/A',
-                    maxTokens: 4000
-                },
+                effort: model === 'gpt-5.2' ? effort : 'N/A',
                 tokens: {
                     input: inputTokens,
                     output: outputTokens,
@@ -1768,14 +1894,12 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
                     total: callCost
                 },
                 responseTime: responseTime,
-                // Response fidelity/confidence - extracted from API response if available
                 confidence: extractConfidenceMetrics(data),
-                // Store prompt preview for debugging
                 promptPreview: userContent.substring(0, 100) + (userContent.length > 100 ? '...' : '')
             };
             
-            currentMetrics.promptLogs.push(promptLog);
-            updateMetricsDisplay();
+            // Add to metrics (grouped or standalone)
+            addAPICallToMetrics(callData);
         }
 
         return data.choices[0].message.content;
@@ -1811,7 +1935,7 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
 
         const data = await response.json();
 
-        // Track detailed metrics per prompt
+        // Track detailed metrics per API call
         if (data.usage) {
             const inputTokens = data.usage.prompt_tokens || 0;
             const outputTokens = data.usage.completion_tokens || 0;
@@ -1822,28 +1946,18 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
             const outputCost = (outputTokens / 1000000) * pricing.output;
             const callCost = inputCost + outputCost;
             
-            // Update running totals
-            currentMetrics.gptInputTokens += inputTokens;
-            currentMetrics.gptOutputTokens += outputTokens;
-            currentMetrics.totalCost += callCost;
-            currentMetrics.totalResponseTime += responseTime;
-            
             // Extract user message for preview (last user message)
             const userMessage = messages.filter(m => m.role === 'user').pop();
             const promptPreview = userMessage ? 
                 userMessage.content.substring(0, 100) + (userMessage.content.length > 100 ? '...' : '') :
                 '(No user message)';
             
-            // Create detailed prompt log entry
-            const promptLog = {
-                id: generatePromptLogId(),
+            // Create API call data
+            const callData = {
                 timestamp: new Date().toISOString(),
                 name: callName,
                 model: model,
-                settings: {
-                    effort: model === 'gpt-5.2' ? effort : 'N/A',
-                    maxTokens: 2000
-                },
+                effort: model === 'gpt-5.2' ? effort : 'N/A',
                 tokens: {
                     input: inputTokens,
                     output: outputTokens,
@@ -1855,13 +1969,12 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
                     total: callCost
                 },
                 responseTime: responseTime,
-                // Response fidelity/confidence - extracted from API response if available
                 confidence: extractConfidenceMetrics(data),
                 promptPreview: promptPreview
             };
             
-            currentMetrics.promptLogs.push(promptLog);
-            updateMetricsDisplay();
+            // Add to metrics (grouped or standalone)
+            addAPICallToMetrics(callData);
         }
 
         return data.choices[0].message.content;
@@ -2048,15 +2161,28 @@ function buildPromptLogsHtml(promptLogs) {
         const timestamp = formatTimestamp(log.timestamp);
         const confidenceHtml = buildConfidenceHtml(log.confidence);
         
-        // Model display name with effort indicator
-        const modelDisplay = log.model === 'gpt-5.2' && log.settings.effort !== 'none' 
-            ? `${log.model} (${log.settings.effort} effort)`
-            : log.model;
+        // Mode indicator with icon
+        const modeIcons = { 'direct': '⚡', 'rlm': '🔄', 'repl': '🐍' };
+        const modeLabels = { 'direct': 'Direct', 'rlm': 'RLM', 'repl': 'REPL' };
+        const modeIcon = modeIcons[log.mode] || '⚡';
+        const modeLabel = modeLabels[log.mode] || 'Direct';
+        
+        // Effort level display (only for GPT-5.2)
+        const effortDisplay = log.model === 'gpt-5.2' && log.effort && log.effort !== 'none' && log.effort !== 'N/A'
+            ? `<span class="effort-badge effort-${log.effort}">${log.effort}</span>`
+            : '';
+        
+        // Sub-calls count (for RLM/REPL grouped calls)
+        const subCallsCount = log.subCalls ? log.subCalls.length : 1;
+        const subCallsDisplay = subCallsCount > 1 
+            ? `<span class="subcalls-badge">${subCallsCount} calls</span>` 
+            : '';
         
         return `
-        <details class="prompt-log-entry" id="${log.id}">
+        <details class="prompt-log-entry ${log.usesRLM ? 'uses-rlm' : ''}" id="${log.id}">
             <summary class="prompt-log-header">
                 <span class="prompt-log-number">#${logNumber}</span>
+                <span class="prompt-log-mode" title="${modeLabel} mode">${modeIcon}</span>
                 <span class="prompt-log-name">${escapeHtml(log.name)}</span>
                 <span class="prompt-log-cost">${formatCost(log.cost.total)}</span>
                 <span class="prompt-log-time">${formatTime(log.responseTime)}</span>
@@ -2064,8 +2190,26 @@ function buildPromptLogsHtml(promptLogs) {
             <div class="prompt-log-details">
                 <div class="prompt-log-row">
                     <span class="log-label">🤖 Model:</span>
-                    <span class="log-value model-tag">${modelDisplay}</span>
+                    <span class="log-value">
+                        <span class="model-tag">${log.model}</span>
+                        ${effortDisplay}
+                        ${subCallsDisplay}
+                    </span>
                 </div>
+                <div class="prompt-log-row">
+                    <span class="log-label">🔀 Mode:</span>
+                    <span class="log-value">
+                        <span class="mode-tag mode-${log.mode}">${modeIcon} ${modeLabel}</span>
+                        ${log.usesRLM ? '<span class="rlm-indicator">RLM Active</span>' : ''}
+                    </span>
+                </div>
+                ${log.model === 'gpt-5.2' ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">🧠 Effort:</span>
+                    <span class="log-value effort-display ${log.effort && log.effort !== 'none' ? 'effort-' + log.effort : 'effort-none'}">
+                        ${log.effort === 'none' || log.effort === 'N/A' ? 'None (Fast)' : log.effort.charAt(0).toUpperCase() + log.effort.slice(1)}
+                    </span>
+                </div>` : ''}
                 <div class="prompt-log-row">
                     <span class="log-label">⏰ Time:</span>
                     <span class="log-value">${timestamp}</span>
@@ -2086,10 +2230,15 @@ function buildPromptLogsHtml(promptLogs) {
                     <span class="log-label">💰 Cost:</span>
                     <span class="log-value cost-highlight">${formatCost(log.cost.total)}</span>
                 </div>
+                ${subCallsCount > 1 ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">🔢 API Calls:</span>
+                    <span class="log-value">${subCallsCount} sub-calls aggregated</span>
+                </div>` : ''}
                 ${confidenceHtml}
                 <div class="prompt-log-row prompt-preview">
                     <span class="log-label">💬 Prompt:</span>
-                    <span class="log-value prompt-text">${escapeHtml(log.promptPreview)}</span>
+                    <span class="log-value prompt-text">${escapeHtml(log.promptPreview || '(No preview)')}</span>
                 </div>
             </div>
         </details>`;
@@ -2206,6 +2355,7 @@ function resetMetrics() {
         promptLogs: []
     };
     promptLogIdCounter = 0;
+    activePromptGroup = null;
     updateMetricsDisplay();
     if (elements.metricsCard) {
         elements.metricsCard.classList.add('hidden');
