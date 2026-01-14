@@ -28,12 +28,11 @@ const state = {
     isProcessing: false,
     settings: {
         model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
-        effort: 'medium',      // 'low', 'medium', 'high' (only for gpt-5.2)
+        effort: 'none',        // 'none', 'low', 'medium', 'high' (only for gpt-5.2) - default 'none' for compatibility
         useRLM: true           // Enable/disable RLM processing
     }
 };
 
-// Model pricing (per 1M tokens)
 // Model pricing (per 1M tokens) - from OpenAI docs
 const PRICING = {
     'gpt-5.2': { input: 2.50, output: 10.00 },      // Full reasoning model
@@ -224,6 +223,20 @@ function loadSettings() {
         if (savedSettings) {
             const parsed = JSON.parse(savedSettings);
             state.settings = { ...state.settings, ...parsed };
+
+            // Migration: Reset effort to 'none' if it was the old default 'medium'
+            // This prevents the fictional 'reasoning' parameter from being sent
+            // Users who explicitly want effort can re-select it
+            const settingsVersion = localStorage.getItem('northstar.LM_settings_v');
+            if (!settingsVersion || settingsVersion < '2') {
+                if (state.settings.effort === 'medium') {
+                    state.settings.effort = 'none';
+                    console.log('[Settings] Migrated: Reset effort from medium to none for API compatibility');
+                }
+                localStorage.setItem('northstar.LM_settings_v', '2');
+                saveSettings(); // Save the migrated settings
+            }
+
             console.log('[Settings] Loaded from localStorage:', state.settings);
         }
     } catch (error) {
