@@ -181,7 +181,8 @@ function addAPICallToMetrics(callData) {
             tokens: callData.tokens,
             cost: callData.cost,
             confidence: callData.confidence,
-            promptPreview: callData.promptPreview
+            promptPreview: callData.promptPreview,
+            response: callData.response  // Store the response from the call
         };
         currentMetrics.promptLogs.push(standaloneEntry);
         currentMetrics.totalResponseTime += callData.responseTime;
@@ -503,6 +504,11 @@ function setupEventListeners() {
     const metricsPinBtn = document.getElementById('metrics-pin-btn');
     if (metricsPinBtn) {
         metricsPinBtn.addEventListener('click', toggleMetricsPin);
+    }
+
+    const metricsDownloadBtn = document.getElementById('metrics-download-csv');
+    if (metricsDownloadBtn) {
+        metricsDownloadBtn.addEventListener('click', downloadMetricsCSV);
     }
 
     // Error
@@ -1292,9 +1298,10 @@ async function sendChatMessage() {
         // Execute the actual chat processing (pass thinkingId for real-time updates from RLM)
         const response = await chatWithAgents(message, thinkingId);
         
-        // Store prompt preview in the active group
+        // Store prompt preview and response in the active group
         if (activePromptGroup) {
             activePromptGroup.promptPreview = queryPreview;
+            activePromptGroup.response = response;  // Store the full response
         }
 
         // Final step
@@ -1304,6 +1311,10 @@ async function sendChatMessage() {
         removeThinkingIndicator(thinkingId);
         appendChatMessage('assistant', response);
     } catch (error) {
+        // Store error response in active group if available
+        if (activePromptGroup) {
+            activePromptGroup.response = `Error: ${error.message}`;
+        }
         removeThinkingIndicator(thinkingId);
         appendChatMessage('assistant', `Sorry, I encountered an error: ${error.message}`);
     } finally {
@@ -1821,20 +1832,22 @@ function buildAPIRequestBody(messages, maxTokens = 4000) {
     };
 
     // Only GPT-5.2 supports logprobs for confidence tracking
+    // IMPORTANT: logprobs only work when effort is 'none' (not supported with reasoning_effort)
     // Other models (gpt-5-mini, gpt-5-nano) may not support this parameter
     if (model === 'gpt-5.2') {
-        body.logprobs = true;
-        body.top_logprobs = 1;  // Get top 1 logprob for each token
-        
         const effort = state.settings.effort || 'none';
 
         if (effort !== 'none') {
             // When using reasoning, temperature is NOT supported
             // Use top-level reasoning_effort parameter for Chat Completions API
+            // NOTE: logprobs are NOT supported when using reasoning_effort
             body.reasoning_effort = effort;
         } else {
             // Only set temperature when NOT using reasoning effort
             body.temperature = 1;
+            // Only request logprobs when effort is 'none' (they don't work with reasoning_effort)
+            body.logprobs = true;
+            body.top_logprobs = 1;  // Get top 1 logprob for each token
         }
     } else {
         // For gpt-5-mini and gpt-5-nano, set temperature to 1
@@ -1876,6 +1889,7 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
         }
 
         const data = await response.json();
+        const responseText = data.choices[0].message.content;
 
         // Track detailed metrics per API call
         if (data.usage) {
@@ -1906,14 +1920,15 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
                 },
                 responseTime: responseTime,
                 confidence: extractConfidenceMetrics(data),
-                promptPreview: userContent.substring(0, 100) + (userContent.length > 100 ? '...' : '')
+                promptPreview: userContent.substring(0, 100) + (userContent.length > 100 ? '...' : ''),
+                response: responseText  // Store the full response
             };
             
             // Add to metrics (grouped or standalone)
             addAPICallToMetrics(callData);
         }
 
-        return data.choices[0].message.content;
+        return responseText;
     }, 3, callName);
 }
 
@@ -1945,6 +1960,7 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
         }
 
         const data = await response.json();
+        const responseText = data.choices[0].message.content;
 
         // Track detailed metrics per API call
         if (data.usage) {
@@ -1981,14 +1997,15 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
                 },
                 responseTime: responseTime,
                 confidence: extractConfidenceMetrics(data),
-                promptPreview: promptPreview
+                promptPreview: promptPreview,
+                response: responseText  // Store the full response
             };
             
             // Add to metrics (grouped or standalone)
             addAPICallToMetrics(callData);
         }
 
-        return data.choices[0].message.content;
+        return responseText;
     }, 3, callName);
 }
 
@@ -2446,6 +2463,108 @@ function toggleMetricsPin() {
     if (!metricsState.isPinned && !elements.metricsContent.classList.contains('hidden')) {
         scheduleAutoCollapse();
     }
+}
+
+/**
+ * Download metrics as CSV file
+ */
+function downloadMetricsCSV() {
+    const metrics = calculateMetrics();
+    
+    if (metrics.promptLogs.length === 0) {
+        showError('No metrics data to download');
+        return;
+    }
+
+    // CSV header
+    const headers = [
+        'Timestamp',
+        'Name',
+        'Model',
+        'Effort',
+        'Mode',
+        'Uses RLM',
+        'Input Tokens',
+        'Output Tokens',
+        'Total Tokens',
+        'Input Cost ($)',
+        'Output Cost ($)',
+        'Total Cost ($)',
+        'Response Time (ms)',
+        'Confidence Available',
+        'Avg Logprob',
+        'Reasoning Tokens',
+        'Finish Reason',
+        'Truncated',
+        'Sub-Calls Count',
+        'Prompt Preview',
+        'Response'
+    ];
+
+    // Helper function to escape CSV values
+    function escapeCSV(value) {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        // If contains comma, quote, or newline, wrap in quotes and escape quotes
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+    }
+
+    // Build CSV rows
+    const rows = [headers.map(escapeCSV).join(',')];
+
+    metrics.promptLogs.forEach((log, index) => {
+        // For grouped calls, use the group-level data
+        const row = [
+            escapeCSV(log.timestamp || ''),
+            escapeCSV(log.name || ''),
+            escapeCSV(log.model || ''),
+            escapeCSV(log.effort || 'N/A'),
+            escapeCSV(log.mode || 'direct'),
+            escapeCSV(log.usesRLM ? 'Yes' : 'No'),
+            escapeCSV(log.tokens?.input || 0),
+            escapeCSV(log.tokens?.output || 0),
+            escapeCSV(log.tokens?.total || 0),
+            escapeCSV((log.cost?.input || 0).toFixed(6)),
+            escapeCSV((log.cost?.output || 0).toFixed(6)),
+            escapeCSV((log.cost?.total || 0).toFixed(6)),
+            escapeCSV(log.responseTime || 0),
+            escapeCSV(log.confidence?.available ? 'Yes' : 'No'),
+            escapeCSV(log.confidence?.avgLogprob != null ? (log.confidence.avgLogprob * 100).toFixed(2) + '%' : ''),
+            escapeCSV(log.confidence?.reasoningTokens || ''),
+            escapeCSV(log.confidence?.finishReason || ''),
+            escapeCSV(log.confidence?.truncated ? 'Yes' : 'No'),
+            escapeCSV(log.subCalls?.length || 1),
+            escapeCSV(log.promptPreview || ''),
+            escapeCSV(log.response || '')  // Include the full response
+        ];
+        rows.push(row.join(','));
+    });
+
+    // Create CSV content
+    const csvContent = rows.join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `northstar-metrics-${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up URL
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    
+    console.log('[Metrics] CSV downloaded:', metrics.promptLogs.length, 'entries');
 }
 
 // ============================================

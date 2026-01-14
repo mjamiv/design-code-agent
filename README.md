@@ -495,6 +495,10 @@ At-a-glance metrics displayed at the top of every analysis:
 - **Query Classification** - Automatic detection of factual, comparative, aggregative, search, and recursive queries
 - **Knowledge Base Visualization** - Visual chain display of loaded agents with enable/disable controls
 - **Smart Query Routing** - Automatically chooses optimal strategy (direct, parallel, map-reduce, iterative, REPL)
+- **Model Selection** - Choose between GPT-5.2, GPT-5-mini, or GPT-5-nano
+- **Reasoning Effort Control** - Configure reasoning depth for GPT-5.2 (none/low/medium/high/xhigh)
+- **RLM Toggle** - Enable/disable RLM processing for A/B testing
+- **Enhanced Metrics** - Detailed per-prompt logging with response storage and CSV export
 - **GitHub Pages Compatible** - COI Service Worker enables full features on static hosts
 - **Custom Branding** - Distinctive robot mascot logo representing the orchestrator's dual nature
 - Access via the Orchestrator page: https://mjamiv.github.io/vox2txt/orchestrator.html
@@ -511,12 +515,18 @@ Comprehensive meeting minutes document with:
 - Full chat Q&A history export
 - Document metadata (author, title, keywords)
 
-### Usage Metrics
-Collapsible panel with real-time tracking of:
-- Token usage (input/output)
-- TTS character count
-- DALL-E image count
-- Estimated cost breakdown by API call
+### Usage Metrics (Agent Orchestrator)
+Enhanced metrics tracking in the Agent Orchestrator with detailed per-prompt logging:
+- **Session Summary** - Total tokens, estimated cost, API call count, average response time
+- **Per-Prompt Breakdown** - Detailed logs for each query including:
+  - Model and effort level (GPT-5.2 only)
+  - Processing mode (Direct, RLM, or REPL)
+  - Token usage and costs (input/output breakdown)
+  - Response time and confidence metrics
+  - Full response text stored for analysis
+- **Confidence Tracking** - Logprobs-based confidence scores (GPT-5.2 with effort='none' only)
+- **CSV Export** - Download complete metrics data including all responses for offline analysis
+- **Auto-collapse** - Metrics card auto-collapses after 10 seconds (can be pinned open)
 
 ## Technology Stack
 

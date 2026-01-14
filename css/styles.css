@@ -4706,6 +4706,21 @@ details[open] .about-toggle {
     gap: var(--space-xs);
 }
 
+.metrics-download-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: var(--space-xs);
+    transition: var(--transition-fast);
+}
+
+.metrics-download-btn:hover {
+    color: var(--accent-primary);
+    transform: scale(1.1);
+}
+
 .metrics-pin-btn {
     background: none;
     border: none;

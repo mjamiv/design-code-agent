@@ -712,10 +712,17 @@ const state = {
 - Each agent is a node with: editable name, enable/disable toggle, remove button
 - Only active (enabled) agents are used for chat and insights generation
 - Custom robot mascot branding in header (`images/orchestrator-logo.png`)
+- **Model Settings Panel**: Select model (GPT-5.2, GPT-5-mini, GPT-5-nano), configure effort level, toggle RLM
+- **Enhanced Metrics System**:
+  - Per-prompt detailed logging with response storage
+  - Confidence tracking via logprobs (GPT-5.2 with effort='none' only)
+  - CSV export functionality for offline analysis
+  - Auto-collapse with pin option
 - Key RLM functions:
   - `chatWithRLM()` - Process queries through RLM pipeline
   - `syncAgentsToRLM()` - Keep RLM context store in sync with state
   - `shouldUseRLM()` - Determine if RLM should be used for a query
+  - `downloadMetricsCSV()` - Export metrics as CSV file
 
 ### Agent Export Modal
 - `showAgentNameModal()` - Opens naming dialog before export
@@ -728,20 +735,32 @@ const state = {
 ### GPT-5.2 Chat Completions
 ```javascript
 // Note: GPT-5.2 requires max_completion_tokens, not max_tokens
+// IMPORTANT: logprobs only work when effort is 'none'
+// When using reasoning_effort, logprobs are NOT supported
 body: JSON.stringify({
     model: 'gpt-5.2',
     messages: [...],
     max_completion_tokens: 1000,
-    temperature: 0.7
+    temperature: 1,  // Only when effort is 'none'
+    reasoning_effort: 'medium',  // 'none', 'low', 'medium', 'high', 'xhigh'
+    logprobs: true,  // Only when effort is 'none'
+    top_logprobs: 1
 })
 ```
 
-### Token Tracking
+### Token Tracking & Metrics
 All API calls update `currentMetrics` object for cost calculation:
 ```javascript
 currentMetrics.gptInputTokens += usage.prompt_tokens || 0;
 currentMetrics.gptOutputTokens += usage.completion_tokens || 0;
 ```
+
+**Enhanced Metrics System (Orchestrator):**
+- Per-prompt logging with full response storage
+- Grouped metrics for RLM/REPL queries (aggregates sub-calls)
+- Confidence metrics via logprobs (when available)
+- CSV export with all prompt data including responses
+- Metrics card with auto-collapse and pin functionality
 
 ## Styling Conventions
 
