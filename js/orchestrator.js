@@ -75,6 +75,7 @@ function generatePromptLogId() {
  * @param {string} mode - Processing mode ('direct', 'rlm', 'repl')
  */
 function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
+    console.log('[Metrics] startPromptGroup:', queryName, 'mode:', mode, 'usesRLM:', usesRLM);
     activePromptGroup = {
         id: generatePromptLogId(),
         timestamp: new Date().toISOString(),
@@ -96,10 +97,12 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
  * End the current prompt group and add it to the logs
  */
 function endPromptGroup() {
+    console.log('[Metrics] endPromptGroup called, activePromptGroup:', !!activePromptGroup);
     if (!activePromptGroup) return;
     
     // Calculate total response time
     activePromptGroup.responseTime = Math.round(performance.now() - activePromptGroup.startTime);
+    console.log('[Metrics] Ending prompt group:', activePromptGroup.name, 'with', activePromptGroup.subCalls?.length || 0, 'sub-calls');
     
     // Aggregate confidence from sub-calls (with safe null checks)
     if (activePromptGroup.confidence && activePromptGroup.confidence.samples && activePromptGroup.confidence.samples.length > 0) {
@@ -142,6 +145,8 @@ function endPromptGroup() {
  * @param {Object} callData - API call data
  */
 function addAPICallToMetrics(callData) {
+    console.log('[Metrics] addAPICallToMetrics:', callData.name, 'tokens:', callData.tokens?.total);
+    
     // Update running totals
     currentMetrics.gptInputTokens += callData.tokens.input;
     currentMetrics.gptOutputTokens += callData.tokens.output;
@@ -1829,11 +1834,11 @@ function buildAPIRequestBody(messages, maxTokens = 4000) {
             body.reasoning_effort = effort;
         } else {
             // Only set temperature when NOT using reasoning effort
-            body.temperature = 0.7;
+            body.temperature = 1;
         }
     } else {
-        // For gpt-5-mini and gpt-5-nano, just set temperature
-        body.temperature = 0.7;
+        // For gpt-5-mini and gpt-5-nano, set temperature to 1
+        body.temperature = 1;
     }
 
     return body;
@@ -2088,9 +2093,19 @@ function formatCost(cost) {
 }
 
 function updateMetricsDisplay() {
-    if (!elements.metricsContent) return;
+    console.log('[Metrics] updateMetricsDisplay called');
+    
+    if (!elements.metricsContent) {
+        console.warn('[Metrics] metricsContent element not found');
+        return;
+    }
 
     const metrics = calculateMetrics();
+    console.log('[Metrics] Calculated metrics:', { 
+        totalTokens: metrics.totalTokens, 
+        promptCount: metrics.promptCount,
+        totalCost: metrics.totalCost 
+    });
 
     // Build detailed per-prompt logs (most recent first)
     const promptLogsHtml = buildPromptLogsHtml(metrics.promptLogs);
@@ -2148,6 +2163,7 @@ function updateMetricsDisplay() {
 
     // Show metrics card if hidden, default content to collapsed
     if (elements.metricsCard && metrics.totalTokens > 0) {
+        console.log('[Metrics] Showing metrics card (totalTokens > 0)');
         elements.metricsCard.classList.remove('hidden');
 
         // Default content to collapsed unless already expanded
@@ -2158,6 +2174,11 @@ function updateMetricsDisplay() {
 
         // Auto-collapse after 10 seconds if not pinned
         scheduleAutoCollapse();
+    } else {
+        console.log('[Metrics] NOT showing metrics card:', { 
+            hasElement: !!elements.metricsCard, 
+            totalTokens: metrics.totalTokens 
+        });
     }
 }
 
