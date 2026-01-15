@@ -46,8 +46,12 @@ jobs:
           cp manifest.json _site/
           cp sw.js _site/
           
-          # Copy static assets
-          cp -r static _site/
+          # Copy optional asset folders when present
+          for dir in images flowcharts static; do
+            if [ -d "$dir" ]; then
+              cp -r "$dir" _site/
+            fi
+          done
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
