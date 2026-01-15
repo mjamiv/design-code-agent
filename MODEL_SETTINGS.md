@@ -17,7 +17,7 @@ These settings enable A/B testing to compare results between models and evaluate
 
 | Model | Description | Input $/1M | Output $/1M |
 |-------|-------------|-----------|-------------|
-| **GPT-5.2** | Full reasoning model with effort control | $2.50 | $10.00 |
+| **GPT-5.2** | Full reasoning model with effort control | $1.75 | $14.00 |
 | **GPT-5-mini** | Fast, cost-efficient for well-defined tasks | $0.25 | $2.00 |
 | **GPT-5-nano** | Fastest, cheapest option | $0.05 | $0.40 |
 
@@ -30,6 +30,14 @@ These settings enable A/B testing to compare results between models and evaluate
 | RLM Pipeline Support | ✅ | ✅ | ✅ |
 
 *\*Temperature is only available when reasoning effort is set to "None". Temperature and reasoning effort are mutually exclusive.*
+
+### Context Windows & Output Limits
+
+| Model | Context Window | Max Output Tokens |
+|-------|----------------|------------------|
+| **GPT-5.2** | 400,000 | 128,000 |
+| **GPT-5-mini** | 400,000 | 128,000 |
+| **GPT-5-nano** | 400,000 | 128,000 |
 
 ## Reasoning Effort (GPT-5.2 Only)
 

@@ -9,6 +9,7 @@
  */
 
 import { getRLMPipeline, RLM_CONFIG } from './rlm/index.js';
+import { generateCodePrompt } from './rlm/code-generator.js';
 
 // ============================================
 // RLM Pipeline Instance
@@ -34,9 +35,9 @@ const state = {
     }
 };
 
-// Model pricing (per 1M tokens) - from OpenAI docs
+// Model pricing (per 1M tokens) - Standard tier
 const PRICING = {
-    'gpt-5.2': { input: 2.50, output: 10.00 },      // Full reasoning model
+    'gpt-5.2': { input: 1.75, output: 14.00 },      // Full reasoning model
     'gpt-5-mini': { input: 0.25, output: 2.00 },    // Fast, cost-efficient
     'gpt-5-nano': { input: 0.05, output: 0.40 }     // Fastest, cheapest
 };
@@ -49,19 +50,18 @@ const MODEL_DISPLAY_NAMES = {
 
 const fallbackNoticeKeys = new Set();
 
-// Model-specific max completion token limits
-// Smaller models may have stricter limits to prevent truncation issues
+// Model-specific max completion token limits (model caps)
 const MODEL_TOKEN_LIMITS = {
-    'gpt-5.2': 4000,      // Full model, higher limit
-    'gpt-5-mini': 2000,   // Medium limit
-    'gpt-5-nano': 2000    // Increased from 1000 - may have been too restrictive
+    'gpt-5.2': 128000,
+    'gpt-5-mini': 128000,
+    'gpt-5-nano': 128000  // Updated max output tokens per model spec
 };
 
 // Estimated context window sizes for visualization (tokens)
 const MODEL_CONTEXT_WINDOWS = {
-    'gpt-5.2': 128000,
-    'gpt-5-mini': 64000,
-    'gpt-5-nano': 32000
+    'gpt-5.2': 400000,
+    'gpt-5-mini': 400000,
+    'gpt-5-nano': 400000
 };
 
 // Metrics tracking for current session - ENHANCED per-prompt logging
@@ -150,7 +150,8 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         maxRetryAttempt: 0,  // Track maximum retry attempts across sub-calls
         actualModels: [],
         modelFallbacks: [],
-        modelFallbackNotified: false
+        modelFallbackNotified: false,
+        cached: false
     };
     return activePromptGroup.id;
 }
@@ -178,8 +179,11 @@ function endPromptGroup() {
         
         let highestPriorityReason = 'stop';
         let highestPriority = 1;
-        
-        activePromptGroup.subCalls.forEach(subCall => {
+
+        const successfulCalls = activePromptGroup.subCalls.filter(subCall => !subCall.emptyResponse);
+        const callsForReason = successfulCalls.length > 0 ? successfulCalls : activePromptGroup.subCalls;
+
+        callsForReason.forEach(subCall => {
             const reason = subCall.finishReason || 'unknown';
             const priority = finishReasonPriority[reason] !== undefined ? finishReasonPriority[reason] : 0;
             if (priority > highestPriority) {
@@ -305,6 +309,7 @@ function addAPICallToMetrics(callData) {
                 actualModel: callData.actualModel,
                 callName: callData.name
             }] : [],
+            cached: false,
             tokens: callData.tokens,
             cost: callData.cost,
             confidence: callData.confidence,
@@ -735,6 +740,7 @@ function handleRLMToggle(e) {
     saveSettings();
     console.log('[Settings] RLM toggled:', state.settings.useRLM ? 'enabled' : 'disabled');
     updateSettingsUI();
+    updateContextGauge();
 }
 
 /**
@@ -744,6 +750,7 @@ function handleRLMAutoToggle(e) {
     state.settings.rlmAuto = e.target.checked;
     saveSettings();
     console.log('[Settings] RLM auto-routing toggled:', state.settings.rlmAuto ? 'enabled' : 'disabled');
+    updateContextGauge();
 }
 
 // ============================================
@@ -1158,8 +1165,8 @@ function updateUI() {
     updateAgentsList();
     updateButtonStates();
     updateSectionsVisibility();
-    updateContextGauge();
     syncAgentsToRLM();
+    updateContextGauge();
     saveState(); // Save state after UI updates
 }
 
@@ -1359,6 +1366,37 @@ function estimateTokens(text) {
     return Math.ceil(trimmed.length / 4);
 }
 
+const CONTEXT_GAUGE_HISTORY_LIMITS = {
+    direct: 20,
+    rlm: 10,
+    repl: 0
+};
+
+const CONTEXT_GAUGE_MESSAGE_OVERHEAD = 4;
+let contextGaugeRunId = 0;
+
+const RLM_SUBQUERY_SYSTEM_PROMPT = `You are analyzing meeting data to answer a specific question.
+Be concise and focus only on information relevant to the question.
+If the information is not available in the provided context, say so briefly.`;
+
+function estimateMessageTokens(message) {
+    if (!message || !message.content) return 0;
+    return estimateTokens(message.content) + CONTEXT_GAUGE_MESSAGE_OVERHEAD;
+}
+
+function estimateMessagesTokens(messages) {
+    if (!Array.isArray(messages)) return 0;
+    return messages.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
+}
+
+function estimateTokensFromParts(parts) {
+    if (!Array.isArray(parts)) return 0;
+    return parts.reduce((sum, part) => {
+        if (typeof part === 'number') return sum + part;
+        return sum + estimateTokens(part);
+    }, 0);
+}
+
 function formatTokenCount(value) {
     if (value >= 1000000) {
         return `${(value / 1000000).toFixed(1)}M`;
@@ -1369,77 +1407,286 @@ function formatTokenCount(value) {
     return `${value}`;
 }
 
-function getAgentTokenCounts() {
-    const activeAgents = state.agents.filter(a => a.enabled);
-    let romTokens = 0;
-    let rawTokens = 0;
+function getDraftQuery() {
+    return elements.chatInput ? elements.chatInput.value.trim() : '';
+}
 
-    activeAgents.forEach(agent => {
-        const header = agent.displayName || agent.title || '';
-        const romFields = [
-            header,
-            agent.summary,
-            agent.keyPoints,
-            agent.actionItems,
-            agent.sentiment,
-            agent.extendedContext
-        ];
+function getHistorySlice(limit) {
+    if (!limit || limit <= 0) return [];
+    return state.chatHistory.slice(-limit);
+}
 
-        const romTotal = romFields.reduce((sum, field) => sum + estimateTokens(field), 0);
-        romTokens += romTotal;
-        rawTokens += romTotal + estimateTokens(agent.transcript);
+function estimatePromptTokens(systemPrompt, historyMessages, userPrompt) {
+    const systemTokens = estimateMessageTokens({ role: 'system', content: systemPrompt });
+    const historyTokens = estimateMessagesTokens(historyMessages);
+    const userTokens = estimateMessageTokens({ role: 'user', content: userPrompt || '' });
+    return systemTokens + historyTokens + userTokens;
+}
+
+function buildRlmUserPrompt(agentContext, query) {
+    return `Context from meetings:
+${agentContext}
+
+Question: ${query}
+
+Provide a focused answer based only on the context above.`;
+}
+
+function buildSubLmUserPrompt(contextSlice, query) {
+    if (!contextSlice) {
+        return `Question: ${query}`;
+    }
+    return `Context:
+${contextSlice}
+
+Question: ${query}`;
+}
+
+function resolveContextGaugeMode(draftMessage) {
+    if (!state.settings.useRLM || !draftMessage) {
+        return { mode: 'direct', label: 'Direct' };
+    }
+
+    const rlmAuto = state.settings.rlmAuto;
+    if (rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(draftMessage, { auto: rlmAuto })) {
+        return { mode: 'repl', label: 'REPL' };
+    }
+    if (rlmPipeline.shouldUseRLM && rlmPipeline.shouldUseRLM(draftMessage, { auto: rlmAuto })) {
+        return { mode: 'rlm', label: 'RLM' };
+    }
+
+    return { mode: 'direct', label: 'Direct' };
+}
+
+function estimateDirectContextUsage(draftMessage) {
+    const relevantAgents = getRelevantAgentsForChat(draftMessage, 5);
+    const history = getHistorySlice(CONTEXT_GAUGE_HISTORY_LIMITS.direct);
+    const transcriptLimit = Math.floor(30000 / Math.max(relevantAgents.length, 1));
+
+    const context = buildChatContext(draftMessage, { maxAgents: 5 });
+    const rawContext = buildChatContext(draftMessage, { maxAgents: 5, useFullTranscripts: true });
+
+    const currentTokens = estimatePromptTokens(buildDirectSystemPrompt(context), history, draftMessage);
+    const rawTokens = estimatePromptTokens(buildDirectSystemPrompt(rawContext), history, draftMessage);
+
+    return {
+        currentTokens,
+        rawTokens,
+        details: {
+            mode: 'direct',
+            historyCount: history.length,
+            agentCount: relevantAgents.length,
+            transcriptLimit
+        }
+    };
+}
+
+async function estimateRlmContextUsage(draftMessage) {
+    const history = getHistorySlice(CONTEXT_GAUGE_HISTORY_LIMITS.rlm);
+    const contextStore = rlmPipeline.contextStore;
+    const decomposer = rlmPipeline.decomposer;
+
+    if (!contextStore || !decomposer) {
+        return estimateDirectContextUsage(draftMessage);
+    }
+
+    let decomposition;
+    try {
+        decomposition = await decomposer.decompose(draftMessage, {});
+    } catch (error) {
+        console.warn('[ContextGauge] RLM decomposition failed:', error.message);
+        return estimateDirectContextUsage(draftMessage);
+    }
+
+    const subQueries = decomposition?.subQueries || [];
+    if (subQueries.length === 0) {
+        return estimateDirectContextUsage(draftMessage);
+    }
+
+    const historyTokens = estimateMessagesTokens(history);
+    const systemTokens = estimateMessageTokens({ role: 'system', content: RLM_SUBQUERY_SYSTEM_PROMPT });
+    const mapQueries = subQueries.filter(sq => sq.type === 'map');
+    const estimatedMapTokens = mapQueries.length * (RLM_CONFIG.tokensPerSubQuery || 800);
+
+    let currentMax = 0;
+    let rawMax = 0;
+
+    subQueries.forEach(subQuery => {
+        if (!subQuery) return;
+
+        const queryText = subQuery.query || draftMessage;
+
+        if (subQuery.type === 'reduce') {
+            const reduceContentTokens = estimateTokensFromParts([
+                'Context from meetings:\n',
+                estimatedMapTokens,
+                '\n\nQuestion: ',
+                queryText,
+                '\n\nProvide a focused answer based only on the context above.'
+            ]);
+            const reduceUserTokens = reduceContentTokens + CONTEXT_GAUGE_MESSAGE_OVERHEAD;
+            const reduceTotal = systemTokens + historyTokens + reduceUserTokens;
+            currentMax = Math.max(currentMax, reduceTotal);
+            rawMax = Math.max(rawMax, reduceTotal);
+            return;
+        }
+
+        const targetAgents = Array.isArray(subQuery.targetAgents) ? subQuery.targetAgents : [];
+        const contextLevel = subQuery.contextLevel || 'standard';
+
+        const agentContext = contextStore.getCombinedContext(targetAgents, contextLevel);
+        const userPrompt = buildRlmUserPrompt(agentContext, queryText);
+        const currentTokens = systemTokens + historyTokens + estimateMessageTokens({ role: 'user', content: userPrompt });
+        currentMax = Math.max(currentMax, currentTokens);
+
+        const rawContext = contextStore.getCombinedContext(targetAgents, 'full');
+        const rawPrompt = buildRlmUserPrompt(rawContext, queryText);
+        const rawTokens = systemTokens + historyTokens + estimateMessageTokens({ role: 'user', content: rawPrompt });
+        rawMax = Math.max(rawMax, rawTokens);
     });
 
-    return { romTokens, rawTokens };
+    return {
+        currentTokens: currentMax,
+        rawTokens: rawMax,
+        details: {
+            mode: 'rlm',
+            historyCount: history.length,
+            subQueryCount: subQueries.length,
+            strategy: decomposition?.strategy?.type || 'unknown'
+        }
+    };
 }
 
-function getChatTokenCount() {
-    const historyTokens = state.chatHistory.reduce((sum, entry) => {
-        return sum + estimateTokens(entry.content);
-    }, 0);
-    const draftTokens = elements.chatInput ? estimateTokens(elements.chatInput.value) : 0;
-    return historyTokens + draftTokens;
+function estimateReplContextUsage(draftMessage) {
+    const history = getHistorySlice(CONTEXT_GAUGE_HISTORY_LIMITS.repl);
+    const contextStore = rlmPipeline.contextStore;
+    const stats = contextStore?.getStats ? contextStore.getStats() : { activeAgents: 0 };
+    const agentNames = contextStore?.getAgentNames ? contextStore.getAgentNames() : [];
+
+    const prompts = generateCodePrompt(draftMessage || '', {
+        activeAgents: stats.activeAgents || 0,
+        agentNames
+    });
+
+    let currentTokens = estimatePromptTokens(prompts.systemPrompt, history, prompts.userPrompt);
+    let rawTokens = currentTokens;
+    let subLmEstimated = false;
+
+    if (prompts.classification?.suggestSubLm && contextStore?.getActiveAgents) {
+        const activeAgentIds = contextStore.getActiveAgents().map(agent => agent.id);
+        const summaryContext = contextStore.getCombinedContext(activeAgentIds, 'summary');
+        const fullContext = contextStore.getCombinedContext(activeAgentIds, 'full');
+
+        const subLmSystemTokens = estimateMessageTokens({ role: 'system', content: RLM_SUBQUERY_SYSTEM_PROMPT });
+        const subLmUserTokens = estimateMessageTokens({ role: 'user', content: buildSubLmUserPrompt(summaryContext, draftMessage) });
+        const subLmRawTokens = estimateMessageTokens({ role: 'user', content: buildSubLmUserPrompt(fullContext, draftMessage) });
+
+        currentTokens = Math.max(currentTokens, subLmSystemTokens + subLmUserTokens);
+        rawTokens = Math.max(rawTokens, subLmSystemTokens + subLmRawTokens);
+        subLmEstimated = true;
+    }
+
+    return {
+        currentTokens,
+        rawTokens,
+        details: {
+            mode: 'repl',
+            historyCount: history.length,
+            subLmEstimated
+        }
+    };
 }
 
-function updateContextGauge() {
+function buildContextGaugeFootnote(details, currentTokens, rawTokens) {
+    if (currentTokens === 0 && rawTokens === 0) {
+        return 'Add meetings and a query to estimate context usage.';
+    }
+
+    const savings = Math.max(rawTokens - currentTokens, 0);
+    const savingsPercent = rawTokens > 0
+        ? Math.round((savings / rawTokens) * 100)
+        : 0;
+
+    let modeNote = '';
+    if (details.mode === 'direct') {
+        const agentNote = details.agentCount ? `${details.agentCount} meetings` : 'meetings';
+        const historyNote = details.historyCount ? `${details.historyCount} recent messages` : 'no history';
+        modeNote = `Direct uses ${agentNote} and ${historyNote}.`;
+    } else if (details.mode === 'rlm') {
+        const strategy = details.strategy ? `${details.strategy} strategy` : 'pipeline';
+        const subQueryNote = details.subQueryCount ? `${details.subQueryCount} sub-queries` : 'sub-queries';
+        const historyNote = details.historyCount ? `${details.historyCount} recent messages` : 'no history';
+        modeNote = `RLM ${strategy} with ${subQueryNote} and ${historyNote}.`;
+    } else if (details.mode === 'repl') {
+        modeNote = `REPL code-gen prompt${details.subLmEstimated ? ' plus sub_lm estimate.' : '.'}`;
+    }
+
+    const savingsNote = rawTokens > 0
+        ? (savings > 0
+            ? `Full transcripts estimate ${formatTokenCount(rawTokens)} tokens (saves ${formatTokenCount(savings)}, ${savingsPercent}%).`
+            : `Full transcripts estimate ${formatTokenCount(rawTokens)} tokens.`)
+        : '';
+
+    return `${modeNote} ${savingsNote}`.trim();
+}
+
+async function updateContextGauge() {
     if (!elements.contextGauge) return;
 
+    const runId = ++contextGaugeRunId;
     const modelLimit = MODEL_CONTEXT_WINDOWS[state.settings.model] || 64000;
-    const chatTokens = getChatTokenCount();
-    const agentTokens = getAgentTokenCounts();
+    const draftMessage = getDraftQuery();
+    const { mode, label } = resolveContextGaugeMode(draftMessage);
 
-    const romTotal = chatTokens + agentTokens.romTokens;
-    const rawTotal = chatTokens + agentTokens.rawTokens;
+    let usage;
+    try {
+        if (mode === 'rlm') {
+            usage = await estimateRlmContextUsage(draftMessage);
+        } else if (mode === 'repl') {
+            usage = estimateReplContextUsage(draftMessage);
+        } else {
+            usage = estimateDirectContextUsage(draftMessage);
+        }
+    } catch (error) {
+        console.warn('[ContextGauge] Failed to estimate usage:', error.message);
+        usage = estimateDirectContextUsage(draftMessage);
+    }
 
-    const romPercent = Math.min((romTotal / modelLimit) * 100, 100);
-    const rawPercent = Math.min((rawTotal / modelLimit) * 100, 100);
+    if (runId !== contextGaugeRunId) {
+        return;
+    }
+
+    const currentTokens = usage.currentTokens || 0;
+    const rawTokens = usage.rawTokens || 0;
+
+    const currentPercent = modelLimit > 0 ? Math.min((currentTokens / modelLimit) * 100, 100) : 0;
+    const rawPercent = modelLimit > 0 ? Math.min((rawTokens / modelLimit) * 100, 100) : 0;
 
     if (elements.contextGaugeRomFill) {
-        elements.contextGaugeRomFill.style.width = `${romPercent}%`;
+        elements.contextGaugeRomFill.style.width = `${currentPercent}%`;
     }
     if (elements.contextGaugeRawFill) {
         elements.contextGaugeRawFill.style.width = `${rawPercent}%`;
     }
     if (elements.contextGaugeRomValue) {
-        elements.contextGaugeRomValue.textContent = `${Math.round(romPercent)}%`;
+        elements.contextGaugeRomValue.textContent = `${Math.round(currentPercent)}%`;
     }
     if (elements.contextGaugeRawValue) {
         elements.contextGaugeRawValue.textContent = `${Math.round(rawPercent)}%`;
     }
 
     if (elements.contextGaugeUsage) {
-        elements.contextGaugeUsage.textContent = `ROM ${formatTokenCount(romTotal)} / ${formatTokenCount(modelLimit)}`;
+        elements.contextGaugeUsage.textContent = `${label} ${formatTokenCount(currentTokens)} / ${formatTokenCount(modelLimit)}`;
     }
 
     const statusEl = elements.contextGaugeStatus;
     if (statusEl) {
         statusEl.classList.remove('warn', 'critical');
         let statusLabel = 'Healthy';
-        const maxPercent = Math.max(romPercent, rawPercent);
-        if (maxPercent >= 90) {
+        if (currentPercent >= 90) {
             statusLabel = 'Critical';
             statusEl.classList.add('critical');
-        } else if (maxPercent >= 70) {
+        } else if (currentPercent >= 70) {
             statusLabel = 'Tight';
             statusEl.classList.add('warn');
         }
@@ -1447,13 +1694,11 @@ function updateContextGauge() {
     }
 
     if (elements.contextGaugeFootnote) {
-        const savings = Math.max(agentTokens.rawTokens - agentTokens.romTokens, 0);
-        const savingsPercent = agentTokens.rawTokens > 0
-            ? Math.round((savings / agentTokens.rawTokens) * 100)
-            : 0;
-        elements.contextGaugeFootnote.textContent = savings > 0
-            ? `ROM uses ${formatTokenCount(romTotal)} tokens vs raw ${formatTokenCount(rawTotal)}. Savings: ${formatTokenCount(savings)} (~${savingsPercent}%).`
-            : `ROM uses ${formatTokenCount(romTotal)} tokens vs raw ${formatTokenCount(rawTotal)}. Savings will appear once transcripts are added.`;
+        elements.contextGaugeFootnote.textContent = buildContextGaugeFootnote(
+            usage.details || { mode },
+            currentTokens,
+            rawTokens
+        );
     }
 }
 
@@ -1811,10 +2056,25 @@ async function chatWithREPL(userMessage, thinkingId = null) {
     // Clear progress callback
     rlmPipeline.setProgressCallback(null);
 
+    if (activePromptGroup && result?.metadata) {
+        if (result.metadata.cached) {
+            activePromptGroup.cached = true;
+        }
+        if (result.metadata.replUsed) {
+            activePromptGroup.mode = 'repl';
+            activePromptGroup.usesRLM = true;
+        } else if (result.metadata.rlmEnabled === false || result.metadata.legacy) {
+            activePromptGroup.mode = 'direct';
+            activePromptGroup.usesRLM = false;
+        } else if (result.metadata.rlmEnabled) {
+            activePromptGroup.mode = 'rlm';
+            activePromptGroup.usesRLM = true;
+        }
+    }
+
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: result.response });
-    updateContextGauge();
     updateContextGauge();
 
     // Log REPL metadata for debugging
@@ -1869,6 +2129,19 @@ async function chatWithRLM(userMessage, thinkingId = null) {
     // Clear progress callback
     rlmPipeline.setProgressCallback(null);
 
+    if (activePromptGroup && result?.metadata) {
+        if (result.metadata.cached) {
+            activePromptGroup.cached = true;
+        }
+        if (result.metadata.rlmEnabled === false || result.metadata.legacy) {
+            activePromptGroup.mode = 'direct';
+            activePromptGroup.usesRLM = false;
+        } else if (result.metadata.rlmEnabled) {
+            activePromptGroup.mode = 'rlm';
+            activePromptGroup.usesRLM = true;
+        }
+    }
+
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: result.response });
@@ -1891,13 +2164,7 @@ async function chatWithRLM(userMessage, thinkingId = null) {
 async function chatWithAgentsLegacy(userMessage) {
     // Build context with smart agent selection
     const context = buildChatContext(userMessage);
-
-    const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
-Use the following meeting data to answer questions accurately and comprehensively.
-If information isn't available in the meeting data, say so clearly.
-Be concise but thorough. Use bullet points when listing multiple items.
-
-${context}`;
+    const systemPrompt = buildDirectSystemPrompt(context);
 
     // Build messages array with history
     const messages = [
@@ -1975,24 +2242,45 @@ function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
         .map(s => s.agent);
 }
 
-function buildChatContext(userQuery = '') {
-    // Only use active agents
-    const activeAgents = state.agents.filter(a => a.enabled);
+const DIRECT_SYSTEM_PROMPT_PREFIX = `You are a helpful meeting assistant with access to data from multiple meetings.
+Use the following meeting data to answer questions accurately and comprehensively.
+If information isn't available in the meeting data, say so clearly.
+Be concise but thorough. Use bullet points when listing multiple items.`;
 
-    // Select only relevant agents for this query
-    const relevantAgents = userQuery ?
-        selectRelevantAgents(userQuery, activeAgents, 5) :
-        activeAgents.slice(0, 5); // Default to first 5 if no query
+function buildDirectSystemPrompt(context) {
+    return `${DIRECT_SYSTEM_PROMPT_PREFIX}\n\n${context}`;
+}
+
+function getRelevantAgentsForChat(userQuery, maxAgents = 5) {
+    const activeAgents = state.agents.filter(a => a.enabled);
+    return userQuery
+        ? selectRelevantAgents(userQuery, activeAgents, maxAgents)
+        : activeAgents.slice(0, maxAgents);
+}
+
+function buildChatContext(userQuery = '', options = {}) {
+    const {
+        maxAgents = 5,
+        useFullTranscripts = false,
+        transcriptLimitOverride = null
+    } = options;
+
+    const relevantAgents = getRelevantAgentsForChat(userQuery, maxAgents);
 
     // Dynamic transcript limit based on number of agents (more agents = less transcript per agent)
     // Total context budget ~50k chars, reserve ~30k for transcripts across all agents
-    const transcriptLimit = Math.floor(30000 / Math.max(relevantAgents.length, 1));
+    const transcriptLimit = useFullTranscripts
+        ? null
+        : (Number.isFinite(transcriptLimitOverride)
+            ? transcriptLimitOverride
+            : Math.floor(30000 / Math.max(relevantAgents.length, 1)));
 
     return relevantAgents.map((agent, index) => {
-        const transcriptSection = agent.transcript
-            ? (agent.transcript.length > transcriptLimit
-                ? `Transcript: ${agent.transcript.substring(0, transcriptLimit)}...[truncated]`
-                : `Transcript: ${agent.transcript}`)
+        const transcriptText = agent.transcript || '';
+        const transcriptSection = transcriptText
+            ? (transcriptLimit && transcriptText.length > transcriptLimit
+                ? `Transcript: ${transcriptText.substring(0, transcriptLimit)}...[truncated]`
+                : `Transcript: ${transcriptText}`)
             : '';
         const extendedSection = agent.extendedContext
             ? `Extended Context:\n${agent.extendedContext}`
@@ -2277,6 +2565,63 @@ function buildAPIRequestBody(messages, maxTokens = null) {
     return body;
 }
 
+function buildCallDataFromResponse({
+    data,
+    callName,
+    requestedModel,
+    actualModel,
+    modelFallback,
+    effort,
+    responseTime,
+    promptPreview,
+    responseContent,
+    finishReason,
+    retryAttempt
+}) {
+    if (!data?.usage) {
+        return null;
+    }
+
+    const inputTokens = data.usage.prompt_tokens || 0;
+    const outputTokens = data.usage.completion_tokens || 0;
+
+    const pricing = PRICING[actualModel] || PRICING[requestedModel] || PRICING['gpt-5.2'];
+    const inputCost = (inputTokens / 1000000) * pricing.input;
+    const outputCost = (outputTokens / 1000000) * pricing.output;
+    const callCost = inputCost + outputCost;
+
+    const normalizedResponse = responseContent && String(responseContent).trim().length > 0
+        ? responseContent
+        : '';
+
+    return {
+        timestamp: new Date().toISOString(),
+        name: callName,
+        model: actualModel,
+        requestedModel,
+        actualModel,
+        modelFallback,
+        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
+        tokens: {
+            input: inputTokens,
+            output: outputTokens,
+            total: inputTokens + outputTokens
+        },
+        cost: {
+            input: inputCost,
+            output: outputCost,
+            total: callCost
+        },
+        responseTime,
+        confidence: extractConfidenceMetrics(data, finishReason),
+        promptPreview,
+        response: normalizedResponse,
+        emptyResponse: normalizedResponse.length === 0,
+        finishReason,
+        retryAttempt: retryAttempt || 0
+    };
+}
+
 async function callGPT(systemPrompt, userContent, callName = 'API Call') {
     const model = state.settings.model;
     const effort = state.settings.effort;
@@ -2323,52 +2668,28 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
             
             // Validate and extract response using helper
             const validationResult = validateAndExtractResponse(data, actualModel);
+            const promptPreview = userContent.substring(0, 100) + (userContent.length > 100 ? '...' : '');
+
+            const callData = buildCallDataFromResponse({
+                data,
+                callName,
+                requestedModel: model,
+                actualModel,
+                modelFallback,
+                effort,
+                responseTime,
+                promptPreview,
+                responseContent: validationResult.content,
+                finishReason: validationResult.finishReason,
+                retryAttempt
+            });
+
+            if (callData) {
+                addAPICallToMetrics(callData);
+            }
             
             // Check if we have valid content first
             if (validationResult.content && typeof validationResult.content === 'string' && validationResult.content.trim().length > 0) {
-                // Only track metrics for successful calls to avoid inflating totals with retry attempts
-                if (data.usage) {
-                    const inputTokens = data.usage.prompt_tokens || 0;
-                    const outputTokens = data.usage.completion_tokens || 0;
-                    
-                    // Calculate cost for this call
-                    const pricing = PRICING[actualModel] || PRICING[model] || PRICING['gpt-5.2'];
-                    const inputCost = (inputTokens / 1000000) * pricing.input;
-                    const outputCost = (outputTokens / 1000000) * pricing.output;
-                    const callCost = inputCost + outputCost;
-                    
-                    // Create API call data
-                    const callData = {
-                        timestamp: new Date().toISOString(),
-                        name: callName,
-                        model: actualModel,
-                        requestedModel: model,
-                        actualModel: actualModel,
-                        modelFallback: modelFallback,
-                        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
-                        tokens: {
-                            input: inputTokens,
-                            output: outputTokens,
-                            total: inputTokens + outputTokens
-                        },
-                        cost: {
-                            input: inputCost,
-                            output: outputCost,
-                            total: callCost
-                        },
-                        responseTime: responseTime,
-                        confidence: extractConfidenceMetrics(data, validationResult.finishReason),
-                        promptPreview: userContent.substring(0, 100) + (userContent.length > 100 ? '...' : ''),
-                        response: validationResult.content,
-                        emptyResponse: false,
-                        finishReason: validationResult.finishReason,
-                        retryAttempt: retryAttempt
-                    };
-                    
-                    // Add to metrics (grouped or standalone)
-                    addAPICallToMetrics(callData);
-                }
-                
                 return validationResult.content;
             }
             
@@ -2456,58 +2777,33 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
             
             // Validate and extract response using helper
             const validationResult = validateAndExtractResponse(data, actualModel);
+
+            // Extract user message for preview (last user message)
+            const userMessage = messages.filter(m => m.role === 'user').pop();
+            const promptPreview = userMessage ? 
+                userMessage.content.substring(0, 100) + (userMessage.content.length > 100 ? '...' : '') :
+                '(No user message)';
+
+            const callData = buildCallDataFromResponse({
+                data,
+                callName,
+                requestedModel: model,
+                actualModel,
+                modelFallback,
+                effort,
+                responseTime,
+                promptPreview,
+                responseContent: validationResult.content,
+                finishReason: validationResult.finishReason,
+                retryAttempt
+            });
+
+            if (callData) {
+                addAPICallToMetrics(callData);
+            }
             
             // Check if we have valid content first
             if (validationResult.content && typeof validationResult.content === 'string' && validationResult.content.trim().length > 0) {
-                // Only track metrics for successful calls to avoid inflating totals with retry attempts
-                if (data.usage) {
-                    const inputTokens = data.usage.prompt_tokens || 0;
-                    const outputTokens = data.usage.completion_tokens || 0;
-                    
-                    // Calculate cost for this call
-                    const pricing = PRICING[actualModel] || PRICING[model] || PRICING['gpt-5.2'];
-                    const inputCost = (inputTokens / 1000000) * pricing.input;
-                    const outputCost = (outputTokens / 1000000) * pricing.output;
-                    const callCost = inputCost + outputCost;
-                    
-                    // Extract user message for preview (last user message)
-                    const userMessage = messages.filter(m => m.role === 'user').pop();
-                    const promptPreview = userMessage ? 
-                        userMessage.content.substring(0, 100) + (userMessage.content.length > 100 ? '...' : '') :
-                        '(No user message)';
-                    
-                    // Create API call data
-                    const callData = {
-                        timestamp: new Date().toISOString(),
-                        name: callName,
-                        model: actualModel,
-                        requestedModel: model,
-                        actualModel: actualModel,
-                        modelFallback: modelFallback,
-                        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
-                        tokens: {
-                            input: inputTokens,
-                            output: outputTokens,
-                            total: inputTokens + outputTokens
-                        },
-                        cost: {
-                            input: inputCost,
-                            output: outputCost,
-                            total: callCost
-                        },
-                        responseTime: responseTime,
-                        confidence: extractConfidenceMetrics(data, validationResult.finishReason),
-                        promptPreview: promptPreview,
-                        response: validationResult.content,
-                        emptyResponse: false,
-                        finishReason: validationResult.finishReason,
-                        retryAttempt: retryAttempt
-                    };
-                    
-                    // Add to metrics (grouped or standalone)
-                    addAPICallToMetrics(callData);
-                }
-                
                 return validationResult.content;
             }
             
@@ -2757,16 +3053,45 @@ function calculateMetrics() {
     let inputCost = 0;
     let outputCost = 0;
     let totalResponseTime = 0;
+    let apiCallCount = 0;
+    let cacheHits = 0;
+
+    const modeTotals = {
+        direct: { tokens: 0, cost: 0, prompts: 0, calls: 0 },
+        rlm: { tokens: 0, cost: 0, prompts: 0, calls: 0 },
+        repl: { tokens: 0, cost: 0, prompts: 0, calls: 0 },
+        unknown: { tokens: 0, cost: 0, prompts: 0, calls: 0 }
+    };
     
     currentMetrics.promptLogs.forEach(log => {
         inputCost += log.cost.input;
         outputCost += log.cost.output;
         totalResponseTime += log.responseTime;
+
+        const mode = log.mode || 'unknown';
+        const modeBucket = modeTotals[mode] || modeTotals.unknown;
+        const subCallCount = log.subCalls ? log.subCalls.length : 0;
+        const logTokens = log.tokens?.total || 0;
+        const logCost = log.cost?.total || 0;
+
+        modeBucket.tokens += logTokens;
+        modeBucket.cost += logCost;
+        modeBucket.prompts += 1;
+        modeBucket.calls += subCallCount;
+
+        apiCallCount += subCallCount;
+
+        if (log.cached) {
+            cacheHits += 1;
+        }
     });
     
     const totalCost = inputCost + outputCost;
     const avgResponseTime = currentMetrics.promptLogs.length > 0 
         ? Math.round(totalResponseTime / currentMetrics.promptLogs.length) 
+        : 0;
+    const cacheHitRate = currentMetrics.promptLogs.length > 0
+        ? Math.round((cacheHits / currentMetrics.promptLogs.length) * 100)
         : 0;
 
     return {
@@ -2779,6 +3104,10 @@ function calculateMetrics() {
         totalResponseTime,
         avgResponseTime,
         promptCount: currentMetrics.promptLogs.length,
+        apiCallCount,
+        cacheHits,
+        cacheHitRate,
+        modeTotals,
         promptLogs: currentMetrics.promptLogs
     };
 }
@@ -2810,6 +3139,21 @@ function updateMetricsDisplay() {
 
     // Build detailed per-prompt logs (most recent first)
     const promptLogsHtml = buildPromptLogsHtml(metrics.promptLogs);
+    const modeTotals = metrics.modeTotals || {};
+    const modeItems = [
+        { key: 'direct', label: 'Direct' },
+        { key: 'rlm', label: 'RLM' },
+        { key: 'repl', label: 'REPL' }
+    ];
+
+    const modeBreakdownHtml = modeItems.map(({ key, label }) => {
+        const data = modeTotals[key] || { tokens: 0, cost: 0, prompts: 0, calls: 0 };
+        return `
+                <div class="metric-breakdown-item">
+                    <span>${label}</span>
+                    <span>${formatTokens(data.tokens)} tokens (${formatCost(data.cost)}), ${data.prompts} prompts, ${data.calls} calls</span>
+                </div>`;
+    }).join('');
 
     elements.metricsContent.innerHTML = `
         <!-- Summary Totals Section -->
@@ -2826,11 +3170,11 @@ function updateMetricsDisplay() {
                 </div>
                 <div class="metric-item">
                     <span class="metric-value">${metrics.promptCount}</span>
-                    <span class="metric-label">API Calls</span>
+                    <span class="metric-label">Prompts</span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-value">${formatTime(metrics.avgResponseTime)}</span>
-                    <span class="metric-label">Avg Response</span>
+                    <span class="metric-value">${metrics.apiCallCount}</span>
+                    <span class="metric-label">API Calls</span>
                 </div>
             </div>
             <div class="metric-breakdown">
@@ -2848,13 +3192,28 @@ function updateMetricsDisplay() {
                 </div>
             </div>
         </div>
+        <div class="metric-breakdown metric-breakdown-extra">
+            <div class="metric-breakdown-header">Stats</div>
+            <div class="metric-breakdown-item">
+                <span>Avg Response</span>
+                <span>${formatTime(metrics.avgResponseTime)}</span>
+            </div>
+            <div class="metric-breakdown-item">
+                <span>Cache Hits</span>
+                <span>${metrics.cacheHits} (${metrics.cacheHitRate}%)</span>
+            </div>
+        </div>
+        <div class="metric-breakdown metric-breakdown-modes">
+            <div class="metric-breakdown-header">Mode Breakdown</div>
+            ${modeBreakdownHtml}
+        </div>
         
         <!-- Detailed Per-Prompt Logs Section -->
         ${metrics.promptLogs.length > 0 ? `
         <div class="metrics-prompt-logs">
             <div class="prompt-logs-header">
                 <span>📝 Prompt-by-Prompt Breakdown</span>
-                <span class="prompt-logs-count">${metrics.promptCount} calls</span>
+                <span class="prompt-logs-count">${metrics.promptCount} prompts</span>
             </div>
             <div class="prompt-logs-list">
                 ${promptLogsHtml}
@@ -2863,8 +3222,8 @@ function updateMetricsDisplay() {
     `;
 
     // Show metrics card if hidden, default content to collapsed
-    if (elements.metricsCard && metrics.totalTokens > 0) {
-        console.log('[Metrics] Showing metrics card (totalTokens > 0)');
+    if (elements.metricsCard && metrics.promptLogs.length > 0) {
+        console.log('[Metrics] Showing metrics card (promptLogs > 0)');
         elements.metricsCard.classList.remove('hidden');
 
         // Default content to collapsed unless already expanded
@@ -2922,6 +3281,9 @@ function buildPromptLogsHtml(promptLogs) {
         const subCallsDisplay = subCallsCount > 1 
             ? `<span class="subcalls-badge">${subCallsCount} calls</span>` 
             : '';
+        const cacheDisplay = log.cached
+            ? `<span class="cache-badge">Cached</span>`
+            : '';
         
         return `
         <details class="prompt-log-entry ${log.usesRLM ? 'uses-rlm' : ''}" id="${log.id || 'unknown'}">
@@ -2939,6 +3301,7 @@ function buildPromptLogsHtml(promptLogs) {
                         <span class="model-tag">${log.model || 'unknown'}</span>
                         ${effortDisplay}
                         ${subCallsDisplay}
+                        ${cacheDisplay}
                     </span>
                 </div>
                 ${log.actualModels && log.actualModels.length > 1 ? `
@@ -2958,6 +3321,11 @@ function buildPromptLogsHtml(promptLogs) {
                         ${log.usesRLM ? '<span class="rlm-indicator">RLM Active</span>' : ''}
                     </span>
                 </div>
+                ${log.cached ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">Cache:</span>
+                    <span class="log-value">Hit (no API calls)</span>
+                </div>` : ''}
                 ${log.model === 'gpt-5.2' ? `
                 <div class="prompt-log-row">
                     <span class="log-label">🧠 Effort:</span>
@@ -3210,6 +3578,7 @@ function downloadMetricsCSV() {
         'Effort',
         'Mode',
         'Uses RLM',
+        'Cached',
         'Input Tokens',
         'Output Tokens',
         'Total Tokens',
@@ -3252,6 +3621,7 @@ function downloadMetricsCSV() {
             escapeCSV(log.effort || 'N/A'),
             escapeCSV(log.mode || 'direct'),
             escapeCSV(log.usesRLM ? 'Yes' : 'No'),
+            escapeCSV(log.cached ? 'Yes' : 'No'),
             escapeCSV(log.tokens?.input || 0),
             escapeCSV(log.tokens?.output || 0),
             escapeCSV(log.tokens?.total || 0),
