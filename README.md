@@ -11,6 +11,12 @@ northstar.LM consists of two main applications:
 - **Agent Builder** (`index.html`) - Analyzes recordings, videos, documents, images, and text to create intelligent meeting agents with AI-powered insights
 - **Agent Orchestrator** (`orchestrator.html`) - Combines multiple agents for cross-meeting analysis using the RLM (Recursive Language Model) pipeline
 
+## Recent Updates
+
+- Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) alongside the markdown summary.
+- Imports now restore richer session state, and the Orchestrator consumes the embedded payload to enrich cross-meeting context without loading base64 blobs.
+- GitHub Pages deploy now copies optional asset folders when present (e.g., `images/`, `flowcharts/`, `static/`) to avoid build failures.
+
 ## Application Workflow
 
 ```mermaid
@@ -482,9 +488,9 @@ At-a-glance metrics displayed at the top of every analysis:
 - Rich markdown formatting in responses (styled lists, headings, code blocks, blockquotes)
 
 ### Agent Export/Import
-- **Export Agent** - Save your analyzed meeting as a portable markdown file (~90 KB)
-- **Import Agent** - Load a previously exported agent to restore the full session
-- Enables building a library of meeting agents for future reference
+- **Export Agent** - Save your analyzed meeting as a portable markdown file with embedded JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments)
+- **Import Agent** - Restore the full session state when the embedded payload is present (source metadata, metrics, chat history, audio/infographic previews)
+- **Orchestrator Context** - The Orchestrator reads the export payload to provide richer cross-meeting answers without embedding base64 data
 
 ### Meeting Orchestrator
 - **Multi-Agent Coordination** - Load multiple meeting agents simultaneously

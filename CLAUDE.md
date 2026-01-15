@@ -12,6 +12,12 @@ The application consists of two main pages:
 
 Features include multi-meeting orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
 
+## Recent Updates
+
+- Agent export now embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) with a stable agent ID.
+- Agent import prefers the embedded payload for restoring session metadata; the Orchestrator builds `extendedContext` from a sanitized payload (base64 stripped) for richer search/context/REPL usage.
+- GitHub Pages deployment now copies optional asset folders (`images/`, `flowcharts/`, `static/`) when present to avoid build failures.
+
 ## Architecture
 
 ```
@@ -616,6 +622,8 @@ sequenceDiagram
     Orch->>User: Display agent nodes in chain
 ```
 
+Exported markdown now includes an **Export Payload (JSON)** section with processing metadata, prompts, metrics, chat history, and artifact metadata/attachments. On import, the single-meeting app and Orchestrator prefer this payload when present; the Orchestrator sanitizes base64 attachments and stores the remainder in `extendedContext` for search, context slices, and REPL analysis.
+
 ## Key Technical Decisions
 
 ### Client-Side Only
@@ -678,8 +686,19 @@ const state = {
     results: null,        // Contains transcription, summary, keyPoints, actionItems, sentiment
     metrics: null,        // API usage metrics
     chatHistory: [],      // Chat Q&A history
-    urlContent: null,
-    infographicBlob: null // Generated infographic image
+    sourceUrl: null,
+    exportMeta: {
+        agentId: null,
+        source: { audio: null, pdf: null, image: null, video: null, url: null },
+        processing: {
+            inputMode: null,
+            analysis: null,
+            transcriptionMethod: null,
+            pdf: { totalPages: null, usedVisionOcr: false, ocrPagesAnalyzed: 0, ocrPageLimit: 0 }
+        },
+        artifacts: { audioBriefing: null, infographic: null }
+    },
+    urlContent: null
 };
 ```
 
@@ -690,9 +709,10 @@ const state = {
 - Extracts: sentiment, word count, key points count, action items count, read time, topics
 
 ### Agent Export/Import
-- `downloadAgentFile()` - Exports session as markdown with YAML frontmatter
-- `importAgentFile()` - Restores session from exported agent file
-- Agent files are portable markdown (~90 KB) containing all analysis data
+- `buildExportPayload()` / `exportAgentWithName()` - Build markdown with YAML frontmatter and embedded Export Payload JSON (processing metadata, prompts, metrics, chat history, artifacts, attachments)
+- `parseAgentFile()` - Extracts markdown sections plus Export Payload JSON when present (used in both apps)
+- `importAgentSession()` - Restores session state from payload (source metadata, processing details, metrics, chat history, artifacts)
+- Orchestrator sanitizes base64 attachments and stores remaining payload as `extendedContext`
 
 ### Image & Vision Analysis
 - `analyzeImageWithVision()` - Sends image to GPT-5.2 Vision for OCR and content extraction
@@ -828,8 +848,9 @@ Automatic deployment via GitHub Actions on push to `main` branch.
 
 ### Files Deployed
 The GitHub Actions workflow copies these to `_site`:
-- `index.html`, `orchestrator.html`, `northstar-overview.html`
-- `css/`, `js/` (including `js/rlm/`), `images/`
+- `index.html`, `orchestrator.html`
+- `css/`, `js/` (including `js/rlm/`)
 - `manifest.json`, `sw.js` (PWA files)
+- Optional asset folders when present: `images/`, `flowcharts/`, `static/`
 
-Note: The `archive/` folder is NOT deployed—it contains legacy Flask backend code for reference only.
+Note: The `archive/` folder is NOT deployed-it contains legacy Flask backend code for reference only.
