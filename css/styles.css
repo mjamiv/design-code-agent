@@ -2198,6 +2198,29 @@ footer a:hover {
         align-items: flex-start;
         gap: var(--space-sm);
     }
+
+    .modal-container {
+        max-height: calc(100vh - 32px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-body {
+        overflow-y: auto;
+    }
+
+    .modal-footer {
+        margin-top: auto;
+    }
+
+    .test-modal-container .test-prompt-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .test-modal-container .test-prompt-list {
+        max-height: 220px;
+    }
 }
 
 @media (max-width: 480px) {
