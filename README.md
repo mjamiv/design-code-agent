@@ -16,6 +16,7 @@ northstar.LM consists of two main applications:
 - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) alongside the markdown summary.
 - Imports now restore richer session state, and the Orchestrator consumes the embedded payload to enrich cross-meeting context without loading base64 blobs.
 - GitHub Pages deploy now copies optional asset folders when present (e.g., `images/`, `flowcharts/`, `static/`) to avoid build failures.
+- RLM now builds **signal-weighted chat history** (state block + working window + retrieved memory slices) to keep recursive prompts focused and within token budgets.
 
 ## Application Workflow
 
@@ -374,6 +375,51 @@ flowchart TB
 | **Conditional Logic** | Branch based on LLM responses within same execution |
 | **Error Recovery** | Retry with context on code generation failures |
 | **GitHub Pages** | Unified `sw.js` v4 injects COOP/COEP headers, no reload loops |
+
+### Signal-Weighted RLM Memory (New)
+
+Recent RLM updates replace raw chat history with **signal-weighted memory** so recursive prompts stay concise while preserving decisions, actions, risks, and entities across turns.
+
+```mermaid
+flowchart TB
+    subgraph Input["🧑‍💬 NEW USER QUERY"]
+        Q1[User prompt]
+        Q2[Tag classifier<br/>decisions • actions • risks • entities]
+    end
+
+    subgraph Capture["🧠 SIGNAL CAPTURE (per response)"]
+        C1[Assistant response]
+        C2[Summarize + sanitize]
+        C3[Update state block<br/>Decisions, Actions, Questions, Constraints, Entities]
+        C4[Memory index entry<br/>tags + recency score]
+    end
+
+    subgraph History["📚 SIGNAL-WEIGHTED HISTORY BUILDER"]
+        H1[State block<br/>compact working memory]
+        H2[Working window<br/>last 2 user turns + last summary]
+        H3[Retrieved memory slices<br/>tag + recency scoring]
+    end
+
+    subgraph RLMCall["🧠 RLM SUBQUERY PROMPT"]
+        R1[System prompt + signal history]
+        R2[Subquery execution]
+    end
+
+    Q1 --> Q2
+    C1 --> C2 --> C3 --> C4
+    Q2 --> H3
+    C3 --> H1
+    C2 --> H2
+    H1 --> R1
+    H2 --> R1
+    H3 --> R1
+    R1 --> R2
+
+    style Input fill:#1a1f2e,stroke:#60a5fa,color:#fff
+    style Capture fill:#2a2a1a,stroke:#fbbf24,color:#fff
+    style History fill:#1a2a3a,stroke:#a855f7,color:#fff
+    style RLMCall fill:#2a1a2a,stroke:#d4a853,color:#fff
+```
 
 ### Enhanced Train of Thought
 
