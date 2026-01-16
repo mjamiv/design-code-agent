@@ -257,3 +257,45 @@ Per prompt:
 - **Telemetry-first:** do not enable new behavior without logs.
 - **Data retention:** keep raw logs for offline reprocessing until Focus proves stable.
 - **Budget safety:** ensure minimum token reserve for the model response.
+
+---
+
+## Validation Notes (2026-01-16 Test Readout)
+**Observed vs expected behavior (based on Milestones 1–3 so far):**
+- **Direct mode** still shows very large input context sizes, which is expected because it bypasses RLM, retrieval, and Focus compression entirely.
+- **RLM mode** shows sharply reduced input tokens, consistent with SWM capture, retrieval shadowing, and aggregation. This is expected with Milestone 2 shadow prompt builder enabled (no behavioral change, just telemetry).
+- **Shadow Prompt + Focus Shadow** runs remain low-token and stable, which is expected because they do not alter the live prompt path; they only emit telemetry and focus summaries.
+- **Focus Episodes** (when enabled) should stay low-token and primarily affect memory persistence, not prompt size, until Milestone 4 prompt budgeting is enforced.
+
+**Interpretation:** The results align with current enhancements: shadow prompt and focus are emitting structured telemetry without changing the live prompt path. Any remaining latency/quality deltas should be evaluated once Milestone 4 guardrails are active.
+
+---
+
+## Usage Guidance: When to Use RLM, Shadow Prompt, Focus Shadow, Focus Episodes
+**RLM (enableRLM = true)**
+- **Use for:** Aggregation queries, long-thread synthesis, multi-source reconciliation, or when direct-chat context grows beyond a safe threshold.
+- **Why:** RLM decomposes the query, bounds context per sub-query, and avoids long-context drift.
+- **Trigger cues:** Input context > 8k tokens, “summarize many items,” multi-meeting or multi-phase analyses, or user asks for “themes,” “differences,” or “trade-offs.”
+
+**Shadow Prompt (enableShadowPrompt = true)**
+- **Use for:** Any traffic where you want retrieval telemetry without changing behavior.
+- **Why:** It logs what would have been retrieved and how it affects token estimates so you can tune retrieval weights safely.
+- **Trigger cues:** After every RLM call in shadow mode; also on legacy/direct flows for baseline comparison.
+
+**Focus Shadow (enableFocusShadow = true)**
+- **Use for:** Long or tool-heavy flows where you want to evaluate focus summaries without persisting them.
+- **Why:** It validates Focus Episode quality in production without affecting memory state.
+- **Trigger cues:** Tool-call bursts, recursive depth, or prompt-estimate budget pressure.
+
+**Focus Episodes (enableFocusEpisodes = true)**
+- **Use for:** Stable deployments after shadow validation shows reliable summaries.
+- **Why:** It compresses long histories into durable “episode” memory slices, preventing context bloat.
+- **Trigger cues:** After a phase completes (plan → execute → validate), after N tool calls, or when prompt size nears the budget threshold.
+
+---
+
+## Next Actions (Continue Milestones)
+1) **Milestone 3 (Focus Episodes):** Gate Focus Episodes behind feature flags and verify summary quality on real traffic.  
+2) **Milestone 4 (Guardrails):** Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow.  
+3) **Milestone 5 (Instrumentation):** Add UI telemetry for shadow prompt and focus summaries to compare with direct mode.  
+4) **Milestone 6 (Evaluation):** Formal A/B with latency/cost dashboards; require eval-gated acceptance.
