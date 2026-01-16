@@ -45,6 +45,7 @@ const state = {
         useRLM: true,          // Enable/disable RLM processing
         rlmAuto: true,         // Auto-route RLM only for ambiguous prompts
         enableShadowPrompt: RLM_CONFIG.enableShadowPrompt,
+        enableRetrievalPrompt: RLM_CONFIG.enableRetrievalPrompt,
         enableFocusShadow: RLM_CONFIG.enableFocusShadow,
         enableFocusEpisodes: RLM_CONFIG.enableFocusEpisodes,
         enablePromptBudgeting: RLM_CONFIG.enablePromptBudgeting,
@@ -224,6 +225,26 @@ function attachShadowPromptTelemetry(userMessage) {
         retrievalStats: shadowPrompt.retrievalStats,
         tokenEstimate: shadowPrompt.tokenEstimate,
         tokenBreakdown: shadowPrompt.tokenBreakdown
+    };
+}
+
+function attachRetrievalPromptTelemetry(userMessage) {
+    if (!activePromptGroup || !rlmPipeline?.getStats) {
+        return;
+    }
+
+    const stats = rlmPipeline.getStats();
+    if (!stats?.config?.enableRetrievalPrompt || !stats?.guardrails?.lastRetrievalStats) {
+        return;
+    }
+
+    const shadowPrompt = stats?.shadowPrompt;
+    if (shadowPrompt?.query && shadowPrompt.query !== userMessage) {
+        return;
+    }
+
+    activePromptGroup.retrievalPrompt = {
+        ...stats.guardrails.lastRetrievalStats
     };
 }
 
@@ -490,6 +511,7 @@ function initElements() {
         rlmToggle: document.getElementById('rlm-toggle'),
         rlmAutoToggle: document.getElementById('rlm-auto-toggle'),
         shadowPromptToggle: document.getElementById('shadow-prompt-toggle'),
+        retrievalPromptToggle: document.getElementById('retrieval-prompt-toggle'),
         focusShadowToggle: document.getElementById('focus-shadow-toggle'),
         focusEpisodesToggle: document.getElementById('focus-episodes-toggle'),
         promptBudgetToggle: document.getElementById('prompt-budget-toggle'),
@@ -717,6 +739,9 @@ function updateSettingsUI() {
     if (elements.shadowPromptToggle) {
         elements.shadowPromptToggle.checked = state.settings.enableShadowPrompt;
     }
+    if (elements.retrievalPromptToggle) {
+        elements.retrievalPromptToggle.checked = state.settings.enableRetrievalPrompt;
+    }
     if (elements.focusShadowToggle) {
         elements.focusShadowToggle.checked = state.settings.enableFocusShadow;
     }
@@ -741,6 +766,7 @@ function applyRlmFeatureFlags() {
     }
     rlmPipeline.updateConfig({
         enableShadowPrompt: state.settings.enableShadowPrompt,
+        enableRetrievalPrompt: state.settings.enableRetrievalPrompt,
         enableFocusShadow: state.settings.enableFocusShadow,
         enableFocusEpisodes: state.settings.enableFocusEpisodes,
         enablePromptBudgeting: state.settings.enablePromptBudgeting
@@ -937,6 +963,9 @@ function setupEventListeners() {
     if (elements.shadowPromptToggle) {
         elements.shadowPromptToggle.addEventListener('change', handleShadowPromptToggle);
     }
+    if (elements.retrievalPromptToggle) {
+        elements.retrievalPromptToggle.addEventListener('change', handleRetrievalPromptToggle);
+    }
     if (elements.focusShadowToggle) {
         elements.focusShadowToggle.addEventListener('change', handleFocusShadowToggle);
     }
@@ -998,6 +1027,12 @@ function handleRLMAutoToggle(e) {
 
 function handleShadowPromptToggle(e) {
     state.settings.enableShadowPrompt = e.target.checked;
+    saveSettings();
+    applyRlmFeatureFlags();
+}
+
+function handleRetrievalPromptToggle(e) {
+    state.settings.enableRetrievalPrompt = e.target.checked;
     saveSettings();
     applyRlmFeatureFlags();
 }
@@ -3343,6 +3378,7 @@ async function chatWithREPL(userMessage, thinkingId = null) {
         }
     }
     attachShadowPromptTelemetry(userMessage);
+    attachRetrievalPromptTelemetry(userMessage);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -3418,6 +3454,7 @@ async function chatWithRLM(userMessage, thinkingId = null) {
         }
     }
     attachShadowPromptTelemetry(userMessage);
+    attachRetrievalPromptTelemetry(userMessage);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -4633,6 +4670,8 @@ function buildMemoryDebugHtml() {
     const shadowPrompt = stats.shadowPrompt;
     const focus = stats.memoryStore?.focus || {};
     const guardrails = stats.guardrails || {};
+    const liveRetrievalStats = guardrails.lastRetrievalStats || null;
+    const liveRetrievalReduction = liveRetrievalStats?.reduction || null;
     const formatTypeCounts = (counts = {}) => {
         const entries = Object.entries(counts);
         if (entries.length === 0) return 'None';
@@ -4710,14 +4749,20 @@ function buildMemoryDebugHtml() {
                     <div class="debug-row"><span>Last Completed</span><span>${focus.lastCompletedAt || 'N/A'}</span></div>
                     <div class="debug-row"><span>Last Summary</span><span>${escapeHtml(truncateText(focus.lastSummary || 'N/A', 120))}</span></div>
                 </div>
-                <div class="debug-card">
-                    <div class="debug-title">Prompt Guardrails</div>
-                    <div class="debug-row"><span>Budget</span><span>${guardrails.lastBudget || 'N/A'}</span></div>
-                    <div class="debug-row"><span>Estimate</span><span>${guardrails.lastPromptEstimate || 'N/A'}</span></div>
-                    <div class="debug-row"><span>Trimmed</span><span>${guardrails.lastTrimmed ? `Yes (-${guardrails.lastTrimmedTokens})` : 'No'}</span></div>
-                    <div class="debug-row"><span>Mode</span><span>${guardrails.lastMode || 'N/A'}</span></div>
-                </div>
+            <div class="debug-card">
+                <div class="debug-title">Prompt Guardrails</div>
+                <div class="debug-row"><span>Budget</span><span>${guardrails.lastBudget || 'N/A'}</span></div>
+                <div class="debug-row"><span>Estimate</span><span>${guardrails.lastPromptEstimate || 'N/A'}</span></div>
+                <div class="debug-row"><span>Trimmed</span><span>${guardrails.lastTrimmed ? `Yes (-${guardrails.lastTrimmedTokens})` : 'No'}</span></div>
+                <div class="debug-row"><span>Mode</span><span>${guardrails.lastMode || 'N/A'}</span></div>
             </div>
+            <div class="debug-card">
+                <div class="debug-title">Live Retrieval</div>
+                <div class="debug-row"><span>Enabled</span><span>${stats?.config?.enableRetrievalPrompt ? 'Yes' : 'No'}</span></div>
+                <div class="debug-row"><span>Retrieved</span><span>${liveRetrievalStats ? `${liveRetrievalStats.selectedCount ?? 0} / ${liveRetrievalStats.requestedK ?? 0}` : 'N/A'}</span></div>
+                <div class="debug-row"><span>Trim</span><span>${liveRetrievalReduction ? `${liveRetrievalReduction.dropped} dropped` : 'None'}</span></div>
+            </div>
+        </div>
 
             <div class="debug-section">
                 <div class="debug-title">Working Window</div>
@@ -4940,6 +4985,9 @@ function buildPromptLogsHtml(promptLogs) {
         const shadowPromptTokens = shadowPrompt?.tokenBreakdown
             ? escapeHtml(JSON.stringify(shadowPrompt.tokenBreakdown, null, 2))
             : '';
+        const retrievalPromptStats = log.retrievalPrompt
+            ? escapeHtml(JSON.stringify(log.retrievalPrompt, null, 2))
+            : '';
         const focusEpisodes = Array.isArray(log.focusEpisodes) ? log.focusEpisodes : [];
         const focusHtml = focusEpisodes.map((episode, focusIndex) => {
             const focusLabel = focusEpisodes.length > 1 ? `#${focusIndex + 1}` : '';
@@ -5066,6 +5114,11 @@ function buildPromptLogsHtml(promptLogs) {
                 <div class="prompt-log-row prompt-preview">
                     <span class="log-label">🕶️ Shadow-only prompt:</span>
                     <span class="log-value prompt-text">${escapeHtml(shadowPrompt.promptPreview || '(No shadow prompt preview)')}</span>
+                </div>` : ''}
+                ${log.retrievalPrompt ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">📚 Live retrieval:</span>
+                    <span class="log-value"><pre class="prompt-json">${retrievalPromptStats || 'N/A'}</pre></span>
                 </div>` : ''}
                 <div class="prompt-log-row prompt-preview">
                     <span class="log-label">💬 Prompt:</span>
