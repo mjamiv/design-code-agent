@@ -3902,7 +3902,7 @@ function buildAPIRequestBody(messages, maxTokens = null) {
             body.reasoning_effort = effort;
         } else {
             // Only set temperature when NOT using reasoning effort
-            body.temperature = 1;
+            body.temperature = 0.7;
             // Only request logprobs when effort is 'none' (they don't work with reasoning_effort)
             body.logprobs = true;
             body.top_logprobs = 1;  // Get top 1 logprob for each token
