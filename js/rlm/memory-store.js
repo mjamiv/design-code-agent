@@ -235,7 +235,9 @@ export class MemoryStore {
             maxPerTag = 2,
             maxPerAgent = 2,
             allowedAgentIds = null,
-            updateStats = false
+            updateStats = false,
+            updateShadowStats = false,
+            shadowMode = false
         } = options;
 
         const normalizedQuery = (query || '').toLowerCase();
@@ -270,13 +272,17 @@ export class MemoryStore {
             return true;
         });
 
+        const redundancyCountSource = (shadowMode || !updateStats) ? 'shadow' : 'live';
+        const redundancyCountField = redundancyCountSource === 'shadow'
+            ? 'retrieval_count_shadow'
+            : 'retrieval_count';
         const scored = candidates.map(slice => {
             const tagScore = (slice.tags || []).filter(tag => queryTags.includes(tag)).length * 2;
             const entityScore = (slice.entities || []).filter(entity => queryEntities.includes(entity)).length * 2;
             const recencyScore = this._scoreRecency(slice.timestamp) * 1.5;
             const importanceScore = (slice.importance_score || 0) * 1.2;
             const keywordScore = this._scoreKeywordMatch(slice.text, queryKeywords);
-            const redundancyPenalty = Math.min(2, (slice.retrieval_count || 0) * 0.15);
+            const redundancyPenalty = Math.min(2, (slice[redundancyCountField] || 0) * 0.15);
 
             return {
                 ...slice,
@@ -317,13 +323,19 @@ export class MemoryStore {
             });
         });
 
-        if (updateStats) {
+        if (updateStats || updateShadowStats) {
             const retrievedAt = new Date().toISOString();
             selected.forEach(slice => {
                 const target = this.slices.find(entry => entry.id === slice.id);
                 if (!target) return;
-                target.retrieval_count += 1;
-                target.last_retrieved_at = retrievedAt;
+                if (updateStats) {
+                    target.retrieval_count += 1;
+                    target.last_retrieved_at = retrievedAt;
+                }
+                if (updateShadowStats) {
+                    target.retrieval_count_shadow = (target.retrieval_count_shadow || 0) + 1;
+                    target.last_retrieved_shadow_at = retrievedAt;
+                }
             });
         }
 
@@ -341,6 +353,7 @@ export class MemoryStore {
                 selectedCount: selected.length,
                 requestedK: maxResults,
                 recencyWindowMs,
+                redundancyCountSource,
                 latencyMs: Math.max(0, finishedAt - startedAt)
             }
         };
@@ -360,7 +373,9 @@ export class MemoryStore {
             recency_score: 1,
             importance_score: slice.importance,
             retrieval_count: 0,
+            retrieval_count_shadow: 0,
             last_retrieved_at: null,
+            last_retrieved_shadow_at: null,
             token_estimate: this._estimateTokens(slice.text),
             confidence: slice.confidence,
             source_hash: this._hashText(slice.text)

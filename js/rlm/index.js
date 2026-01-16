@@ -1068,7 +1068,9 @@ Be concise and focus only on information relevant to the question.`;
             maxPerTag: this.config.shadowPromptMaxPerTag,
             maxPerAgent: this.config.shadowPromptMaxPerAgent,
             recencyWindowMs,
-            updateStats: false
+            updateStats: false,
+            updateShadowStats: true,
+            shadowMode: true
         });
 
         const retrievalFinishedAt = (typeof performance !== 'undefined' && performance.now)
@@ -1158,6 +1160,7 @@ Be concise and focus only on information relevant to the question.`;
             mode,
             retrieved: retrieval.stats.selectedCount,
             candidates: retrieval.stats.candidateCount,
+            redundancyCountSource: retrieval.stats.redundancyCountSource,
             tokenEstimate: promptData.tokenEstimate,
             retrievalLatencyMs: this.shadowPrompt.retrievalStats.latencyMs,
             promptLatencyMs: this.shadowPrompt.promptLatencyMs,
