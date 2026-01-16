@@ -78,18 +78,13 @@ const MODEL_CONTEXT_WINDOWS = {
 
 const TEST_PROMPT_LIMIT = 10;
 const DEFAULT_TEST_PROMPTS = [
-    'Summarize the key decisions made in the latest leadership sync.',
-    'What were the main blockers discussed across this week’s project meetings?',
-    'List the action items and owners that came out of the sprint review.',
-    'Which risks keep showing up across customer feedback calls?',
-    'Compare the priorities mentioned in the sales and product planning meetings.',
-    'What follow-up tasks were assigned for the Q4 roadmap conversation?',
-    'Pull out the budget concerns mentioned during the finance check-ins.',
-    'Highlight any commitments made to external stakeholders in the past month.',
-    'What themes repeat across the team retrospectives?',
-    'Provide a concise recap for executives covering decisions, risks, and next steps.',
-    'Identify any contradictory statements between the engineering and marketing updates.',
-    'Summarize the open questions that remain unresolved across all meetings.'
+    'Summarize the key decisions made throughout the meetings.',
+    'What were the main blockers discussed across the meetings.',
+    'List the action items and owners that came out of the Q3 and Q4 meetings.',
+    'Which risks keep showing up across all meetings.',
+    'What were the main concerns with the capital markets in 2025.',
+    'Highlight any commitments made to external stakeholders since Q2.',
+    'Summarize this conversation with 6 bullets per topic.'
 ];
 
 // Metrics tracking for current session - ENHANCED per-prompt logging
