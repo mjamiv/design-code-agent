@@ -464,6 +464,8 @@ function initElements() {
         metricsCard: document.getElementById('metrics-card'),
         metricsToggle: document.getElementById('metrics-toggle'),
         metricsContent: document.getElementById('metrics-content'),
+        memoryDebugSection: document.getElementById('memory-debug-section'),
+        memoryDebugContent: document.getElementById('result-memory-debug'),
 
         // Error
         errorSection: document.getElementById('error-section'),
@@ -730,6 +732,7 @@ function updateSettingsUI() {
     }
     // Show/hide effort dropdown based on model
     updateEffortVisibility();
+    updateMemoryDebugPanel();
 }
 
 function applyRlmFeatureFlags() {
@@ -1028,7 +1031,7 @@ function handlePromptBudgetToggle(e) {
 function handleMemoryDebugToggle(e) {
     state.settings.showMemoryDebug = e.target.checked;
     saveSettings();
-    updateMetricsDisplay();
+    updateMemoryDebugPanel();
 }
 
 // ============================================
@@ -4752,6 +4755,20 @@ function buildMemoryDebugHtml() {
     `;
 }
 
+function updateMemoryDebugPanel() {
+    if (!elements.memoryDebugContent) {
+        return;
+    }
+
+    if (!state.settings.showMemoryDebug) {
+        elements.memoryDebugContent.innerHTML = '<p class="muted">Enable memory debug in settings to view state, retrieval, and token breakdowns.</p>';
+        return;
+    }
+
+    const memoryDebugHtml = buildMemoryDebugHtml();
+    elements.memoryDebugContent.innerHTML = memoryDebugHtml || '<p class="muted">Memory debug data is not available yet.</p>';
+}
+
 function updateMetricsDisplay() {
     console.log('[Metrics] updateMetricsDisplay called');
     
@@ -4784,8 +4801,6 @@ function updateMetricsDisplay() {
                     <span>${formatTokens(data.tokens)} tokens (${formatCost(data.cost)}), ${data.prompts} prompts, ${data.calls} calls</span>
                 </div>`;
     }).join('');
-
-    const memoryDebugHtml = state.settings.showMemoryDebug ? buildMemoryDebugHtml() : '';
 
     elements.metricsContent.innerHTML = `
         <!-- Summary Totals Section -->
@@ -4851,7 +4866,6 @@ function updateMetricsDisplay() {
                 ${promptLogsHtml}
             </div>
         </div>` : ''}
-        ${memoryDebugHtml}
     `;
 
     // Show metrics card if hidden, default content to collapsed
@@ -4873,6 +4887,8 @@ function updateMetricsDisplay() {
             totalTokens: metrics.totalTokens 
         });
     }
+
+    updateMemoryDebugPanel();
 }
 
 /**
