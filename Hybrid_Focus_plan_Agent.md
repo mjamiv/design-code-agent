@@ -271,6 +271,11 @@ Per prompt:
 
 **Interpretation:** The results align with current enhancements: shadow prompt and focus are emitting structured telemetry without changing the live prompt path. Any remaining latency/quality deltas should be evaluated once Milestone 4 guardrails are active.
 
+**Latest run snapshot (2026-01-16T19:17–19:18Z):**
+- **Direct mode** still shows very large input contexts (~261k tokens) with normal output size (~593 tokens) and expected higher total cost.
+- **RLM modes** remain compact (≈846–914 input tokens) with output tokens ~541–669 and stable response times (~12.5–13.9s), indicating shadow prompt + focus telemetry are low-overhead.
+- **Focus Shadow/Episodes** runs remain within similar token bands, reinforcing that focus summaries are not inflating live prompts in shadow mode.
+
 ---
 
 ## Usage Guidance: When to Use RLM, Shadow Prompt, Focus Shadow, Focus Episodes

@@ -4630,6 +4630,11 @@ function buildMemoryDebugHtml() {
     const shadowPrompt = stats.shadowPrompt;
     const focus = stats.memoryStore?.focus || {};
     const guardrails = stats.guardrails || {};
+    const formatTypeCounts = (counts = {}) => {
+        const entries = Object.entries(counts);
+        if (entries.length === 0) return 'None';
+        return entries.map(([type, count]) => `${type}: ${count}`).join(', ');
+    };
 
     const stateItems = [
         { label: 'Decisions', items: stateBlock?.decisions || [] },
@@ -4678,6 +4683,14 @@ function buildMemoryDebugHtml() {
     const reductionHtml = reduction
         ? `<div class="debug-row"><span>Retrieval Trim</span><span>${reduction.dropped} dropped → ${reduction.finalCount} slices</span></div>`
         : '<div class="debug-row"><span>Retrieval Trim</span><span>None</span></div>';
+    const retrievalDiff = shadowPrompt?.retrievalStats?.diff;
+    const diffHtml = retrievalDiff
+        ? `
+            <div class="debug-row"><span>Retrieval Diff</span><span>+${retrievalDiff.addedCount} / -${retrievalDiff.removedCount}</span></div>
+            <div class="debug-row"><span>Types (current)</span><span>${escapeHtml(formatTypeCounts(retrievalDiff.typeCounts))}</span></div>
+            <div class="debug-row"><span>Types (previous)</span><span>${escapeHtml(formatTypeCounts(retrievalDiff.previousTypeCounts))}</span></div>
+        `
+        : '<div class="debug-row"><span>Retrieval Diff</span><span>None</span></div>';
 
     return `
         <div class="metrics-debug-panel">
@@ -4727,6 +4740,7 @@ function buildMemoryDebugHtml() {
                 <div class="debug-row"><span>Token Estimate</span><span>${shadowPrompt?.tokenEstimate ?? 'N/A'}</span></div>
                 <div class="debug-row"><span>Retrieved</span><span>${shadowPrompt?.retrievalStats?.selectedCount ?? 0} / ${shadowPrompt?.retrievalStats?.requestedK ?? 0}</span></div>
                 ${reductionHtml}
+                ${diffHtml}
                 <ul class="debug-list">${retrievedSlices || '<li class="muted">No slices retrieved.</li>'}</ul>
             </div>
 
