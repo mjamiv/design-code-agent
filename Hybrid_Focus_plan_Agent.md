@@ -203,6 +203,7 @@ Per prompt:
 - Add retrieval pipeline and prompt assembler.
 - Run in shadow: build prompt but do not send to model.
 - Log diffs: what would have been retrieved.
+- **Progress update:** Stage B scoring now applies a redundancy penalty to down-rank frequently retrieved slices (see `js/rlm/memory-store.js`).
 - **Success criteria:** retrieval logs populated; latency stable.
 
 ### Milestone 3 — Focus Episodes (Shadow then gated)
@@ -215,6 +216,7 @@ Per prompt:
 - Enforce preflight token estimator.
 - Add auto-reduction of retrieval K.
 - Add recursion caps.
+- **Progress update:** Prompt guardrails now trim overflow contexts, record guardrail telemetry, and fall back to SWM context when needed (see `js/rlm/index.js`).
 - **Success criteria:** zero prompt overflows in telemetry.
 
 ### Milestone 5 — Instrumentation + Debug Panel
@@ -323,7 +325,7 @@ Per prompt:
    - Log candidate pool size for telemetry.
 
 3) **Stage B scoring + diversity**
-   - Apply scoring formula with redundancy penalty.
+   - ✅ Apply scoring formula with redundancy penalty (implemented in `js/rlm/memory-store.js`).
    - Enforce per-agent and per-tag caps.
 
 4) **Prompt assembly (shadow)**
@@ -361,11 +363,11 @@ Per prompt:
 **Goal:** Enforce safe prompt sizes and recursion limits in live calls.
 
 1) **Preflight token estimator**
-   - Estimate section sizes before each call.
-   - Calculate overflow risk.
+   - ✅ Estimate section sizes before each call.
+   - ✅ Calculate overflow risk.
 
 2) **Auto-reduction logic**
-   - Reduce K or prune low-score slices on overflow.
+   - ✅ Trim overflow contexts in guarded LLM calls.
    - Preserve State Block + Working Window.
 
 3) **Recursion caps**
@@ -373,9 +375,9 @@ Per prompt:
    - Force Focus completion on threshold.
 
 4) **Fallback behavior**
-   - If still over budget → SWM-only prompt.
+   - ✅ Fall back to SWM context when trimmed context is empty or over budget.
 
 5) **Telemetry**
-   - Log guardrail actions, K reduction, fallback rates.
+   - ✅ Log guardrail actions, trim deltas, and SWM fallback metadata.
 
 **Exit criteria:** zero prompt overflows; stable latency in telemetry.
