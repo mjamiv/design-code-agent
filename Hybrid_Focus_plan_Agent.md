@@ -203,7 +203,7 @@ Per prompt:
 - Add retrieval pipeline and prompt assembler.
 - Run in shadow: build prompt but do not send to model.
 - Log diffs: what would have been retrieved.
-- **Progress update:** Stage B scoring now applies a redundancy penalty to down-rank frequently retrieved slices (see `js/rlm/memory-store.js`).
+- **Progress update:** Stage B scoring now applies a redundancy penalty to down-rank frequently retrieved slices (see `js/rlm/memory-store.js`). Orchestrator UI toggles now reflect the shadow retrieval state and should remain scoped to `orchestrator.html` (not Agent Builder).
 - **Success criteria:** retrieval logs populated; latency stable.
 
 ### Milestone 3 — Focus Episodes (Shadow then gated)
@@ -216,7 +216,7 @@ Per prompt:
 - Enforce preflight token estimator.
 - Add auto-reduction of retrieval K.
 - Add recursion caps.
-- **Progress update:** Prompt guardrails now trim overflow contexts, record guardrail telemetry, and fall back to SWM context when needed (see `js/rlm/index.js`).
+- **Progress update:** Prompt guardrails now trim overflow contexts, record guardrail telemetry, and fall back to SWM context when needed (see `js/rlm/index.js`). Guardrail telemetry should be surfaced via the Orchestrator debug UI only.
 - **Success criteria:** zero prompt overflows in telemetry.
 
 ### Milestone 5 — Instrumentation + Debug Panel
@@ -245,7 +245,7 @@ Per prompt:
 
 3) **Milestone 5 — Instrumentation + Debug Panel**
    - Expose token breakdowns + retrieval diagnostics.
-   - Build Memory Debug Panel UI in `index.html`, `js/orchestrator.js`, `css/styles.css`.
+   - Build Memory Debug Panel UI in `orchestrator.html`, `js/orchestrator.js`, `css/styles.css`.
    - **Acceptance:** operators can trace a response end-to-end.
 
 4) **Milestone 6 — Evaluation + Rollout**
@@ -308,6 +308,14 @@ Per prompt:
 2) **Milestone 4 (Guardrails):** Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow.  
 3) **Milestone 5 (Instrumentation):** Add UI telemetry for shadow prompt and focus summaries to compare with direct mode.  
 4) **Milestone 6 (Evaluation):** Formal A/B with latency/cost dashboards; require eval-gated acceptance.
+
+---
+
+## Frontend Alignment Plan (Fix for Misplaced Controls)
+1) **Scope controls to Orchestrator only:** Keep RLM toggles, context gauge, and Memory Debug UI in `orchestrator.html` to match `js/orchestrator.js` bindings.
+2) **Remove controls from Agent Builder:** Strip RLM/guardrail UI elements from `index.html` to avoid duplicate IDs and unsupported flows.
+3) **Verify Milestone 2/4 wiring:** Confirm shadow retrieval metrics and guardrail telemetry render in Orchestrator, with no reliance on Agent Builder.
+4) **Re-run UI sanity pass:** Ensure the Agent Builder still loads without orphaned UI, and Orchestrator continues to show telemetry panels.
 
 ---
 
