@@ -306,3 +306,76 @@ Per prompt:
 2) **Milestone 4 (Guardrails):** Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow.  
 3) **Milestone 5 (Instrumentation):** Add UI telemetry for shadow prompt and focus summaries to compare with direct mode.  
 4) **Milestone 6 (Evaluation):** Formal A/B with latency/cost dashboards; require eval-gated acceptance.
+
+---
+
+## Detailed Plan to Finish Milestones 2–4
+
+### Milestone 2 — Retrieval + Prompt Builder (Shadow → Real)
+**Goal:** Build retrieval pipeline and prompt assembler, initially shadow-only.
+
+1) **Define retrieval I/O**
+   - Inputs: query type, tags/entities, recency window, K.
+   - Outputs: ordered slices + scoring metadata.
+
+2) **Stage A filter**
+   - Filter by tags/entities/source_agent_ids/recency window.
+   - Log candidate pool size for telemetry.
+
+3) **Stage B scoring + diversity**
+   - Apply scoring formula with redundancy penalty.
+   - Enforce per-agent and per-tag caps.
+
+4) **Prompt assembly (shadow)**
+   - Assemble prompt sections: System + State + Working + Retrieved + Local.
+   - Log token estimates and “would include” slices.
+
+5) **Shadow telemetry**
+   - Log retrieval hits, token section sizes, and diffs vs baseline.
+
+**Exit criteria:** retrieval logs populated; latency stable; no behavior change.
+
+### Milestone 3 — Focus Episodes (Shadow then gated)
+**Goal:** Add Focus API and triggers; validate summaries; gate enablement.
+
+1) **Implement Focus API**
+   - `start_focus`, `append_focus`, `complete_focus` returning structured outputs.
+
+2) **Trigger logic**
+   - Budget pressure, phase completion, tool-call count, recursive depth.
+
+3) **Shadow mode first**
+   - Generate summary but do not persist.
+   - Emit telemetry for quality review.
+
+4) **Gated persistence**
+   - Feature flag to persist Focus Episodes.
+   - Store episode summary + derived SWM slices.
+
+5) **Quality validation**
+   - Compare summaries vs raw logs for fidelity.
+
+**Exit criteria:** summaries consistent; no regressions in core flows; safe gating.
+
+### Milestone 4 — Guardrails + Token Budgeting
+**Goal:** Enforce safe prompt sizes and recursion limits in live calls.
+
+1) **Preflight token estimator**
+   - Estimate section sizes before each call.
+   - Calculate overflow risk.
+
+2) **Auto-reduction logic**
+   - Reduce K or prune low-score slices on overflow.
+   - Preserve State Block + Working Window.
+
+3) **Recursion caps**
+   - Max depth + max sub_lm calls.
+   - Force Focus completion on threshold.
+
+4) **Fallback behavior**
+   - If still over budget → SWM-only prompt.
+
+5) **Telemetry**
+   - Log guardrail actions, K reduction, fallback rates.
+
+**Exit criteria:** zero prompt overflows; stable latency in telemetry.
