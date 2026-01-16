@@ -4108,6 +4108,7 @@ async function callGPTWithMessagesStream(messages, callName = 'Chat Query', stre
             let streamUsage = null;
             let finishReason = null;
             let actualModel = model;
+            const streamLogprobs = [];
 
             while (true) {
                 const { value, done } = await reader.read();
@@ -4138,6 +4139,9 @@ async function callGPTWithMessagesStream(messages, callName = 'Chat Query', stre
                         fullText += chunk;
                         onToken?.(chunk, fullText);
                     }
+                    if (choice?.logprobs?.content && Array.isArray(choice.logprobs.content)) {
+                        streamLogprobs.push(...choice.logprobs.content);
+                    }
                     if (choice?.finish_reason) {
                         finishReason = choice.finish_reason;
                     }
@@ -4153,7 +4157,9 @@ async function callGPTWithMessagesStream(messages, callName = 'Chat Query', stre
                 : '(No user message)';
 
             const callData = buildCallDataFromResponse({
-                data: streamUsage ? { usage: streamUsage } : null,
+                data: (streamUsage || streamLogprobs.length > 0)
+                    ? { usage: streamUsage, choices: [{ logprobs: { content: streamLogprobs } }] }
+                    : null,
                 callName,
                 requestedModel: model,
                 actualModel,
