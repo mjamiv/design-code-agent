@@ -89,7 +89,8 @@ export const RLM_CONFIG = {
     focusTokenBudget: 8000,
     focusBudgetThreshold: 0.8,
     focusTriggerToolCalls: 3,
-    focusTriggerSubLmCalls: 2
+    focusTriggerSubLmCalls: 2,
+    focusSummaryMaxLength: 700
 };
 
 /**
@@ -165,7 +166,8 @@ export class RLMPipeline {
             subLmCalls: 0,
             turns: 0,
             pendingReason: null,
-            lastTokenEstimate: 0
+            lastTokenEstimate: 0,
+            lastResponseExcerpt: null
         };
 
         // Guardrail telemetry (Milestone 4)
@@ -478,6 +480,10 @@ If the information is not available in the provided context, say so briefly.`;
             };
 
             this._captureMemory(query, result);
+            const focusSummary = this._buildFocusSummary(finalResponse, executionResult.results);
+            if (focusSummary) {
+                this._appendFocusEvent(`Final response summary: ${focusSummary}`, { step: 'summary', mode: 'rlm' });
+            }
             this._completeFocusIfReady();
 
             // Phase 3.1: Store result in cache
@@ -769,6 +775,10 @@ Use the following meeting data to answer questions accurately and comprehensivel
         };
 
         this._captureMemory(query, result);
+        const focusSummary = this._buildFocusSummary(response);
+        if (focusSummary) {
+            this._appendFocusEvent(`Final response summary: ${focusSummary}`, { step: 'summary', mode: 'legacy' });
+        }
         this._appendFocusEvent('Legacy response generated.', { step: 'complete', mode: 'legacy' });
         this._queueFocusReason('phase_complete');
         this._completeFocusIfReady();
@@ -789,6 +799,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
      */
     async processWithREPL(query, llmCall, context = {}) {
         const startTime = Date.now();
+        let focusSubResults = [];
 
         // Phase 3.1: Check cache for existing result
         const cachedResult = this._checkCache(query, 'repl');
@@ -901,6 +912,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
                 // Process sub-LM calls and aggregate results
                 const subResults = await this._processSubLmCalls(pendingCalls, llmCall, context);
+                focusSubResults = subResults;
                 this.focusTracker.subLmCalls += pendingCalls.length;
                 this._appendFocusEvent(`Processed ${pendingCalls.length} recursive sub_lm() calls.`, { step: 'recurse' });
                 this._checkFocusTriggerCounts();
@@ -949,6 +961,10 @@ Use the following meeting data to answer questions accurately and comprehensivel
             };
 
             this._captureMemory(query, result);
+            const focusSummary = this._buildFocusSummary(result.response, focusSubResults);
+            if (focusSummary) {
+                this._appendFocusEvent(`Final response summary: ${focusSummary}`, { step: 'summary', mode: 'repl' });
+            }
             this._appendFocusEvent('REPL response compiled.', { step: 'complete', mode: 'repl' });
             this._queueFocusReason('phase_complete');
             this._completeFocusIfReady();
@@ -1217,6 +1233,58 @@ Be concise and focus only on information relevant to the question.`;
         this.memoryStore.appendFocus(event, source);
     }
 
+    _sanitizeFocusText(text) {
+        if (!text) return '';
+        let cleaned = String(text);
+        cleaned = cleaned.replace(/```[\s\S]*?```/g, ' ');
+        cleaned = cleaned.replace(/\s*#+\s*(summary|final answer|answer|response|overview|conclusion)\s*:?\s*/gi, ' ');
+        cleaned = cleaned.replace(/^\s*(?:sure|certainly|here(?:'|’)s|below is|here is|in summary|summary|final answer|answer)\b[:\s,-]*/i, '');
+        cleaned = cleaned.replace(/\b(as an ai|as a language model)[^.]*\./gi, ' ');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        return cleaned;
+    }
+
+    _truncateFocusText(text, maxLength) {
+        if (!text) return '';
+        if (text.length <= maxLength) return text;
+        const sliceLength = Math.max(0, maxLength - 1);
+        return `${text.slice(0, sliceLength).trim()}…`;
+    }
+
+    _buildFocusSummary(finalResponse, subResults = []) {
+        const maxLength = this.config.focusSummaryMaxLength || 700;
+        const sanitizedResponse = this._sanitizeFocusText(finalResponse);
+        if (!sanitizedResponse) {
+            return '';
+        }
+
+        const responseLimit = Array.isArray(subResults) && subResults.length > 0
+            ? Math.min(maxLength, 560)
+            : maxLength;
+        const responseExcerpt = this._truncateFocusText(sanitizedResponse, responseLimit);
+        this.focusTracker.lastResponseExcerpt = responseExcerpt;
+
+        const eligibleSubs = Array.isArray(subResults)
+            ? subResults.filter(result => result && result.success && result.response)
+            : [];
+        if (eligibleSubs.length === 0) {
+            return responseExcerpt;
+        }
+
+        const subHighlights = [];
+        for (const result of eligibleSubs.slice(0, 2)) {
+            const sanitizedSub = this._sanitizeFocusText(result.response);
+            if (!sanitizedSub) continue;
+            subHighlights.push(this._truncateFocusText(sanitizedSub, 180));
+        }
+        if (subHighlights.length === 0) {
+            return responseExcerpt;
+        }
+
+        const combined = `${responseExcerpt} || Sub-query highlights: ${subHighlights.join(' | ')}`;
+        return this._truncateFocusText(combined, maxLength);
+    }
+
     _checkFocusBudgetTrigger(tokenEstimate) {
         if (!this._isFocusEnabled()) {
             return;
@@ -1289,10 +1357,12 @@ Be concise and focus only on information relevant to the question.`;
             }
         });
 
+        const responseExcerpt = this.focusTracker.lastResponseExcerpt;
         this.focusTracker.toolCalls = 0;
         this.focusTracker.subLmCalls = 0;
         this.focusTracker.turns = 0;
         this.focusTracker.pendingReason = null;
+        this.focusTracker.lastResponseExcerpt = null;
 
         if (!focusResult) {
             return;
@@ -1307,6 +1377,20 @@ Be concise and focus only on information relevant to the question.`;
             risks: focusResult.risks.length,
             entities: focusResult.entities.length
         });
+        if (this.config.enableFocusShadow && !this.config.enableFocusEpisodes && responseExcerpt) {
+            const summaryText = (focusResult.episode_summary || '').toLowerCase();
+            const sample = responseExcerpt.slice(0, Math.min(120, responseExcerpt.length)).toLowerCase();
+            const containsExcerpt = sample.length > 0 && summaryText.includes(sample);
+            console.log('[RLM:Focus] Shadow summary response check', {
+                containsExcerpt,
+                sample
+            });
+            this._emitProgress('Focus summary shadow check', containsExcerpt ? 'success' : 'warning', {
+                shadowOnly: true,
+                containsExcerpt,
+                sample
+            });
+        }
         this._emitProgress('Focus episode completed', 'info', {
             shadowOnly: !this.config.enableFocusEpisodes,
             focusSummary: focusResult.episode_summary,
