@@ -64,6 +64,22 @@ const MODEL_CONTEXT_WINDOWS = {
     'gpt-5-nano': 400000
 };
 
+const TEST_PROMPT_LIMIT = 10;
+const DEFAULT_TEST_PROMPTS = [
+    'Summarize the key decisions made in the latest leadership sync.',
+    'What were the main blockers discussed across this week’s project meetings?',
+    'List the action items and owners that came out of the sprint review.',
+    'Which risks keep showing up across customer feedback calls?',
+    'Compare the priorities mentioned in the sales and product planning meetings.',
+    'What follow-up tasks were assigned for the Q4 roadmap conversation?',
+    'Pull out the budget concerns mentioned during the finance check-ins.',
+    'Highlight any commitments made to external stakeholders in the past month.',
+    'What themes repeat across the team retrospectives?',
+    'Provide a concise recap for executives covering decisions, risks, and next steps.',
+    'Identify any contradictory statements between the engineering and marketing updates.',
+    'Summarize the open questions that remain unresolved across all meetings.'
+];
+
 // Metrics tracking for current session - ENHANCED per-prompt logging
 let currentMetrics = {
     // Running totals
@@ -84,6 +100,22 @@ let metricsState = {
     isPinned: false,
     autoCollapseTimeout: null
 };
+
+let testPromptState = {
+    prompts: [],
+    selectedCount: 0,
+    run: null
+};
+
+let testPromptIdCounter = 0;
+function createTestPrompt(text, options = {}) {
+    return {
+        id: `test-prompt-${++testPromptIdCounter}`,
+        text,
+        selected: options.selected || false,
+        isCustom: options.isCustom || false
+    };
+}
 
 // Generate unique ID for each prompt log
 let promptLogIdCounter = 0;
@@ -363,6 +395,7 @@ function initElements() {
         chatSendBtn: document.getElementById('chat-send-btn'),
         chatAgentCount: document.getElementById('chat-agent-count'),
         chatKbIndicator: document.getElementById('chat-kb-indicator'),
+        runTestPromptingBtn: document.getElementById('run-test-prompting-btn'),
 
         // Insights
         insightsSection: document.getElementById('insights-section'),
@@ -408,7 +441,28 @@ function initElements() {
         contextGaugeRawFill: document.getElementById('context-gauge-raw-fill'),
         contextGaugeRomValue: document.getElementById('context-gauge-rom-value'),
         contextGaugeRawValue: document.getElementById('context-gauge-raw-value'),
-        contextGaugeFootnote: document.getElementById('context-gauge-footnote')
+        contextGaugeFootnote: document.getElementById('context-gauge-footnote'),
+
+        // Test Prompting
+        testPromptingModal: document.getElementById('test-prompting-modal'),
+        testPromptingCloseBtn: document.getElementById('test-prompting-close-btn'),
+        testPromptingCancelBtn: document.getElementById('test-prompting-cancel-btn'),
+        testPromptList: document.getElementById('test-prompt-list'),
+        testSelectedCount: document.getElementById('test-selected-count'),
+        addCustomPromptBtn: document.getElementById('add-custom-prompt-btn'),
+        deployTestAgentBtn: document.getElementById('deploy-test-agent-btn'),
+        testPromptError: document.getElementById('test-prompt-error'),
+        testRunningScreen: document.getElementById('test-running-screen'),
+        testProgressFill: document.getElementById('test-progress-fill'),
+        testProgressLabel: document.getElementById('test-progress-label'),
+        testProgressCount: document.getElementById('test-progress-count'),
+        testStatusStream: document.getElementById('test-status-stream'),
+        testAnalyticsModal: document.getElementById('test-analytics-modal'),
+        testAnalyticsCloseBtn: document.getElementById('test-analytics-close-btn'),
+        testAnalyticsDismissBtn: document.getElementById('test-analytics-dismiss-btn'),
+        testAnalyticsSummary: document.getElementById('test-analytics-summary'),
+        testAnalyticsList: document.getElementById('test-analytics-list'),
+        exportTestHtmlBtn: document.getElementById('export-test-html-btn')
     };
 }
 
@@ -630,6 +684,41 @@ function setupEventListeners() {
             sendChatMessage();
         }
     });
+
+    if (elements.runTestPromptingBtn) {
+        elements.runTestPromptingBtn.addEventListener('click', openTestPromptingModal);
+    }
+    if (elements.testPromptingCloseBtn) {
+        elements.testPromptingCloseBtn.addEventListener('click', closeTestPromptingModal);
+    }
+    if (elements.testPromptingCancelBtn) {
+        elements.testPromptingCancelBtn.addEventListener('click', closeTestPromptingModal);
+    }
+    if (elements.addCustomPromptBtn) {
+        elements.addCustomPromptBtn.addEventListener('click', addCustomTestPrompt);
+    }
+    if (elements.deployTestAgentBtn) {
+        elements.deployTestAgentBtn.addEventListener('click', deployTestAgent);
+    }
+    if (elements.testPromptingModal) {
+        elements.testPromptingModal.addEventListener('click', (e) => {
+            if (e.target === elements.testPromptingModal) closeTestPromptingModal();
+        });
+    }
+    if (elements.testAnalyticsCloseBtn) {
+        elements.testAnalyticsCloseBtn.addEventListener('click', closeTestAnalyticsModal);
+    }
+    if (elements.testAnalyticsDismissBtn) {
+        elements.testAnalyticsDismissBtn.addEventListener('click', closeTestAnalyticsModal);
+    }
+    if (elements.exportTestHtmlBtn) {
+        elements.exportTestHtmlBtn.addEventListener('click', exportTestReportHtml);
+    }
+    if (elements.testAnalyticsModal) {
+        elements.testAnalyticsModal.addEventListener('click', (e) => {
+            if (e.target === elements.testAnalyticsModal) closeTestAnalyticsModal();
+        });
+    }
     
     // Auto-resize textarea
     elements.chatInput.addEventListener('input', autoResizeTextarea);
@@ -1329,6 +1418,501 @@ function updateButtonStates() {
             }
         }
     }
+
+    if (elements.runTestPromptingBtn) {
+        const hasActiveAgents = activeAgents.length > 0;
+        elements.runTestPromptingBtn.disabled = !hasActiveAgents || !hasApiKey || state.isProcessing;
+        if (!hasActiveAgents) {
+            elements.runTestPromptingBtn.title = 'Upload and enable at least one agent to run tests';
+        } else if (!hasApiKey) {
+            elements.runTestPromptingBtn.title = 'Enter your API key first';
+        } else if (state.isProcessing) {
+            elements.runTestPromptingBtn.title = 'Finish the current task before running a test';
+        } else {
+            elements.runTestPromptingBtn.title = 'Run a curated prompt test';
+        }
+    }
+}
+
+// ============================================
+// Test Prompting
+// ============================================
+
+function initializeTestPrompts() {
+    if (testPromptState.prompts.length === 0) {
+        testPromptState.prompts = DEFAULT_TEST_PROMPTS.map(prompt => createTestPrompt(prompt));
+    }
+    updateTestSelectedCount();
+}
+
+function updateTestSelectedCount() {
+    testPromptState.selectedCount = testPromptState.prompts.filter(prompt => prompt.selected).length;
+    if (elements.testSelectedCount) {
+        elements.testSelectedCount.textContent = testPromptState.selectedCount;
+    }
+}
+
+function setTestPromptError(message = '') {
+    if (!elements.testPromptError) return;
+    if (!message) {
+        elements.testPromptError.classList.add('hidden');
+        elements.testPromptError.textContent = '';
+        return;
+    }
+    elements.testPromptError.textContent = message;
+    elements.testPromptError.classList.remove('hidden');
+}
+
+function renderTestPromptList() {
+    if (!elements.testPromptList) return;
+    elements.testPromptList.innerHTML = '';
+
+    testPromptState.prompts.forEach((prompt) => {
+        const row = document.createElement('div');
+        row.className = 'test-prompt-row';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = prompt.selected;
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked && testPromptState.selectedCount >= TEST_PROMPT_LIMIT) {
+                checkbox.checked = false;
+                setTestPromptError(`You can select up to ${TEST_PROMPT_LIMIT} prompts.`);
+                return;
+            }
+            prompt.selected = checkbox.checked;
+            updateTestSelectedCount();
+            setTestPromptError('');
+        });
+
+        const content = document.createElement('div');
+        const textarea = document.createElement('textarea');
+        textarea.value = prompt.text;
+        textarea.placeholder = 'Enter a test prompt...';
+        textarea.addEventListener('input', () => {
+            prompt.text = textarea.value;
+        });
+        const tag = document.createElement('div');
+        tag.className = 'prompt-tag';
+        tag.textContent = prompt.isCustom ? 'Custom' : 'Preloaded';
+        content.appendChild(textarea);
+        content.appendChild(tag);
+
+        const actionSlot = document.createElement('div');
+        if (prompt.isCustom) {
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn-text btn-sm';
+            removeBtn.textContent = 'Remove';
+            removeBtn.addEventListener('click', () => {
+                testPromptState.prompts = testPromptState.prompts.filter(item => item.id !== prompt.id);
+                updateTestSelectedCount();
+                renderTestPromptList();
+            });
+            actionSlot.appendChild(removeBtn);
+        } else {
+            actionSlot.className = 'prompt-tag';
+            actionSlot.textContent = 'Preset';
+        }
+
+        row.appendChild(checkbox);
+        row.appendChild(content);
+        row.appendChild(actionSlot);
+        elements.testPromptList.appendChild(row);
+    });
+}
+
+function openTestPromptingModal() {
+    initializeTestPrompts();
+    renderTestPromptList();
+    setTestPromptError('');
+    if (elements.testPromptingModal) {
+        elements.testPromptingModal.classList.remove('hidden');
+    }
+}
+
+function closeTestPromptingModal() {
+    if (elements.testPromptingModal) {
+        elements.testPromptingModal.classList.add('hidden');
+    }
+    setTestPromptError('');
+}
+
+function addCustomTestPrompt() {
+    const canSelect = testPromptState.selectedCount < TEST_PROMPT_LIMIT;
+    const prompt = createTestPrompt('', { selected: canSelect, isCustom: true });
+    if (!canSelect) {
+        setTestPromptError(`You can only select up to ${TEST_PROMPT_LIMIT} prompts.`);
+    }
+    testPromptState.prompts.push(prompt);
+    updateTestSelectedCount();
+    renderTestPromptList();
+    const lastTextarea = elements.testPromptList?.querySelector('textarea:last-of-type');
+    if (lastTextarea) {
+        lastTextarea.focus();
+    }
+}
+
+function getSelectedTestPrompts() {
+    return testPromptState.prompts
+        .filter(prompt => prompt.selected)
+        .map(prompt => ({
+            id: prompt.id,
+            text: prompt.text.trim(),
+            isCustom: prompt.isCustom
+        }));
+}
+
+function getSelectedRlmMode() {
+    const selected = document.querySelector('input[name="test-rlm-mode"]:checked');
+    return selected ? selected.value : 'auto';
+}
+
+function applyTestRlmMode(mode) {
+    if (mode === 'off') {
+        state.settings.useRLM = false;
+        state.settings.rlmAuto = false;
+    } else if (mode === 'on') {
+        state.settings.useRLM = true;
+        state.settings.rlmAuto = false;
+    } else {
+        state.settings.useRLM = true;
+        state.settings.rlmAuto = true;
+    }
+
+    if (elements.rlmToggle) {
+        elements.rlmToggle.checked = state.settings.useRLM;
+    }
+    if (elements.rlmAutoToggle) {
+        elements.rlmAutoToggle.checked = state.settings.rlmAuto;
+    }
+}
+
+function resetTestRunningScreen(totalPrompts) {
+    if (elements.testProgressFill) {
+        elements.testProgressFill.style.width = '0%';
+    }
+    if (elements.testProgressLabel) {
+        elements.testProgressLabel.textContent = 'Preparing prompts...';
+    }
+    if (elements.testProgressCount) {
+        elements.testProgressCount.textContent = `0 / ${totalPrompts}`;
+    }
+    if (elements.testStatusStream) {
+        elements.testStatusStream.innerHTML = '';
+    }
+}
+
+function updateTestProgress(currentIndex, totalPrompts, label) {
+    const percent = totalPrompts > 0 ? Math.round((currentIndex / totalPrompts) * 100) : 0;
+    if (elements.testProgressFill) {
+        elements.testProgressFill.style.width = `${percent}%`;
+    }
+    if (elements.testProgressLabel) {
+        elements.testProgressLabel.textContent = label;
+    }
+    if (elements.testProgressCount) {
+        elements.testProgressCount.textContent = `${currentIndex} / ${totalPrompts}`;
+    }
+}
+
+function addTestStatusLine(message, emphasis = '') {
+    if (!elements.testStatusStream) return;
+    const line = document.createElement('div');
+    line.className = 'test-status-line';
+    const timestamp = new Date().toLocaleTimeString();
+    line.innerHTML = `<span>${timestamp}</span> <strong>${escapeHtml(emphasis)}</strong> ${escapeHtml(message)}`;
+    elements.testStatusStream.appendChild(line);
+    elements.testStatusStream.scrollTop = elements.testStatusStream.scrollHeight;
+}
+
+function showTestRunningScreen() {
+    if (elements.testRunningScreen) {
+        elements.testRunningScreen.classList.remove('hidden');
+    }
+}
+
+function hideTestRunningScreen() {
+    if (elements.testRunningScreen) {
+        elements.testRunningScreen.classList.add('hidden');
+    }
+}
+
+function closeTestAnalyticsModal() {
+    if (elements.testAnalyticsModal) {
+        elements.testAnalyticsModal.classList.add('hidden');
+    }
+}
+
+function showTestAnalyticsModal() {
+    if (elements.testAnalyticsModal) {
+        elements.testAnalyticsModal.classList.remove('hidden');
+    }
+}
+
+function deployTestAgent() {
+    const selectedPrompts = getSelectedTestPrompts();
+    if (selectedPrompts.length === 0) {
+        setTestPromptError('Select at least one prompt to deploy the test agent.');
+        return;
+    }
+    if (selectedPrompts.length > TEST_PROMPT_LIMIT) {
+        setTestPromptError(`You can select up to ${TEST_PROMPT_LIMIT} prompts.`);
+        return;
+    }
+    const emptyPrompt = selectedPrompts.find(prompt => !prompt.text);
+    if (emptyPrompt) {
+        setTestPromptError('All selected prompts must include text.');
+        return;
+    }
+    if (!state.apiKey.trim()) {
+        setTestPromptError('Enter your API key before deploying a test agent.');
+        return;
+    }
+    const activeAgents = state.agents.filter(a => a.enabled);
+    if (activeAgents.length === 0) {
+        setTestPromptError('Upload and enable at least one agent before running tests.');
+        return;
+    }
+
+    closeTestPromptingModal();
+    const rlmMode = getSelectedRlmMode();
+    runTestSequence(selectedPrompts, rlmMode);
+}
+
+async function runTestSequence(prompts, rlmMode) {
+    const previousSettings = {
+        useRLM: state.settings.useRLM,
+        rlmAuto: state.settings.rlmAuto
+    };
+
+    state.isProcessing = true;
+    updateButtonStates();
+    showTestRunningScreen();
+    resetTestRunningScreen(prompts.length);
+    addTestStatusLine('Initializing test run...', 'Setup');
+
+    applyTestRlmMode(rlmMode);
+
+    testPromptState.run = {
+        startedAt: new Date(),
+        rlmMode,
+        prompts,
+        startIndex: currentMetrics.promptLogs.length,
+        results: []
+    };
+
+    for (let i = 0; i < prompts.length; i += 1) {
+        const prompt = prompts[i];
+        const promptLabel = `Prompt ${i + 1}`;
+        updateTestProgress(i + 1, prompts.length, `Running ${promptLabel}`);
+        addTestStatusLine(prompt.text, promptLabel);
+
+        try {
+            const response = await chatWithAgents(prompt.text);
+            const logEntry = currentMetrics.promptLogs[currentMetrics.promptLogs.length - 1] || null;
+            testPromptState.run.results.push({
+                prompt: prompt.text,
+                response,
+                log: logEntry
+            });
+            addTestStatusLine('Response received.', promptLabel);
+        } catch (error) {
+            testPromptState.run.results.push({
+                prompt: prompt.text,
+                response: '',
+                error: error.message || 'Unknown error',
+                log: null
+            });
+            addTestStatusLine(`Error: ${error.message || 'Unknown error'}`, promptLabel);
+        }
+    }
+
+    updateTestProgress(prompts.length, prompts.length, 'Test complete');
+    addTestStatusLine('All prompts complete. Generating analytics...', 'Complete');
+
+    applyTestRlmMode(previousSettings.useRLM ? (previousSettings.rlmAuto ? 'auto' : 'on') : 'off');
+    state.isProcessing = false;
+    updateButtonStates();
+    hideTestRunningScreen();
+
+    renderTestAnalytics();
+    showTestAnalyticsModal();
+}
+
+function renderTestAnalytics() {
+    if (!testPromptState.run) return;
+    const logs = currentMetrics.promptLogs.slice(testPromptState.run.startIndex);
+
+    const totals = logs.reduce((acc, log) => {
+        acc.inputTokens += log?.tokens?.input || 0;
+        acc.outputTokens += log?.tokens?.output || 0;
+        acc.totalCost += log?.cost?.total || 0;
+        acc.totalTime += log?.responseTime || 0;
+        return acc;
+    }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalTime: 0 });
+
+    const totalPrompts = testPromptState.run.prompts.length;
+    const avgResponse = totalPrompts > 0 ? Math.round(totals.totalTime / totalPrompts) : 0;
+
+    if (elements.testAnalyticsSummary) {
+        elements.testAnalyticsSummary.innerHTML = `
+            <div class="test-summary-card">
+                <h4>Prompts</h4>
+                <p>${totalPrompts}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Tokens</h4>
+                <p>${formatTokens(totals.inputTokens + totals.outputTokens)}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Est. Cost</h4>
+                <p>${formatCost(totals.totalCost)}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Avg Response</h4>
+                <p>${formatTime(avgResponse)}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>RLM Mode</h4>
+                <p>${testPromptState.run.rlmMode.toUpperCase()}</p>
+            </div>
+        `;
+    }
+
+    if (elements.testAnalyticsList) {
+        elements.testAnalyticsList.innerHTML = testPromptState.run.results.map((result, index) => {
+            const log = result.log;
+            const tokens = log?.tokens || { input: 0, output: 0, total: 0 };
+            const cost = log?.cost || { total: 0 };
+            const model = log?.model ? formatModelName(log.model) : state.settings.model;
+            const responseTime = log?.responseTime || 0;
+            const status = result.error ? 'Error' : 'Complete';
+            return `
+                <div class="test-analytics-item">
+                    <h5>Prompt ${index + 1}: ${escapeHtml(result.prompt)}</h5>
+                    <p>Status: ${status}</p>
+                    <div class="test-analytics-meta">
+                        <span>Model: ${escapeHtml(model)}</span>
+                        <span>Tokens: ${formatTokens(tokens.input + tokens.output)}</span>
+                        <span>Cost: ${formatCost(cost.total)}</span>
+                        <span>Time: ${formatTime(responseTime)}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+}
+
+function buildTestReportHtml() {
+    if (!testPromptState.run) return '';
+    const logs = currentMetrics.promptLogs.slice(testPromptState.run.startIndex);
+    const totals = logs.reduce((acc, log) => {
+        acc.inputTokens += log?.tokens?.input || 0;
+        acc.outputTokens += log?.tokens?.output || 0;
+        acc.totalCost += log?.cost?.total || 0;
+        acc.totalTime += log?.responseTime || 0;
+        return acc;
+    }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalTime: 0 });
+
+    const totalPrompts = testPromptState.run.prompts.length;
+    const avgResponse = totalPrompts > 0 ? Math.round(totals.totalTime / totalPrompts) : 0;
+    const timestamp = testPromptState.run.startedAt.toLocaleString();
+
+    const promptRows = testPromptState.run.results.map((result, index) => {
+        const log = result.log;
+        const tokens = log?.tokens || { input: 0, output: 0, total: 0 };
+        const cost = log?.cost || { total: 0 };
+        const model = log?.model ? formatModelName(log.model) : state.settings.model;
+        const responseTime = log?.responseTime || 0;
+        const status = result.error ? `Error: ${result.error}` : 'Complete';
+        return `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${escapeHtml(result.prompt)}</td>
+                <td>${escapeHtml(model)}</td>
+                <td>${formatTokens(tokens.input + tokens.output)}</td>
+                <td>${formatCost(cost.total)}</td>
+                <td>${formatTime(responseTime)}</td>
+                <td>${escapeHtml(status)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>northstar.LM Test Prompting Report</title>
+            <style>
+                body { font-family: 'Source Sans 3', Arial, sans-serif; margin: 32px; color: #0a0e17; }
+                h1 { color: #b17d1b; margin-bottom: 8px; }
+                h2 { margin-top: 32px; }
+                .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 24px 0; }
+                .summary-card { padding: 16px; border-radius: 12px; border: 1px solid #e0d6c3; background: #f8f4ee; }
+                table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                th, td { text-align: left; border-bottom: 1px solid #e0d6c3; padding: 12px; vertical-align: top; }
+                th { background: #f1e9dc; }
+            </style>
+        </head>
+        <body>
+            <h1>northstar.LM Test Prompting Report</h1>
+            <p>Generated ${escapeHtml(timestamp)} • RLM Mode: ${escapeHtml(testPromptState.run.rlmMode.toUpperCase())}</p>
+            <p>This report documents a batch test run of orchestrator prompts for meeting-minute analysis.</p>
+            <div class="summary">
+                <div class="summary-card">
+                    <strong>Prompts</strong>
+                    <div>${totalPrompts}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Total Tokens</strong>
+                    <div>${formatTokens(totals.inputTokens + totals.outputTokens)}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Est. Cost</strong>
+                    <div>${formatCost(totals.totalCost)}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Avg Response</strong>
+                    <div>${formatTime(avgResponse)}</div>
+                </div>
+            </div>
+            <h2>Prompt Metrics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Prompt</th>
+                        <th>Model</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${promptRows}
+                </tbody>
+            </table>
+        </body>
+        </html>
+    `;
+}
+
+function exportTestReportHtml() {
+    const html = buildTestReportHtml();
+    if (!html) return;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `northstar-test-report-${Date.now()}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 function updateSectionsVisibility() {
