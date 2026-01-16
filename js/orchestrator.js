@@ -195,6 +195,31 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
     return activePromptGroup.id;
 }
 
+function attachShadowPromptTelemetry(userMessage) {
+    if (!activePromptGroup || !rlmPipeline?.getStats) {
+        return;
+    }
+
+    const stats = rlmPipeline.getStats();
+    const shadowPrompt = stats?.shadowPrompt;
+
+    if (!stats?.config?.enableShadowPrompt || !shadowPrompt) {
+        return;
+    }
+
+    if (shadowPrompt.query && shadowPrompt.query !== userMessage) {
+        return;
+    }
+
+    activePromptGroup.shadowPrompt = {
+        mode: shadowPrompt.mode,
+        createdAt: shadowPrompt.createdAt,
+        promptPreview: shadowPrompt.promptPreview,
+        retrievalStats: shadowPrompt.retrievalStats,
+        tokenEstimate: shadowPrompt.tokenEstimate
+    };
+}
+
 /**
  * End the current prompt group and add it to the logs
  */
@@ -3203,6 +3228,7 @@ async function chatWithREPL(userMessage, thinkingId = null) {
             activePromptGroup.usesRLM = true;
         }
     }
+    attachShadowPromptTelemetry(userMessage);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -3276,6 +3302,7 @@ async function chatWithRLM(userMessage, thinkingId = null) {
             activePromptGroup.usesRLM = true;
         }
     }
+    attachShadowPromptTelemetry(userMessage);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -4635,6 +4662,10 @@ function buildPromptLogsHtml(promptLogs) {
         const cacheDisplay = log.cached
             ? `<span class="cache-badge">Cached</span>`
             : '';
+        const shadowPrompt = log.shadowPrompt || null;
+        const shadowPromptStats = shadowPrompt?.retrievalStats
+            ? escapeHtml(JSON.stringify(shadowPrompt.retrievalStats, null, 2))
+            : '';
         
         return `
         <details class="prompt-log-entry ${log.usesRLM ? 'uses-rlm' : ''}" id="${log.id || 'unknown'}">
@@ -4728,6 +4759,19 @@ function buildPromptLogsHtml(promptLogs) {
                     </span>
                 </div>` : ''}
                 ${confidenceHtml}
+                ${shadowPrompt ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">🕶️ Shadow-only tokens:</span>
+                    <span class="log-value">${shadowPrompt.tokenEstimate ?? 'N/A'}</span>
+                </div>
+                <div class="prompt-log-row">
+                    <span class="log-label">🕶️ Shadow-only retrieval:</span>
+                    <span class="log-value"><pre class="prompt-json">${shadowPromptStats || 'N/A'}</pre></span>
+                </div>
+                <div class="prompt-log-row prompt-preview">
+                    <span class="log-label">🕶️ Shadow-only prompt:</span>
+                    <span class="log-value prompt-text">${escapeHtml(shadowPrompt.promptPreview || '(No shadow prompt preview)')}</span>
+                </div>` : ''}
                 <div class="prompt-log-row prompt-preview">
                     <span class="log-label">💬 Prompt:</span>
                     <span class="log-value prompt-text">${escapeHtml(log.promptPreview || '(No preview)')}</span>

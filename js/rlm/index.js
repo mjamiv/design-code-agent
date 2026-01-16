@@ -778,6 +778,17 @@ Be concise and focus only on information relevant to the question.`;
             candidates: retrieval.stats.candidateCount,
             tokenEstimate: promptData.tokenEstimate
         });
+        console.log('[RLM:ShadowPrompt] Shadow-only telemetry snapshot', {
+            promptPreview: promptData.prompt,
+            retrievalStats: retrieval.stats,
+            tokenEstimate: promptData.tokenEstimate
+        });
+        this._emitProgress('Shadow prompt built (shadow-only)', 'info', {
+            shadowOnly: true,
+            promptPreview: promptData.prompt,
+            retrievalStats: retrieval.stats,
+            tokenEstimate: promptData.tokenEstimate
+        });
 
         if (retrieval.slices.length > 0) {
             console.log('[RLM:ShadowPrompt] Retrieved slices (shadow only)', retrieval.slices.map(slice => ({
