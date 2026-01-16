@@ -1626,6 +1626,57 @@ function addTestStatusLine(message, emphasis = '') {
     elements.testStatusStream.scrollTop = elements.testStatusStream.scrollHeight;
 }
 
+function addTestStreamingLine(promptText, emphasis = '') {
+    if (!elements.testStatusStream) return null;
+    const line = document.createElement('div');
+    line.className = 'test-status-line streaming';
+    const timestamp = new Date().toLocaleTimeString();
+    line.innerHTML = `
+        <span>${timestamp}</span>
+        <strong>${escapeHtml(emphasis)}</strong>
+        <span class="test-stream-status">Awaiting response...</span>
+        <div class="test-stream-prompt">${escapeHtml(promptText)}</div>
+        <div class="test-stream-body">
+            <span class="test-stream-text"></span>
+            <span class="streaming-cursor">▍</span>
+        </div>
+    `;
+    elements.testStatusStream.appendChild(line);
+    elements.testStatusStream.scrollTop = elements.testStatusStream.scrollHeight;
+
+    return {
+        line,
+        status: line.querySelector('.test-stream-status'),
+        text: line.querySelector('.test-stream-text'),
+        cursor: line.querySelector('.streaming-cursor')
+    };
+}
+
+function updateTestStreamStatus(streamLine, statusText) {
+    if (!streamLine?.status) return;
+    streamLine.status.textContent = statusText;
+}
+
+function updateTestStreamingLine(streamLine, chunk) {
+    if (!streamLine?.text || !chunk) return;
+    streamLine.text.textContent += chunk;
+    elements.testStatusStream.scrollTop = elements.testStatusStream.scrollHeight;
+}
+
+function finalizeTestStreamingLine(streamLine, { status = 'complete', message = '' } = {}) {
+    if (!streamLine?.line) return;
+    const isError = status === 'error';
+    streamLine.line.classList.toggle('streaming-error', isError);
+    updateTestStreamStatus(streamLine, isError ? 'Streaming error' : 'Stream complete');
+    if (isError && streamLine.text) {
+        streamLine.text.textContent = message || 'Unknown error';
+    }
+    if (streamLine.cursor) {
+        streamLine.cursor.remove();
+    }
+    elements.testStatusStream.scrollTop = elements.testStatusStream.scrollHeight;
+}
+
 function showTestRunningScreen() {
     if (elements.testRunningScreen) {
         elements.testRunningScreen.classList.remove('hidden');
@@ -1690,14 +1741,14 @@ function getPromptProcessingMode(promptText) {
     return { useREPL, useRLM, processingMode };
 }
 
-async function runPromptWithMetrics(promptText, labelPrefix = 'Test') {
+async function runPromptWithMetrics(promptText, labelPrefix = 'Test', streamHandlers = null) {
     const queryPreview = promptText.substring(0, 50) + (promptText.length > 50 ? '...' : '');
     const { useREPL, useRLM, processingMode } = getPromptProcessingMode(promptText);
 
     startPromptGroup(`${labelPrefix}: ${queryPreview}`, useRLM || useREPL, processingMode);
 
     try {
-        const response = await chatWithAgents(promptText);
+        const response = await chatWithAgents(promptText, null, streamHandlers);
         if (activePromptGroup) {
             activePromptGroup.promptPreview = queryPreview;
             activePromptGroup.response = response;
@@ -1740,10 +1791,17 @@ async function runTestSequence(prompts, rlmMode) {
         const prompt = prompts[i];
         const promptLabel = `Prompt ${i + 1}`;
         updateTestProgress(i + 1, prompts.length, `Running ${promptLabel}`);
-        addTestStatusLine(prompt.text, promptLabel);
+        const streamLine = addTestStreamingLine(prompt.text, promptLabel);
+        const streamHandlers = streamLine
+            ? {
+                onStart: () => updateTestStreamStatus(streamLine, 'Streaming response...'),
+                onToken: (chunk) => updateTestStreamingLine(streamLine, chunk),
+                onComplete: () => finalizeTestStreamingLine(streamLine, { status: 'complete' })
+            }
+            : null;
 
         try {
-            const response = await runPromptWithMetrics(prompt.text, 'Test');
+            const response = await runPromptWithMetrics(prompt.text, 'Test', streamHandlers);
             const logEntry = currentMetrics.promptLogs[currentMetrics.promptLogs.length - 1] || null;
             testPromptState.run.results.push({
                 prompt: prompt.text,
@@ -1759,6 +1817,9 @@ async function runTestSequence(prompts, rlmMode) {
                 error: error.message || 'Unknown error',
                 log: logEntry
             });
+            if (streamLine) {
+                finalizeTestStreamingLine(streamLine, { status: 'error', message: error.message || 'Unknown error' });
+            }
             addTestStatusLine(`Error: ${error.message || 'Unknown error'}`, promptLabel);
         }
     }
@@ -2537,6 +2598,7 @@ async function sendChatMessage() {
 
     // Show thinking indicator with train of thought
     const thinkingId = showThinkingIndicator();
+    const streamState = createStreamingMessage();
 
     try {
         // Check execution mode (respects RLM toggle setting)
@@ -2581,7 +2643,18 @@ async function sendChatMessage() {
         }
 
         // Execute the actual chat processing (pass thinkingId for real-time updates from RLM)
-        const response = await chatWithAgents(message, thinkingId);
+        const response = await chatWithAgents(message, thinkingId, {
+            onStart: () => {
+                updateStreamingStatus(streamState, 'Streaming response...');
+                removeThinkingIndicator(thinkingId);
+            },
+            onToken: (chunk) => {
+                updateStreamingMessage(streamState, chunk);
+            },
+            onComplete: () => {
+                updateStreamingStatus(streamState, 'Finalizing response...');
+            }
+        });
         
         // Store prompt preview and response in the active group
         if (activePromptGroup) {
@@ -2593,14 +2666,18 @@ async function sendChatMessage() {
         addThinkingStep(thinkingId, 'Response ready', 'success');
         updateThinkingStatus(thinkingId, 'Formatting...');
 
-        removeThinkingIndicator(thinkingId);
-        appendChatMessage('assistant', response);
+        if (document.getElementById(thinkingId)) {
+            removeThinkingIndicator(thinkingId);
+        }
+        finalizeStreamingMessage(streamState, response);
     } catch (error) {
         // Store error response in active group if available
         if (activePromptGroup) {
             activePromptGroup.response = `Error: ${error.message}`;
         }
-        removeThinkingIndicator(thinkingId);
+        if (document.getElementById(thinkingId)) {
+            removeThinkingIndicator(thinkingId);
+        }
         
         // Enhanced error messages with model-specific guidance
         let errorMessage = `Sorry, I encountered an error: ${error.message}`;
@@ -2617,8 +2694,7 @@ async function sendChatMessage() {
         } else if (error.message.includes('failed to produce')) {
             errorMessage = `The ${modelName} model failed to produce a valid response after multiple attempts. Consider trying a different model or simplifying your query.`;
         }
-        
-        appendChatMessage('assistant', errorMessage);
+        finalizeStreamingMessage(streamState, errorMessage, { isError: true });
     } finally {
         // End prompt group and finalize metrics
         endPromptGroup();
@@ -2644,11 +2720,11 @@ async function sendChatMessage() {
     }
 }
 
-async function chatWithAgents(userMessage, thinkingId = null) {
+async function chatWithAgents(userMessage, thinkingId = null, streamHandlers = null) {
     // Check if RLM is enabled in settings
     if (!state.settings.useRLM) {
         console.log('[Chat] RLM disabled via settings, using legacy processing');
-        return await chatWithAgentsLegacy(userMessage);
+        return await chatWithAgentsLegacy(userMessage, streamHandlers);
     }
     
     // Check if REPL should be used (code-assisted queries)
@@ -2656,7 +2732,11 @@ async function chatWithAgents(userMessage, thinkingId = null) {
 
     if (useREPL) {
         console.log('[Chat] Using REPL-assisted processing for query');
-        return await chatWithREPL(userMessage, thinkingId);
+        const response = await chatWithREPL(userMessage, thinkingId);
+        if (streamHandlers) {
+            await simulateStreamingResponse(response, streamHandlers);
+        }
+        return response;
     }
 
     // Check if RLM should be used for this query
@@ -2664,10 +2744,14 @@ async function chatWithAgents(userMessage, thinkingId = null) {
 
     if (useRLM) {
         console.log('[Chat] Using RLM pipeline for query');
-        return await chatWithRLM(userMessage, thinkingId);
+        const response = await chatWithRLM(userMessage, thinkingId);
+        if (streamHandlers) {
+            await simulateStreamingResponse(response, streamHandlers);
+        }
+        return response;
     } else {
         console.log('[Chat] Using legacy processing for query');
-        return await chatWithAgentsLegacy(userMessage);
+        return await chatWithAgentsLegacy(userMessage, streamHandlers);
     }
 }
 
@@ -2816,7 +2900,7 @@ async function chatWithRLM(userMessage, thinkingId = null) {
 /**
  * Legacy chat processing (non-RLM fallback)
  */
-async function chatWithAgentsLegacy(userMessage) {
+async function chatWithAgentsLegacy(userMessage, streamHandlers = null) {
     // Build context with smart agent selection
     const context = buildChatContext(userMessage);
     const systemPrompt = buildDirectSystemPrompt(context);
@@ -2833,7 +2917,9 @@ async function chatWithAgentsLegacy(userMessage) {
     // Add current message
     messages.push({ role: 'user', content: userMessage });
 
-    const response = await callGPTWithMessages(messages, `Chat: ${userMessage.substring(0, 30)}...`);
+    const response = streamHandlers
+        ? await callGPTWithMessagesStream(messages, `Chat: ${userMessage.substring(0, 30)}...`, streamHandlers)
+        : await callGPTWithMessages(messages, `Chat: ${userMessage.substring(0, 30)}...`);
 
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
@@ -2986,6 +3072,78 @@ function appendChatMessage(role, content, shouldSave = true) {
     }
 
     updateContextGauge();
+}
+
+function createStreamingMessage() {
+    const welcomeCard = elements.chatMessages.querySelector('.chat-welcome-card');
+    if (welcomeCard) {
+        welcomeCard.remove();
+    }
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message assistant streaming';
+    messageDiv.innerHTML = `
+        <div class="chat-message-avatar">🤖</div>
+        <div class="chat-message-content">
+            <div class="streaming-header">
+                <span class="streaming-dot"></span>
+                <span class="streaming-label">Awaiting response...</span>
+            </div>
+            <div class="streaming-body">
+                <span class="streaming-text"></span>
+                <span class="streaming-cursor">▍</span>
+            </div>
+        </div>
+    `;
+
+    elements.chatMessages.appendChild(messageDiv);
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+
+    return {
+        container: messageDiv,
+        content: messageDiv.querySelector('.chat-message-content'),
+        label: messageDiv.querySelector('.streaming-label'),
+        text: messageDiv.querySelector('.streaming-text'),
+        cursor: messageDiv.querySelector('.streaming-cursor')
+    };
+}
+
+function updateStreamingStatus(streamState, statusText) {
+    if (streamState?.label) {
+        streamState.label.textContent = statusText;
+    }
+}
+
+function updateStreamingMessage(streamState, chunk) {
+    if (!streamState?.text || !chunk) return;
+    streamState.text.textContent += chunk;
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+function finalizeStreamingMessage(streamState, fullText, options = {}) {
+    if (!streamState?.content) return;
+    const { isError = false } = options;
+    if (typeof marked !== 'undefined' && !isError) {
+        streamState.content.innerHTML = marked.parse(fullText || '');
+    } else {
+        streamState.content.innerHTML = escapeHtml(fullText || '');
+    }
+    streamState.container?.classList.toggle('streaming-error', isError);
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+    saveState();
+    updateContextGauge();
+}
+
+async function simulateStreamingResponse(fullText, streamHandlers) {
+    if (!streamHandlers) return;
+    const chunkSize = Math.max(6, Math.ceil(fullText.length / 120));
+    streamHandlers.onStart?.();
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+        const chunk = fullText.slice(i, i + chunkSize);
+        streamHandlers.onToken?.(chunk);
+        await sleep(18);
+    }
+    streamHandlers.onComplete?.(fullText);
 }
 
 /**
@@ -3500,6 +3658,137 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
     }
     
     // All retries exhausted
+    const finalError = lastError || new Error(`${model} failed to produce a valid response after ${maxRetries} attempts`);
+    throw finalError;
+}
+
+async function callGPTWithMessagesStream(messages, callName = 'Chat Query', streamHandlers = {}) {
+    const model = state.settings.model;
+    const effort = state.settings.effort;
+    const { onStart, onToken, onComplete } = streamHandlers || {};
+    let lastError = null;
+    let retryAttempt = 0;
+    const maxRetries = 3;
+
+    while (retryAttempt < maxRetries) {
+        try {
+            const startTime = performance.now();
+            const requestBody = buildAPIRequestBody(messages);
+            requestBody.stream = true;
+            requestBody.stream_options = { include_usage: true };
+
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${state.apiKey}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                const err = new Error(error.error?.message || `API error: ${response.status}`);
+                err.status = response.status;
+                throw err;
+            }
+
+            onStart?.();
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let fullText = '';
+            let streamUsage = null;
+            let finishReason = null;
+            let actualModel = model;
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('data:')) continue;
+                    const payload = trimmed.replace(/^data:\s*/, '');
+                    if (payload === '[DONE]') {
+                        break;
+                    }
+
+                    const data = JSON.parse(payload);
+                    if (data?.model) {
+                        actualModel = data.model;
+                    }
+                    if (data?.usage) {
+                        streamUsage = data.usage;
+                    }
+
+                    const choice = data?.choices?.[0];
+                    if (choice?.delta?.content) {
+                        const chunk = choice.delta.content;
+                        fullText += chunk;
+                        onToken?.(chunk, fullText);
+                    }
+                    if (choice?.finish_reason) {
+                        finishReason = choice.finish_reason;
+                    }
+                }
+            }
+
+            const responseTime = Math.round(performance.now() - startTime);
+            onComplete?.(fullText);
+
+            const userMessage = messages.filter(m => m.role === 'user').pop();
+            const promptPreview = userMessage
+                ? userMessage.content.substring(0, 100) + (userMessage.content.length > 100 ? '...' : '')
+                : '(No user message)';
+
+            const callData = buildCallDataFromResponse({
+                data: streamUsage ? { usage: streamUsage } : null,
+                callName,
+                requestedModel: model,
+                actualModel,
+                modelFallback: actualModel !== model,
+                effort,
+                responseTime,
+                promptPreview,
+                responseContent: fullText,
+                finishReason,
+                retryAttempt
+            });
+
+            if (callData) {
+                addAPICallToMetrics(callData);
+            }
+
+            if (fullText && fullText.trim().length > 0) {
+                return fullText;
+            }
+
+            lastError = new Error(`${model} returned empty response`);
+            if (retryAttempt < maxRetries - 1) {
+                const delay = Math.min(1000 * Math.pow(2, retryAttempt), 5000);
+                await sleep(delay);
+            }
+        } catch (error) {
+            if (error.status && error.status >= 400 && error.status < 500 && error.status !== 429) {
+                throw error;
+            }
+
+            lastError = error;
+            if (retryAttempt < maxRetries - 1) {
+                const delay = Math.min(2000 * Math.pow(2, retryAttempt), 16000);
+                console.warn(`[API] ${callName} failed (attempt ${retryAttempt + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+                await sleep(delay);
+            }
+        }
+
+        retryAttempt++;
+    }
+
     const finalError = lastError || new Error(`${model} failed to produce a valid response after ${maxRetries} attempts`);
     throw finalError;
 }

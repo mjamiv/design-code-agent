@@ -1910,6 +1910,38 @@ footer a:hover {
     color: var(--text-primary);
 }
 
+.test-status-line.streaming {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--space-sm);
+    border-radius: var(--radius-sm);
+    border: 1px dashed rgba(212, 168, 83, 0.35);
+    background: rgba(18, 22, 30, 0.5);
+}
+
+.test-status-line.streaming.streaming-error {
+    border-color: rgba(248, 113, 113, 0.6);
+    background: rgba(248, 113, 113, 0.08);
+}
+
+.test-stream-status {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.test-stream-prompt {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.test-stream-body {
+    margin-top: var(--space-xs);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+}
+
 .test-analytics-container {
     max-width: 820px;
 }
@@ -4136,6 +4168,48 @@ details[open] .about-toggle {
     color: var(--text-primary);
 }
 
+.chat-message.streaming .chat-message-content {
+    border: 1px dashed rgba(212, 168, 83, 0.4);
+    background: rgba(22, 26, 34, 0.6);
+}
+
+.chat-message.streaming.streaming-error .chat-message-content {
+    border-color: rgba(248, 113, 113, 0.6);
+    background: rgba(248, 113, 113, 0.08);
+}
+
+.streaming-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: var(--space-xs);
+}
+
+.streaming-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent-primary);
+    box-shadow: 0 0 12px rgba(212, 168, 83, 0.6);
+    animation: streamingPulse 1.4s ease-in-out infinite;
+}
+
+.streaming-body {
+    white-space: pre-wrap;
+    color: var(--text-primary);
+}
+
+.streaming-cursor {
+    display: inline-block;
+    margin-left: 2px;
+    color: var(--accent-primary);
+    animation: streamingBlink 1s steps(2, start) infinite;
+}
+
 /* Chat Message Markdown Styling */
 .chat-message-content p {
     margin: 0 0 var(--space-sm) 0;
@@ -4182,6 +4256,28 @@ details[open] .about-toggle {
     color: var(--accent-primary);
     font-weight: 600;
     font-size: 0.85em;
+}
+
+@keyframes streamingPulse {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+    50% {
+        transform: scale(1.35);
+        opacity: 1;
+    }
+}
+
+@keyframes streamingBlink {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
 }
 
 .chat-message-content h1,
