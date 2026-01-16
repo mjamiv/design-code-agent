@@ -122,3 +122,57 @@ export function buildShadowPrompt({
         tokenBreakdown
     };
 }
+
+export function buildRetrievalPromptSections({
+    stateBlock,
+    workingWindow,
+    retrievedSlices,
+    localContext = ''
+}) {
+    const sections = [];
+
+    const stateContent = formatStateBlock(stateBlock);
+    if (stateContent) {
+        sections.push({
+            label: 'State Block',
+            content: stateContent
+        });
+    }
+
+    const workingContent = formatWorkingWindow(workingWindow);
+    if (workingContent) {
+        sections.push({
+            label: 'Working Window',
+            content: workingContent
+        });
+    }
+
+    const retrievedContent = formatRetrievedSlices(retrievedSlices);
+    if (retrievedContent) {
+        sections.push({
+            label: 'Retrieved Slices',
+            content: retrievedContent
+        });
+    }
+
+    if (localContext) {
+        sections.push({
+            label: 'Local Context',
+            content: localContext
+        });
+    }
+
+    const prompt = sections.map(section => `### ${section.label}\n${section.content}`).join('\n\n');
+    const tokenBreakdown = sections.map(section => ({
+        label: section.label,
+        tokens: estimateTokens(section.content)
+    }));
+    const tokenEstimate = tokenBreakdown.reduce((sum, section) => sum + section.tokens, 0);
+
+    return {
+        prompt,
+        sections,
+        tokenEstimate,
+        tokenBreakdown
+    };
+}

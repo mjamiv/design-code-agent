@@ -30,7 +30,7 @@ import { REPLEnvironment, getREPLEnvironment, resetREPLEnvironment, isREPLSuppor
 import { CodeGenerator, createCodeGenerator, generateCodePrompt, parseCodeOutput, parseFinalAnswer, validateCode, classifyQuery, QueryType } from './code-generator.js';
 import { QueryCache, getQueryCache, resetQueryCache, CACHE_CONFIG } from './query-cache.js';
 import { MemoryStore, getMemoryStore, resetMemoryStore } from './memory-store.js';
-import { buildShadowPrompt } from './prompt-builder.js';
+import { buildShadowPrompt, buildRetrievalPromptSections } from './prompt-builder.js';
 
 /**
  * RLM Configuration
@@ -77,6 +77,9 @@ export const RLM_CONFIG = {
     shadowPromptMaxPerTag: 2,
     shadowPromptMaxPerAgent: 2,
     shadowPromptRecencyWindowDays: 30,
+
+    // Milestone 2.5: Retrieval prompt builder (feature-flagged)
+    enableRetrievalPrompt: false,
 
     // Milestone 4: Guardrails + token budgeting
     enablePromptBudgeting: true,
@@ -178,6 +181,7 @@ export class RLMPipeline {
             lastContextTokens: 0,
             lastSwmFallbackUsed: false,
             lastFallbackReason: null,
+            lastRetrievalStats: null,
             lastUpdatedAt: null
         };
     }
@@ -602,9 +606,86 @@ Use the following meeting data to answer questions accurately and comprehensivel
             lastContextTokens: contextTokens,
             lastSwmFallbackUsed: Boolean(metadata.swmFallbackUsed),
             lastFallbackReason: metadata.fallbackReason || null,
+            lastRetrievalStats: metadata.retrievalStats || null,
             lastUpdatedAt: new Date().toISOString()
         };
         this._checkFocusBudgetTrigger(promptEstimate);
+    }
+
+    _buildRetrievalPromptContext(query, localContext = '', options = {}) {
+        if (!this.config.enableRetrievalPrompt || !this.memoryStore) {
+            return {
+                contextText: localContext || '',
+                retrievalStats: null,
+                tokenEstimate: this._estimateTokens(localContext),
+                tokenBreakdown: [],
+                retrievedSlices: [],
+                reduction: null
+            };
+        }
+
+        const recencyWindowMs = this.config.shadowPromptRecencyWindowDays
+            ? this.config.shadowPromptRecencyWindowDays * 24 * 60 * 60 * 1000
+            : null;
+        const retrieval = this.memoryStore.retrieveSlices(query, {
+            maxResults: this.config.shadowPromptMaxSlices,
+            maxPerTag: this.config.shadowPromptMaxPerTag,
+            maxPerAgent: this.config.shadowPromptMaxPerAgent,
+            recencyWindowMs,
+            updateStats: true
+        });
+
+        let retrievedSlices = retrieval.slices;
+        let promptData = buildRetrievalPromptSections({
+            stateBlock: this.memoryStore.getStateBlock(),
+            workingWindow: this.memoryStore.getWorkingWindow(),
+            retrievedSlices,
+            localContext
+        });
+
+        const guardrail = this._getPromptBudget();
+        const maxInputTokens = options.maxInputTokens ?? guardrail.maxInputTokens;
+        let reduction = null;
+
+        if (this.config.enablePromptBudgeting && maxInputTokens > 0 && promptData.tokenEstimate > maxInputTokens) {
+            const originalCount = retrievedSlices.length;
+            const originalTokens = promptData.tokenEstimate;
+            let trimmed = [...retrievedSlices];
+            while (trimmed.length > 0 && promptData.tokenEstimate > maxInputTokens) {
+                trimmed.pop();
+                promptData = buildRetrievalPromptSections({
+                    stateBlock: this.memoryStore.getStateBlock(),
+                    workingWindow: this.memoryStore.getWorkingWindow(),
+                    retrievedSlices: trimmed,
+                    localContext
+                });
+            }
+            retrievedSlices = trimmed;
+            reduction = {
+                originalCount,
+                finalCount: trimmed.length,
+                dropped: Math.max(0, originalCount - trimmed.length),
+                budget: maxInputTokens,
+                originalTokens,
+                finalTokens: promptData.tokenEstimate
+            };
+        }
+
+        const retrievalStats = {
+            ...retrieval.stats,
+            selectedCount: retrievedSlices.length,
+            selectedIds: retrievedSlices.map(slice => slice.id),
+            reduction
+        };
+
+        return {
+            contextText: promptData.prompt || localContext || '',
+            retrievalStats,
+            tokenEstimate: promptData.tokenEstimate,
+            tokenBreakdown: promptData.tokenBreakdown,
+            retrievedSlices,
+            reduction
+        };
     }
 
     async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic', metadata = {}) {
@@ -644,19 +725,31 @@ Use the following meeting data to answer questions accurately and comprehensivel
      */
     _wrapLLMCall(llmCall) {
         return async (subQuery, agentContext, context) => {
-            const { systemPrompt } = this._buildSubQueryPrompts(subQuery, agentContext);
+            const { systemPrompt } = this._buildSubQueryPrompts(subQuery, '');
             let userPrompt = '';
             const guardrail = this._getPromptBudget();
             const baseTokens = this._estimateTokens(this._buildSubQueryPrompts(subQuery, '').userPrompt)
                 + this._estimateTokens(systemPrompt);
-            const contextTokens = this._estimateTokens(agentContext);
             let trimmed = false;
             let trimmedTokens = 0;
             let fallbackUsed = false;
             let finalContext = agentContext;
+            let retrievalStats = null;
 
-            if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+            if (this.config.enableRetrievalPrompt && this.memoryStore) {
                 const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+                const retrievalData = this._buildRetrievalPromptContext(subQuery, '', {
+                    maxInputTokens: availableForContext
+                });
+                finalContext = retrievalData.contextText;
+                retrievalStats = retrievalData.retrievalStats;
+                if (retrievalData.reduction && retrievalData.reduction.dropped > 0) {
+                    trimmed = true;
+                    trimmedTokens = Math.max(0, retrievalData.reduction.originalTokens - retrievalData.reduction.finalTokens);
+                }
+            } else if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+                const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+                const contextTokens = this._estimateTokens(agentContext);
                 if (contextTokens > availableForContext) {
                     finalContext = this._truncateToTokenBudget(agentContext, availableForContext);
                     trimmedTokens = contextTokens - this._estimateTokens(finalContext);
@@ -697,7 +790,8 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 this._estimateTokens(finalContext),
                 {
                     swmFallbackUsed: fallbackUsed,
-                    fallbackReason: fallbackUsed ? 'context_trim' : null
+                    fallbackReason: fallbackUsed ? 'context_trim' : null,
+                    retrievalStats
                 }
             );
 
@@ -712,18 +806,29 @@ Use the following meeting data to answer questions accurately and comprehensivel
     async _legacyProcess(query, llmCall, context) {
         const activeAgents = this.contextStore.getActiveAgents();
         const agentIds = activeAgents.map(agent => agent.id);
-        let combinedContext = this.contextStore.getCombinedContext(agentIds, 'standard');
+        let combinedContext = '';
         const guardrail = this._getPromptBudget();
         const { systemPrompt, userPrompt: baseUserPrompt } = this._buildLegacyPrompts(query, '');
         const baseTokens = this._estimateTokens(systemPrompt) + this._estimateTokens(baseUserPrompt);
-        if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+        let retrievalStats = null;
+        if (this.config.enableRetrievalPrompt && this.memoryStore) {
             const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
-            const contextTokens = this._estimateTokens(combinedContext);
-            if (contextTokens > availableForContext) {
-                const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
-                    preferredLevel: 'standard'
-                });
-                combinedContext = budgeted.context;
+            const retrievalData = this._buildRetrievalPromptContext(query, '', {
+                maxInputTokens: availableForContext
+            });
+            combinedContext = retrievalData.contextText;
+            retrievalStats = retrievalData.retrievalStats;
+        } else {
+            combinedContext = this.contextStore.getCombinedContext(agentIds, 'standard');
+            if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+                const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+                const contextTokens = this._estimateTokens(combinedContext);
+                if (contextTokens > availableForContext) {
+                    const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
+                        preferredLevel: 'standard'
+                    });
+                    combinedContext = budgeted.context;
+                }
             }
         }
 
@@ -755,7 +860,8 @@ Use the following meeting data to answer questions accurately and comprehensivel
             'legacy',
             {
                 swmFallbackUsed,
-                fallbackReason: swmFallbackUsed ? 'overflow' : null
+                fallbackReason: swmFallbackUsed ? 'overflow' : null,
+                retrievalStats
             }
         );
 
