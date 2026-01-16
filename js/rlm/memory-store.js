@@ -40,6 +40,16 @@ export class MemoryStore {
             totalSlices: 0,
             lastCapturedAt: null
         };
+        this.focus = {
+            current: null,
+            episodes: [],
+            stats: {
+                totalEpisodes: 0,
+                lastStartedAt: null,
+                lastCompletedAt: null,
+                lastSummary: null
+            }
+        };
         this._idCounter = 0;
     }
 
@@ -59,24 +69,7 @@ export class MemoryStore {
         const timestamp = new Date().toISOString();
 
         extracted.forEach(slice => {
-            const entry = {
-                id: this._nextId(),
-                type: slice.type,
-                text: slice.text,
-                summary: slice.text,
-                tags: slice.tags,
-                entities: slice.entities,
-                source_agent_ids: metadata.agentIds || [],
-                source_tool_ids: metadata.toolIds || [],
-                timestamp,
-                recency_score: 1,
-                importance_score: slice.importance,
-                retrieval_count: 0,
-                last_retrieved_at: null,
-                token_estimate: this._estimateTokens(slice.text),
-                confidence: slice.confidence,
-                source_hash: this._hashText(slice.text)
-            };
+            const entry = this._buildSliceEntry(slice, metadata, timestamp);
 
             this.slices.push(entry);
             this._mergeIntoStateBlock(entry);
@@ -101,8 +94,127 @@ export class MemoryStore {
     getStats() {
         return {
             ...this.stats,
-            stateBlockSize: Object.values(this.stateBlock).reduce((sum, items) => sum + items.length, 0)
+            stateBlockSize: Object.values(this.stateBlock).reduce((sum, items) => sum + items.length, 0),
+            focus: {
+                ...this.focus.stats,
+                active: Boolean(this.focus.current),
+                currentLabel: this.focus.current?.label || null
+            }
         };
+    }
+
+    /**
+     * Focus Episode API (Milestone 3).
+     * @param {string} label
+     * @param {string} objective
+     * @param {Object} metadata
+     * @returns {Object|null}
+     */
+    startFocus(label, objective, metadata = {}) {
+        if (this.focus.current) {
+            return this.focus.current;
+        }
+
+        const startedAt = new Date().toISOString();
+        const focusSession = {
+            id: this._nextFocusId(),
+            label,
+            objective,
+            startedAt,
+            events: [],
+            source_agent_ids: metadata.agentIds || [],
+            source_tool_ids: metadata.toolIds || []
+        };
+
+        this.focus.current = focusSession;
+        this.focus.stats.lastStartedAt = startedAt;
+        return focusSession;
+    }
+
+    appendFocus(event, source = {}) {
+        if (!this.focus.current || !event) {
+            return null;
+        }
+
+        const entry = {
+            id: `${this.focus.current.id}-evt-${this.focus.current.events.length + 1}`,
+            event: typeof event === 'string' ? event : JSON.stringify(event),
+            source,
+            timestamp: new Date().toISOString()
+        };
+
+        this.focus.current.events.push(entry);
+        return entry;
+    }
+
+    /**
+     * Complete the current focus episode.
+     * @param {Object} options
+     * @param {string} options.reason
+     * @param {boolean} options.persist
+     * @param {Object} options.metadata
+     * @returns {Object|null}
+     */
+    completeFocus({ reason = 'manual', persist = false, metadata = {} } = {}) {
+        if (!this.focus.current) {
+            return null;
+        }
+
+        const completedAt = new Date().toISOString();
+        const current = this.focus.current;
+        const eventText = current.events.map(item => item.event).join('\n');
+        const combinedText = [current.label, current.objective, eventText].filter(Boolean).join('\n');
+        const summary = this._summarizeResponse(combinedText);
+        const extracted = this._extractStructuredSlices(combinedText);
+        const grouped = this._groupSlicesByType(extracted);
+        const learnedFacts = [...new Set(current.events.map(item => item.event).filter(Boolean))].slice(0, 5);
+
+        const episodePayload = {
+            id: current.id,
+            label: current.label,
+            objective: current.objective,
+            reason,
+            startedAt: current.startedAt,
+            completedAt,
+            episode_summary: summary,
+            learned_facts: learnedFacts,
+            decisions: grouped.decisions,
+            actions: grouped.actions,
+            risks: grouped.risks,
+            entities: grouped.entities,
+            constraints: grouped.constraints,
+            open_questions: grouped.openQuestions,
+            events: current.events
+        };
+
+        if (persist) {
+            const entry = this._buildSliceEntry({
+                type: 'episode',
+                text: summary,
+                tags: ['episode'],
+                entities: this._extractEntities(summary),
+                confidence: 0.6,
+                importance: 0.6
+            }, metadata, completedAt);
+            this.slices.push(entry);
+
+            extracted.forEach(slice => {
+                if (slice.type === 'episode') return;
+                const sliceEntry = this._buildSliceEntry(slice, metadata, completedAt);
+                this.slices.push(sliceEntry);
+                this._mergeIntoStateBlock(sliceEntry);
+            });
+
+            this.focus.episodes.push(episodePayload);
+            this.stats.totalSlices = this.slices.length;
+        }
+
+        this.focus.stats.totalEpisodes = this.focus.episodes.length;
+        this.focus.stats.lastCompletedAt = completedAt;
+        this.focus.stats.lastSummary = summary;
+        this.focus.current = null;
+
+        return episodePayload;
     }
 
     /**
@@ -230,6 +342,65 @@ export class MemoryStore {
                 latencyMs: Math.max(0, finishedAt - startedAt)
             }
         };
+    }
+
+    _buildSliceEntry(slice, metadata, timestamp) {
+        return {
+            id: this._nextId(),
+            type: slice.type,
+            text: slice.text,
+            summary: slice.text,
+            tags: slice.tags,
+            entities: slice.entities,
+            source_agent_ids: metadata.agentIds || [],
+            source_tool_ids: metadata.toolIds || [],
+            timestamp,
+            recency_score: 1,
+            importance_score: slice.importance,
+            retrieval_count: 0,
+            last_retrieved_at: null,
+            token_estimate: this._estimateTokens(slice.text),
+            confidence: slice.confidence,
+            source_hash: this._hashText(slice.text)
+        };
+    }
+
+    _groupSlicesByType(slices) {
+        const grouped = {
+            decisions: [],
+            actions: [],
+            risks: [],
+            entities: [],
+            constraints: [],
+            openQuestions: []
+        };
+
+        slices.forEach(slice => {
+            switch (slice.type) {
+                case 'decision':
+                    grouped.decisions.push(slice.text);
+                    break;
+                case 'action':
+                    grouped.actions.push(slice.text);
+                    break;
+                case 'risk':
+                    grouped.risks.push(slice.text);
+                    break;
+                case 'entity':
+                    grouped.entities.push(slice.text);
+                    break;
+                case 'constraint':
+                    grouped.constraints.push(slice.text);
+                    break;
+                case 'open_question':
+                    grouped.openQuestions.push(slice.text);
+                    break;
+                default:
+                    break;
+            }
+        });
+
+        return grouped;
     }
 
     _updateWorkingWindow(query, response) {
@@ -449,6 +620,11 @@ export class MemoryStore {
     _nextId() {
         this._idCounter += 1;
         return `mem-${Date.now()}-${this._idCounter}`;
+    }
+
+    _nextFocusId() {
+        this._idCounter += 1;
+        return `focus-${Date.now()}-${this._idCounter}`;
     }
 }
 

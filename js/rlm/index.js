@@ -76,7 +76,15 @@ export const RLM_CONFIG = {
     shadowPromptMaxSlices: 6,
     shadowPromptMaxPerTag: 2,
     shadowPromptMaxPerAgent: 2,
-    shadowPromptRecencyWindowDays: 30
+    shadowPromptRecencyWindowDays: 30,
+
+    // Milestone 3: Focus episodes (shadow mode, gated)
+    enableFocusShadow: true,
+    enableFocusEpisodes: false,
+    focusTokenBudget: 8000,
+    focusBudgetThreshold: 0.8,
+    focusTriggerToolCalls: 3,
+    focusTriggerSubLmCalls: 2
 };
 
 /**
@@ -141,6 +149,15 @@ export class RLMPipeline {
 
         // Shadow prompt storage (Milestone 2)
         this.shadowPrompt = null;
+
+        // Focus tracking (Milestone 3)
+        this.focusTracker = {
+            toolCalls: 0,
+            subLmCalls: 0,
+            turns: 0,
+            pendingReason: null,
+            lastTokenEstimate: 0
+        };
     }
 
     /**
@@ -357,7 +374,9 @@ If the information is not available in the provided context, say so briefly.`;
         try {
             console.log('[RLM] Starting pipeline for query:', query.substring(0, 50) + '...');
             this._emitProgress('Starting RLM pipeline...', 'info');
+            this._startFocusIfEnabled('RLM pipeline', query);
             this._runShadowPromptBuild(query, context, 'rlm');
+            this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'rlm' });
 
             // Step 1: Decompose the query
             console.log('[RLM] Step 1: Decomposing query...');
@@ -365,6 +384,10 @@ If the information is not available in the provided context, say so briefly.`;
             const decomposition = await this.decomposer.decompose(query, context);
             console.log(`[RLM] Decomposed into ${decomposition.subQueries.length} sub-queries using ${decomposition.strategy.type} strategy`);
             this._emitProgress(`Strategy: ${decomposition.strategy.type} (${decomposition.subQueries.length} sub-queries)`, 'decompose');
+            this._appendFocusEvent(
+                `Decomposition strategy: ${decomposition.strategy.type} with ${decomposition.subQueries.length} sub-queries.`,
+                { step: 'decompose' }
+            );
 
             // Step 2: Execute sub-queries
             console.log('[RLM] Step 2: Executing sub-queries...');
@@ -381,6 +404,12 @@ If the information is not available in the provided context, say so briefly.`;
 
             console.log(`[RLM] Executed ${executionResult.results.length} sub-queries in ${executionResult.executionTime}ms`);
             this._emitProgress(`Completed ${executionResult.results.length} sub-queries (${executionResult.executionTime}ms)`, 'success');
+            this.focusTracker.toolCalls += executionResult.results.length;
+            this._appendFocusEvent(
+                `Executed ${executionResult.results.length} sub-queries in ${executionResult.executionTime}ms.`,
+                { step: 'execute' }
+            );
+            this._checkFocusTriggerCounts();
 
             // Step 3: Aggregate results
             console.log('[RLM] Step 3: Aggregating results...');
@@ -391,6 +420,8 @@ If the information is not available in the provided context, say so briefly.`;
                 this._wrapLLMCall(llmCall),
                 context
             );
+            this._appendFocusEvent('Aggregated sub-query results into final response.', { step: 'aggregate' });
+            this._queueFocusReason('phase_complete');
 
             // Update stats
             this._updateStats(decomposition, executionResult, Date.now() - startTime);
@@ -411,6 +442,7 @@ If the information is not available in the provided context, say so briefly.`;
             };
 
             this._captureMemory(query, result);
+            this._completeFocusIfReady();
 
             // Phase 3.1: Store result in cache
             this._storeInCache(query, result, 'rlm');
@@ -419,6 +451,9 @@ If the information is not available in the provided context, say so briefly.`;
 
         } catch (error) {
             console.error('[RLM] Pipeline error:', error);
+            this._appendFocusEvent(`Pipeline error: ${error.message}`, { step: 'error' });
+            this._queueFocusReason('termination');
+            this._completeFocusIfReady();
 
             if (this.config.fallbackToLegacy) {
                 console.log('[RLM] Falling back to legacy processing');
@@ -473,7 +508,9 @@ Provide a focused answer based only on the context above.`;
         const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
 Use the following meeting data to answer questions accurately and comprehensively.`;
 
+        this._startFocusIfEnabled('Legacy pipeline', query);
         this._runShadowPromptBuild(query, context, 'legacy');
+        this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'legacy' });
 
         const response = await llmCall(systemPrompt, `${combinedContext}\n\nQuestion: ${query}`, context);
 
@@ -487,6 +524,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
         };
 
         this._captureMemory(query, result);
+        this._appendFocusEvent('Legacy response generated.', { step: 'complete', mode: 'legacy' });
+        this._queueFocusReason('phase_complete');
+        this._completeFocusIfReady();
 
         return result;
     }
@@ -526,7 +566,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
         this._currentContext = context;
 
         try {
+            this._startFocusIfEnabled('REPL pipeline', query);
             this._runShadowPromptBuild(query, context, 'repl');
+            this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'repl' });
             // Ensure REPL is initialized
             if (!this.isREPLReady()) {
                 const initialized = await this.initializeREPL();
@@ -569,6 +611,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             console.log(`[RLM:REPL] Code generated (${codeResult.attempts} attempt(s)):`, codeResult.code.substring(0, 100) + '...');
             this._emitProgress(`Python code generated (${codeResult.attempts} attempt${codeResult.attempts > 1 ? 's' : ''})`, 'success');
+            this._appendFocusEvent(`Generated Python analysis code in ${codeResult.attempts} attempt(s).`, { step: 'code' });
 
             // Step 3: Execute the code in REPL
             this._emitProgress('Executing Python in Pyodide sandbox', 'execute');
@@ -583,6 +626,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
             }
 
             this._emitProgress('Python code executed successfully', 'success');
+            this._appendFocusEvent('Executed Python analysis successfully.', { step: 'execute' });
 
             // Step 4: Parse the final answer
             this._emitProgress('Extracting FINAL answer from output', 'aggregate');
@@ -605,6 +649,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
                 // Process sub-LM calls and aggregate results
                 const subResults = await this._processSubLmCalls(pendingCalls, llmCall, context);
+                this.focusTracker.subLmCalls += pendingCalls.length;
+                this._appendFocusEvent(`Processed ${pendingCalls.length} recursive sub_lm() calls.`, { step: 'recurse' });
+                this._checkFocusTriggerCounts();
                 
                 // Combine with the main answer
                 let combinedAnswer = finalAnswer.answer || '';
@@ -629,6 +676,8 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             if (subLmStats.totalCalls > 0) {
                 this._emitProgress(`Completed with ${subLmStats.totalCalls} recursive LLM call${subLmStats.totalCalls > 1 ? 's' : ''}`, 'recurse');
+                this.focusTracker.subLmCalls += subLmStats.totalCalls;
+                this._checkFocusTriggerCounts();
             }
 
             const result = {
@@ -648,6 +697,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
             };
 
             this._captureMemory(query, result);
+            this._appendFocusEvent('REPL response compiled.', { step: 'complete', mode: 'repl' });
+            this._queueFocusReason('phase_complete');
+            this._completeFocusIfReady();
 
             // Phase 3.1: Store result in cache
             this._storeInCache(query, result, 'repl');
@@ -657,6 +709,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
         } catch (error) {
             console.error('[RLM:REPL] Error:', error);
             this.stats.replErrors++;
+            this._appendFocusEvent(`REPL pipeline error: ${error.message}`, { step: 'error' });
+            this._queueFocusReason('termination');
+            this._completeFocusIfReady();
 
             if (this.config.fallbackToLegacy) {
                 console.log('[RLM:REPL] Falling back to standard processing');
@@ -810,6 +865,7 @@ Be concise and focus only on information relevant to the question.`;
             promptLatencyMs: Math.max(0, promptFinishedAt - retrievalFinishedAt),
             totalLatencyMs: Math.max(0, promptFinishedAt - startedAt)
         };
+        this._checkFocusBudgetTrigger(promptData.tokenEstimate);
 
         console.log('[RLM:ShadowPrompt] Built prompt in shadow mode', {
             mode,
@@ -854,6 +910,124 @@ Be concise and focus only on information relevant to the question.`;
         } else {
             console.log('[RLM:ShadowPrompt] No slices retrieved for shadow prompt');
         }
+    }
+
+    _startFocusIfEnabled(label, query) {
+        if (!this._isFocusEnabled() || !this.memoryStore) {
+            return;
+        }
+
+        this.focusTracker.turns += 1;
+        this.memoryStore.startFocus(label, `Objective: ${query}`, {
+            agentIds: this.contextStore.getActiveAgents().map(agent => agent.id)
+        });
+    }
+
+    _appendFocusEvent(event, source = {}) {
+        if (!this._isFocusEnabled() || !this.memoryStore) {
+            return;
+        }
+        this.memoryStore.appendFocus(event, source);
+    }
+
+    _checkFocusBudgetTrigger(tokenEstimate) {
+        if (!this._isFocusEnabled()) {
+            return;
+        }
+
+        this.focusTracker.lastTokenEstimate = tokenEstimate;
+        if (!this.config.focusTokenBudget) {
+            return;
+        }
+        const threshold = this.config.focusTokenBudget * this.config.focusBudgetThreshold;
+        if (tokenEstimate >= threshold) {
+            this._appendFocusEvent(
+                `Prompt estimate ${tokenEstimate} tokens exceeded budget threshold ${threshold}.`,
+                { trigger: 'budget_pressure' }
+            );
+            this._queueFocusReason('budget_pressure');
+        }
+    }
+
+    _checkFocusTriggerCounts() {
+        if (!this._isFocusEnabled()) {
+            return;
+        }
+
+        if (this.config.focusTriggerToolCalls && this.focusTracker.toolCalls >= this.config.focusTriggerToolCalls) {
+            this._appendFocusEvent(
+                `Tool call threshold reached (${this.focusTracker.toolCalls}).`,
+                { trigger: 'tool_calls' }
+            );
+            this._queueFocusReason('tool_calls');
+        }
+        if (this.config.focusTriggerSubLmCalls && this.focusTracker.subLmCalls >= this.config.focusTriggerSubLmCalls) {
+            this._appendFocusEvent(
+                `Recursive call threshold reached (${this.focusTracker.subLmCalls}).`,
+                { trigger: 'recursive_depth' }
+            );
+            this._queueFocusReason('recursive_depth');
+        }
+    }
+
+    _queueFocusReason(reason) {
+        if (!this._isFocusEnabled()) {
+            return;
+        }
+
+        const priority = {
+            budget_pressure: 5,
+            phase_complete: 4,
+            tool_calls: 3,
+            recursive_depth: 2,
+            termination: 1
+        };
+        const current = this.focusTracker.pendingReason;
+        if (!current || (priority[reason] || 0) > (priority[current] || 0)) {
+            this.focusTracker.pendingReason = reason;
+        }
+    }
+
+    _completeFocusIfReady() {
+        if (!this._isFocusEnabled() || !this.focusTracker.pendingReason || !this.memoryStore) {
+            return;
+        }
+
+        const focusResult = this.memoryStore.completeFocus({
+            reason: this.focusTracker.pendingReason,
+            persist: this.config.enableFocusEpisodes,
+            metadata: {
+                agentIds: this.contextStore.getActiveAgents().map(agent => agent.id)
+            }
+        });
+
+        this.focusTracker.toolCalls = 0;
+        this.focusTracker.subLmCalls = 0;
+        this.focusTracker.turns = 0;
+        this.focusTracker.pendingReason = null;
+
+        if (!focusResult) {
+            return;
+        }
+
+        console.log('[RLM:Focus] Focus episode completed', {
+            label: focusResult.label,
+            reason: focusResult.reason,
+            summary: focusResult.episode_summary,
+            decisions: focusResult.decisions.length,
+            actions: focusResult.actions.length,
+            risks: focusResult.risks.length,
+            entities: focusResult.entities.length
+        });
+        this._emitProgress('Focus episode completed', 'info', {
+            shadowOnly: !this.config.enableFocusEpisodes,
+            focusSummary: focusResult.episode_summary,
+            focusReason: focusResult.reason
+        });
+    }
+
+    _isFocusEnabled() {
+        return Boolean(this.config.enableFocusShadow || this.config.enableFocusEpisodes);
     }
 
     // ==========================================
