@@ -743,6 +743,9 @@ Be concise and focus only on information relevant to the question.`;
             return;
         }
 
+        const startedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
         const recencyWindowMs = this.config.shadowPromptRecencyWindowDays
             ? this.config.shadowPromptRecencyWindowDays * 24 * 60 * 60 * 1000
             : null;
@@ -755,6 +758,10 @@ Be concise and focus only on information relevant to the question.`;
             updateStats: false
         });
 
+        const retrievalFinishedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+
         const promptData = buildShadowPrompt({
             query,
             stateBlock: this.memoryStore.getStateBlock(),
@@ -763,31 +770,78 @@ Be concise and focus only on information relevant to the question.`;
             localContext: context?.localContext || ''
         });
 
+        const promptFinishedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+
+        const previousIds = new Set(this.shadowPrompt?.retrievalStats?.selectedIds || []);
+        const currentIds = retrieval.slices.map(slice => slice.id);
+        const addedIds = currentIds.filter(id => !previousIds.has(id));
+        const removedIds = [...previousIds].filter(id => !currentIds.includes(id));
+
+        const summarizeByType = (slices) => slices.reduce((acc, slice) => {
+            acc[slice.type] = (acc[slice.type] || 0) + 1;
+            return acc;
+        }, {});
+        const currentTypeCounts = summarizeByType(retrieval.slices);
+        const previousTypeCounts = summarizeByType(this.shadowPrompt?.retrievalSlices || []);
+
         this.shadowPrompt = {
             mode,
             query,
             createdAt: new Date().toISOString(),
-            retrievalStats: retrieval.stats,
+            retrievalStats: {
+                ...retrieval.stats,
+                selectedIds: currentIds,
+                diff: {
+                    addedCount: addedIds.length,
+                    removedCount: removedIds.length,
+                    addedIds,
+                    removedIds,
+                    typeCounts: currentTypeCounts,
+                    previousTypeCounts
+                },
+                latencyMs: retrieval.stats.latencyMs ?? Math.max(0, retrievalFinishedAt - startedAt)
+            },
+            retrievalSlices: retrieval.slices,
             promptPreview: promptData.prompt,
-            tokenEstimate: promptData.tokenEstimate
+            tokenEstimate: promptData.tokenEstimate,
+            tokenBreakdown: promptData.tokenBreakdown,
+            promptLatencyMs: Math.max(0, promptFinishedAt - retrievalFinishedAt),
+            totalLatencyMs: Math.max(0, promptFinishedAt - startedAt)
         };
 
         console.log('[RLM:ShadowPrompt] Built prompt in shadow mode', {
             mode,
             retrieved: retrieval.stats.selectedCount,
             candidates: retrieval.stats.candidateCount,
-            tokenEstimate: promptData.tokenEstimate
+            tokenEstimate: promptData.tokenEstimate,
+            retrievalLatencyMs: this.shadowPrompt.retrievalStats.latencyMs,
+            promptLatencyMs: this.shadowPrompt.promptLatencyMs,
+            totalLatencyMs: this.shadowPrompt.totalLatencyMs
         });
         console.log('[RLM:ShadowPrompt] Shadow-only telemetry snapshot', {
             promptPreview: promptData.prompt,
-            retrievalStats: retrieval.stats,
-            tokenEstimate: promptData.tokenEstimate
+            retrievalStats: this.shadowPrompt.retrievalStats,
+            tokenEstimate: promptData.tokenEstimate,
+            tokenBreakdown: promptData.tokenBreakdown
         });
+        if (addedIds.length || removedIds.length) {
+            console.log('[RLM:ShadowPrompt] Retrieval diff (shadow only)', {
+                addedIds,
+                removedIds,
+                currentTypeCounts,
+                previousTypeCounts
+            });
+        }
         this._emitProgress('Shadow prompt built (shadow-only)', 'info', {
             shadowOnly: true,
             promptPreview: promptData.prompt,
-            retrievalStats: retrieval.stats,
-            tokenEstimate: promptData.tokenEstimate
+            retrievalStats: this.shadowPrompt.retrievalStats,
+            tokenEstimate: promptData.tokenEstimate,
+            tokenBreakdown: promptData.tokenBreakdown,
+            promptLatencyMs: this.shadowPrompt.promptLatencyMs,
+            totalLatencyMs: this.shadowPrompt.totalLatencyMs
         });
 
         if (retrieval.slices.length > 0) {

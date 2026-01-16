@@ -229,6 +229,28 @@ Per prompt:
 
 ---
 
+## Milestone 3–6 Follow-up Schedule (Next up, in order)
+1) **Milestone 3 — Focus Episodes (Shadow then gated)**
+   - Add Focus API + triggers in `js/rlm/memory-store.js` or new focus module.
+   - Keep shadow summaries logged and gated via feature flag.
+   - **Acceptance:** summaries consistent with raw logs; no regressions in core flows.
+
+2) **Milestone 4 — Guardrails + Token Budgeting**
+   - Add preflight token estimator + auto-reduction in `js/rlm/index.js` and prompt utilities.
+   - Enforce recursion caps + fallback to SWM-only on overflow risk.
+   - **Acceptance:** zero prompt overflows in telemetry; stable latency.
+
+3) **Milestone 5 — Instrumentation + Debug Panel**
+   - Expose token breakdowns + retrieval diagnostics.
+   - Build Memory Debug Panel UI in `index.html`, `js/orchestrator.js`, `css/styles.css`.
+   - **Acceptance:** operators can trace a response end-to-end.
+
+4) **Milestone 6 — Evaluation + Rollout**
+   - Wire feature flags in `js/orchestrator.js`.
+   - Document QA steps + A/B benchmark checklist.
+   - **Acceptance:** p95 cost/latency improve and accuracy holds or rises during ramp.
+
+
 ## Additional Notes (Implementation Guidelines)
 - **Backwards compatibility:** keep existing prompt path intact until Milestone 4.
 - **Fallbacks:** if retrieval fails, default to SWM-only with minimal context.

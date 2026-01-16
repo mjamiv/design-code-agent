@@ -109,11 +109,16 @@ export function buildShadowPrompt({
 
     const prompt = sections.map(section => `### ${section.label}\n${section.content}`).join('\n\n');
 
-    const tokenEstimate = sections.reduce((sum, section) => sum + estimateTokens(section.content), 0);
+    const tokenBreakdown = sections.map(section => ({
+        label: section.label,
+        tokens: estimateTokens(section.content)
+    }));
+    const tokenEstimate = tokenBreakdown.reduce((sum, section) => sum + section.tokens, 0);
 
     return {
         prompt,
         sections,
-        tokenEstimate
+        tokenEstimate,
+        tokenBreakdown
     };
 }

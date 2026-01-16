@@ -112,6 +112,9 @@ export class MemoryStore {
      * @returns {{ slices: Array, stats: Object }}
      */
     retrieveSlices(query, options = {}) {
+        const startedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
         const {
             maxResults = 6,
             tags,
@@ -210,6 +213,10 @@ export class MemoryStore {
             });
         }
 
+        const finishedAt = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+
         return {
             slices: selected,
             stats: {
@@ -219,7 +226,8 @@ export class MemoryStore {
                 candidateCount: candidates.length,
                 selectedCount: selected.length,
                 requestedK: maxResults,
-                recencyWindowMs
+                recencyWindowMs,
+                latencyMs: Math.max(0, finishedAt - startedAt)
             }
         };
     }
