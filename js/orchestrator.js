@@ -83,6 +83,16 @@ const MODEL_CONTEXT_WINDOWS = {
 };
 
 const TEST_PROMPT_LIMIT = 10;
+const TEST_SETTINGS_KEYS = [
+    'useRLM',
+    'rlmAuto',
+    'enableShadowPrompt',
+    'enableRetrievalPrompt',
+    'enableFocusShadow',
+    'enableFocusEpisodes',
+    'enablePromptBudgeting',
+    'showMemoryDebug'
+];
 const DEFAULT_TEST_PROMPTS = [
     'Summarize the key decisions made throughout the meetings.',
     'What were the main blockers discussed across the meetings.',
@@ -117,7 +127,8 @@ let metricsState = {
 let testPromptState = {
     prompts: [],
     selectedCount: 0,
-    run: null
+    run: null,
+    settings: null
 };
 
 let testPromptIdCounter = 0;
@@ -536,6 +547,15 @@ function initElements() {
         addCustomPromptBtn: document.getElementById('add-custom-prompt-btn'),
         deployTestAgentBtn: document.getElementById('deploy-test-agent-btn'),
         testPromptError: document.getElementById('test-prompt-error'),
+        testSettingsResetBtn: document.getElementById('test-settings-reset-btn'),
+        testRlmToggle: document.getElementById('test-rlm-toggle'),
+        testRlmAutoToggle: document.getElementById('test-rlm-auto-toggle'),
+        testShadowPromptToggle: document.getElementById('test-shadow-prompt-toggle'),
+        testRetrievalPromptToggle: document.getElementById('test-retrieval-prompt-toggle'),
+        testFocusShadowToggle: document.getElementById('test-focus-shadow-toggle'),
+        testFocusEpisodesToggle: document.getElementById('test-focus-episodes-toggle'),
+        testPromptBudgetToggle: document.getElementById('test-prompt-budget-toggle'),
+        testMemoryDebugToggle: document.getElementById('test-memory-debug-toggle'),
         testRunningScreen: document.getElementById('test-running-screen'),
         testProgressFill: document.getElementById('test-progress-fill'),
         testProgressLabel: document.getElementById('test-progress-label'),
@@ -864,6 +884,51 @@ function setupEventListeners() {
     }
     if (elements.deployTestAgentBtn) {
         elements.deployTestAgentBtn.addEventListener('click', deployTestAgent);
+    }
+    if (elements.testSettingsResetBtn) {
+        elements.testSettingsResetBtn.addEventListener('click', () => {
+            initializeTestSettings();
+        });
+    }
+    if (elements.testRlmToggle) {
+        elements.testRlmToggle.addEventListener('change', (e) => {
+            updateTestSetting('useRLM', e.target.checked);
+        });
+    }
+    if (elements.testRlmAutoToggle) {
+        elements.testRlmAutoToggle.addEventListener('change', (e) => {
+            updateTestSetting('rlmAuto', e.target.checked);
+        });
+    }
+    if (elements.testShadowPromptToggle) {
+        elements.testShadowPromptToggle.addEventListener('change', (e) => {
+            updateTestSetting('enableShadowPrompt', e.target.checked);
+        });
+    }
+    if (elements.testRetrievalPromptToggle) {
+        elements.testRetrievalPromptToggle.addEventListener('change', (e) => {
+            updateTestSetting('enableRetrievalPrompt', e.target.checked);
+        });
+    }
+    if (elements.testFocusShadowToggle) {
+        elements.testFocusShadowToggle.addEventListener('change', (e) => {
+            updateTestSetting('enableFocusShadow', e.target.checked);
+        });
+    }
+    if (elements.testFocusEpisodesToggle) {
+        elements.testFocusEpisodesToggle.addEventListener('change', (e) => {
+            updateTestSetting('enableFocusEpisodes', e.target.checked);
+        });
+    }
+    if (elements.testPromptBudgetToggle) {
+        elements.testPromptBudgetToggle.addEventListener('change', (e) => {
+            updateTestSetting('enablePromptBudgeting', e.target.checked);
+        });
+    }
+    if (elements.testMemoryDebugToggle) {
+        elements.testMemoryDebugToggle.addEventListener('change', (e) => {
+            updateTestSetting('showMemoryDebug', e.target.checked);
+        });
     }
     if (elements.testPromptingModal) {
         elements.testPromptingModal.addEventListener('click', (e) => {
@@ -1679,6 +1744,89 @@ function initializeTestPrompts() {
     updateTestSelectedCount();
 }
 
+function getTestSettingsSnapshot(source = state.settings) {
+    return TEST_SETTINGS_KEYS.reduce((acc, key) => {
+        acc[key] = source[key];
+        return acc;
+    }, {});
+}
+
+function normalizeTestSettings(settings) {
+    const normalized = { ...settings };
+    if (!normalized.useRLM) {
+        normalized.rlmAuto = false;
+    }
+    if (!normalized.enableFocusShadow) {
+        normalized.enableFocusEpisodes = false;
+    }
+    if (normalized.enableFocusEpisodes) {
+        normalized.enableFocusShadow = true;
+    }
+    return normalized;
+}
+
+function initializeTestSettings() {
+    testPromptState.settings = normalizeTestSettings(getTestSettingsSnapshot());
+    updateTestSettingsUI();
+}
+
+function updateTestSettingsUI() {
+    if (!testPromptState.settings) return;
+
+    if (elements.testRlmToggle) {
+        elements.testRlmToggle.checked = testPromptState.settings.useRLM;
+    }
+    if (elements.testRlmAutoToggle) {
+        elements.testRlmAutoToggle.checked = testPromptState.settings.rlmAuto;
+        elements.testRlmAutoToggle.disabled = !testPromptState.settings.useRLM;
+    }
+    if (elements.testShadowPromptToggle) {
+        elements.testShadowPromptToggle.checked = testPromptState.settings.enableShadowPrompt;
+    }
+    if (elements.testRetrievalPromptToggle) {
+        elements.testRetrievalPromptToggle.checked = testPromptState.settings.enableRetrievalPrompt;
+    }
+    if (elements.testFocusShadowToggle) {
+        elements.testFocusShadowToggle.checked = testPromptState.settings.enableFocusShadow;
+    }
+    if (elements.testFocusEpisodesToggle) {
+        elements.testFocusEpisodesToggle.checked = testPromptState.settings.enableFocusEpisodes;
+        elements.testFocusEpisodesToggle.disabled = !testPromptState.settings.enableFocusShadow;
+    }
+    if (elements.testPromptBudgetToggle) {
+        elements.testPromptBudgetToggle.checked = testPromptState.settings.enablePromptBudgeting;
+    }
+    if (elements.testMemoryDebugToggle) {
+        elements.testMemoryDebugToggle.checked = testPromptState.settings.showMemoryDebug;
+    }
+}
+
+function updateTestSetting(key, value) {
+    if (!testPromptState.settings) {
+        testPromptState.settings = normalizeTestSettings(getTestSettingsSnapshot());
+    }
+    testPromptState.settings = normalizeTestSettings({
+        ...testPromptState.settings,
+        [key]: value
+    });
+    updateTestSettingsUI();
+}
+
+function formatTestSettingsSummary(settings) {
+    if (!settings) return '';
+    const status = (flag) => flag ? 'On' : 'Off';
+    return [
+        `RLM: ${status(settings.useRLM)}`,
+        `RLM Auto: ${status(settings.rlmAuto)}`,
+        `Shadow Prompt: ${status(settings.enableShadowPrompt)}`,
+        `Retrieval Prompt: ${status(settings.enableRetrievalPrompt)}`,
+        `Focus Shadow: ${status(settings.enableFocusShadow)}`,
+        `Focus Episodes: ${status(settings.enableFocusEpisodes)}`,
+        `Prompt Guardrails: ${status(settings.enablePromptBudgeting)}`,
+        `Memory Debug: ${status(settings.showMemoryDebug)}`
+    ].join(' • ');
+}
+
 function updateTestSelectedCount() {
     testPromptState.selectedCount = testPromptState.prompts.filter(prompt => prompt.selected).length;
     if (elements.testSelectedCount) {
@@ -1758,6 +1906,7 @@ function renderTestPromptList() {
 
 function openTestPromptingModal() {
     initializeTestPrompts();
+    initializeTestSettings();
     renderTestPromptList();
     setTestPromptError('');
     if (elements.testPromptingModal) {
@@ -1797,29 +1946,15 @@ function getSelectedTestPrompts() {
         }));
 }
 
-function getSelectedRlmMode() {
-    const selected = document.querySelector('input[name="test-rlm-mode"]:checked');
-    return selected ? selected.value : 'auto';
-}
-
-function applyTestRlmMode(mode) {
-    if (mode === 'off') {
-        state.settings.useRLM = false;
-        state.settings.rlmAuto = false;
-    } else if (mode === 'on') {
-        state.settings.useRLM = true;
-        state.settings.rlmAuto = false;
-    } else {
-        state.settings.useRLM = true;
-        state.settings.rlmAuto = true;
-    }
-
-    if (elements.rlmToggle) {
-        elements.rlmToggle.checked = state.settings.useRLM;
-    }
-    if (elements.rlmAutoToggle) {
-        elements.rlmAutoToggle.checked = state.settings.rlmAuto;
-    }
+function applyTestSettings(settings) {
+    const normalized = normalizeTestSettings(settings);
+    TEST_SETTINGS_KEYS.forEach((key) => {
+        if (typeof normalized[key] !== 'undefined') {
+            state.settings[key] = normalized[key];
+        }
+    });
+    updateSettingsUI();
+    applyRlmFeatureFlags();
 }
 
 function resetTestRunningScreen(totalPrompts) {
@@ -1961,8 +2096,10 @@ function deployTestAgent() {
     }
 
     closeTestPromptingModal();
-    const rlmMode = getSelectedRlmMode();
-    runTestSequence(selectedPrompts, rlmMode);
+    const testSettings = testPromptState.settings
+        ? { ...testPromptState.settings }
+        : getTestSettingsSnapshot();
+    runTestSequence(selectedPrompts, testSettings);
 }
 
 function getPromptProcessingMode(promptText) {
@@ -1999,11 +2136,8 @@ async function runPromptWithMetrics(promptText, labelPrefix = 'Test', streamHand
     }
 }
 
-async function runTestSequence(prompts, rlmMode) {
-    const previousSettings = {
-        useRLM: state.settings.useRLM,
-        rlmAuto: state.settings.rlmAuto
-    };
+async function runTestSequence(prompts, testSettings) {
+    const previousSettings = getTestSettingsSnapshot();
 
     state.isProcessing = true;
     updateButtonStates();
@@ -2011,11 +2145,12 @@ async function runTestSequence(prompts, rlmMode) {
     resetTestRunningScreen(prompts.length);
     addTestStatusLine('Initializing test run...', 'Setup');
 
-    applyTestRlmMode(rlmMode);
+    const normalizedTestSettings = normalizeTestSettings(testSettings || getTestSettingsSnapshot());
+    applyTestSettings(normalizedTestSettings);
 
     testPromptState.run = {
         startedAt: new Date(),
-        rlmMode,
+        settings: normalizedTestSettings,
         prompts,
         startIndex: currentMetrics.promptLogs.length,
         results: []
@@ -2061,7 +2196,7 @@ async function runTestSequence(prompts, rlmMode) {
     updateTestProgress(prompts.length, prompts.length, 'Test complete');
     addTestStatusLine('All prompts complete. Generating analytics...', 'Complete');
 
-    applyTestRlmMode(previousSettings.useRLM ? (previousSettings.rlmAuto ? 'auto' : 'on') : 'off');
+    applyTestSettings(previousSettings);
     state.isProcessing = false;
     updateButtonStates();
     hideTestRunningScreen();
@@ -2084,6 +2219,7 @@ function renderTestAnalytics() {
 
     const totalPrompts = testPromptState.run.prompts.length;
     const avgResponse = totalPrompts > 0 ? Math.round(totals.totalTime / totalPrompts) : 0;
+    const settingsSummary = formatTestSettingsSummary(testPromptState.run.settings);
 
     if (elements.testAnalyticsSummary) {
         elements.testAnalyticsSummary.innerHTML = `
@@ -2103,9 +2239,9 @@ function renderTestAnalytics() {
                 <h4>Avg Response</h4>
                 <p>${formatTime(avgResponse)}</p>
             </div>
-            <div class="test-summary-card">
-                <h4>RLM Mode</h4>
-                <p>${testPromptState.run.rlmMode.toUpperCase()}</p>
+            <div class="test-summary-card test-summary-card-wide">
+                <h4>Test Settings</h4>
+                <p>${escapeHtml(settingsSummary)}</p>
             </div>
         `;
     }
@@ -2148,6 +2284,7 @@ function buildTestReportHtml() {
     const totalPrompts = testPromptState.run.prompts.length;
     const avgResponse = totalPrompts > 0 ? Math.round(totals.totalTime / totalPrompts) : 0;
     const timestamp = testPromptState.run.startedAt.toLocaleString();
+    const settingsSummary = formatTestSettingsSummary(testPromptState.run.settings);
 
     const promptRows = testPromptState.run.results.map((result, index) => {
         const log = result.log;
@@ -2189,7 +2326,8 @@ function buildTestReportHtml() {
         </head>
         <body>
             <h1>northstar.LM Test Prompting Report</h1>
-            <p>Generated ${escapeHtml(timestamp)} • RLM Mode: ${escapeHtml(testPromptState.run.rlmMode.toUpperCase())}</p>
+            <p>Generated ${escapeHtml(timestamp)}</p>
+            <p><strong>Settings:</strong> ${escapeHtml(settingsSummary)}</p>
             <p>This report documents a batch test run of orchestrator prompts for meeting-minute analysis.</p>
             <div class="summary">
                 <div class="summary-card">
@@ -2207,6 +2345,10 @@ function buildTestReportHtml() {
                 <div class="summary-card">
                     <strong>Avg Response</strong>
                     <div>${formatTime(avgResponse)}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Settings</strong>
+                    <div>${escapeHtml(settingsSummary)}</div>
                 </div>
             </div>
             <h2>Prompt Metrics</h2>

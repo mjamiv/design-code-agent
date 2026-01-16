@@ -481,20 +481,70 @@
                 <div class="test-prompt-list" id="test-prompt-list">
                     <!-- Prompt rows injected by JS -->
                 </div>
-                <div class="test-rlm-options">
-                    <span class="test-rlm-label">RLM Mode</span>
-                    <label class="test-rlm-option">
-                        <input type="radio" name="test-rlm-mode" value="on">
-                        <span>On</span>
-                    </label>
-                    <label class="test-rlm-option">
-                        <input type="radio" name="test-rlm-mode" value="off">
-                        <span>Off</span>
-                    </label>
-                    <label class="test-rlm-option">
-                        <input type="radio" name="test-rlm-mode" value="auto" checked>
-                        <span>Auto</span>
-                    </label>
+                <div class="test-settings">
+                    <div class="test-settings-header">
+                        <span class="test-settings-title">Test Run Settings</span>
+                        <button class="btn-text btn-sm" id="test-settings-reset-btn">Sync from Orchestrator</button>
+                    </div>
+                    <div class="test-settings-grid">
+                        <div class="test-setting">
+                            <label for="test-rlm-toggle">RLM</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-rlm-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-rlm-auto-toggle">RLM Auto</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-rlm-auto-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-shadow-prompt-toggle">Shadow Prompt</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-shadow-prompt-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-retrieval-prompt-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-focus-shadow-toggle">Focus Shadow</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-focus-shadow-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-focus-episodes-toggle">Focus Episodes</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-focus-episodes-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-prompt-budget-toggle">Prompt Guardrails</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-prompt-budget-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="test-setting">
+                            <label for="test-memory-debug-toggle">Memory Debug</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="test-memory-debug-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <p class="test-settings-note">These overrides apply to this test run only and won't change your main orchestrator settings.</p>
                 </div>
                 <p class="test-prompt-error hidden" id="test-prompt-error"></p>
             </div>
