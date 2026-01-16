@@ -138,6 +138,9 @@
                         </span>
                     </div>
                     <div class="chatbot-header-actions">
+                        <button id="run-test-prompting-btn" class="btn-primary btn-sm run-test-btn" title="Run test prompting">
+                            🧪 Run Test Prompting
+                        </button>
                         <button id="clear-cache-btn" class="btn-text btn-sm chatbot-clear-btn" title="Clear chat history and query cache">
                             🗑️ Clear
                         </button>
@@ -408,6 +411,93 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-primary" id="help-got-it-btn">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Prompting Modal -->
+    <div id="test-prompting-modal" class="modal-overlay hidden">
+        <div class="modal-container test-modal-container">
+            <div class="modal-header">
+                <h3>🧪 Run Test Prompting</h3>
+                <button class="modal-close" id="test-prompting-close-btn">&times;</button>
+            </div>
+            <div class="modal-body test-modal-body">
+                <p class="modal-intro">Select up to 10 prompts, edit them, or add your own to evaluate orchestrator behavior.</p>
+                <div class="test-prompt-controls">
+                    <div class="test-selected-count">
+                        Selected: <span id="test-selected-count">0</span> / 10
+                    </div>
+                    <button class="btn-secondary btn-sm" id="add-custom-prompt-btn">+ Add Custom Prompt</button>
+                </div>
+                <div class="test-prompt-list" id="test-prompt-list">
+                    <!-- Prompt rows injected by JS -->
+                </div>
+                <div class="test-rlm-options">
+                    <span class="test-rlm-label">RLM Mode</span>
+                    <label class="test-rlm-option">
+                        <input type="radio" name="test-rlm-mode" value="on">
+                        <span>On</span>
+                    </label>
+                    <label class="test-rlm-option">
+                        <input type="radio" name="test-rlm-mode" value="off">
+                        <span>Off</span>
+                    </label>
+                    <label class="test-rlm-option">
+                        <input type="radio" name="test-rlm-mode" value="auto" checked>
+                        <span>Auto</span>
+                    </label>
+                </div>
+                <p class="test-prompt-error hidden" id="test-prompt-error"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="test-prompting-cancel-btn">Cancel</button>
+                <button class="btn-primary" id="deploy-test-agent-btn">Deploy Test Agent</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Testing Agent Running Screen -->
+    <div id="test-running-screen" class="modal-overlay hidden">
+        <div class="modal-container test-running-container">
+            <div class="modal-header">
+                <h3>🚀 Testing Agent Running</h3>
+            </div>
+            <div class="modal-body test-running-body">
+                <div class="test-progress">
+                    <div class="test-progress-bar">
+                        <div class="test-progress-fill" id="test-progress-fill"></div>
+                    </div>
+                    <div class="test-progress-meta">
+                        <span id="test-progress-label">Preparing prompts...</span>
+                        <span id="test-progress-count">0 / 0</span>
+                    </div>
+                </div>
+                <div class="test-status-stream" id="test-status-stream">
+                    <!-- Streaming status updates injected by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Analytics Modal -->
+    <div id="test-analytics-modal" class="modal-overlay hidden">
+        <div class="modal-container test-analytics-container">
+            <div class="modal-header">
+                <h3>📈 Test Analytics Dashboard</h3>
+                <button class="modal-close" id="test-analytics-close-btn">&times;</button>
+            </div>
+            <div class="modal-body test-analytics-body">
+                <div class="test-analytics-summary" id="test-analytics-summary">
+                    <!-- Summary injected by JS -->
+                </div>
+                <div class="test-analytics-list" id="test-analytics-list">
+                    <!-- Prompt metrics injected by JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="test-analytics-dismiss-btn">Close</button>
+                <button class="btn-primary" id="export-test-html-btn">Export HTML</button>
             </div>
         </div>
     </div>
