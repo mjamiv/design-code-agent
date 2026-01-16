@@ -5579,6 +5579,13 @@ details[open] .about-toggle {
     color: #4ade80;
 }
 
+.setting-help {
+    margin: 6px 0 0;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
 .rlm-indicator {
     display: inline-block;
     margin-left: 8px;
