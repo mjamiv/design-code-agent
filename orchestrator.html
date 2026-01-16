@@ -171,66 +171,82 @@
                             <option value="xhigh">X-High</option>
                         </select>
                     </div>
-                    <div class="setting-group">
-                        <label for="rlm-toggle">RLM</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="rlm-toggle" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="rlm-toggle">RLM</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="rlm-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                     </div>
-                    <div class="setting-group">
-                        <label for="rlm-auto-toggle">RLM Auto</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="rlm-auto-toggle" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="rlm-auto-toggle">RLM Auto</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="rlm-auto-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                     </div>
-                    <div class="setting-group">
-                        <label for="shadow-prompt-toggle">Shadow Prompt</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="shadow-prompt-toggle" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="shadow-prompt-toggle">Shadow Prompt</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="shadow-prompt-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Builds a retrieval-aware prompt in the background for diagnostics only.</p>
                     </div>
-                    <div class="setting-group">
-                        <label for="retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="retrieval-prompt-toggle">
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="retrieval-prompt-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Uses the retrieval prompt builder for live LLM calls instead of the legacy context window.</p>
                     </div>
-                    <div class="setting-group">
-                        <label for="focus-shadow-toggle">Focus Shadow</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="focus-shadow-toggle" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="focus-shadow-toggle">Focus Shadow</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="focus-shadow-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Tracks focus episodes and summaries without persisting them.</p>
                     </div>
-                    <div class="setting-group">
-                        <label for="focus-episodes-toggle">Focus Episodes</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="focus-episodes-toggle">
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="focus-episodes-toggle">Focus Episodes</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="focus-episodes-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Persists completed focus episodes into memory slices.</p>
                     </div>
-                    <div class="setting-group">
-                        <label for="prompt-budget-toggle">Prompt Guardrails</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="prompt-budget-toggle" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="prompt-budget-toggle">Prompt Guardrails</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="prompt-budget-toggle" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Caps prompt size and trims context to stay within budget.</p>
                     </div>
-                    <div class="setting-group">
-                        <label for="memory-debug-toggle">Memory Debug</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="memory-debug-toggle">
-                            <span class="toggle-slider"></span>
-                        </label>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="memory-debug-toggle">Memory Debug</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="memory-debug-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
                         <p class="setting-help">Shows memory slices, focus stats, and shadow prompt diagnostics.</p>
                     </div>
                 </div>
@@ -488,60 +504,76 @@
                     </div>
                     <div class="test-settings-grid">
                         <div class="test-setting">
-                            <label for="test-rlm-toggle">RLM</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-rlm-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-rlm-toggle">RLM</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-rlm-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-rlm-auto-toggle">RLM Auto</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-rlm-auto-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-rlm-auto-toggle">RLM Auto</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-rlm-auto-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-shadow-prompt-toggle">Shadow Prompt</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-shadow-prompt-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-shadow-prompt-toggle">Shadow Prompt</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-shadow-prompt-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-retrieval-prompt-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-retrieval-prompt-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-focus-shadow-toggle">Focus Shadow</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-focus-shadow-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-focus-shadow-toggle">Focus Shadow</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-focus-shadow-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-focus-episodes-toggle">Focus Episodes</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-focus-episodes-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-focus-episodes-toggle">Focus Episodes</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-focus-episodes-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-prompt-budget-toggle">Prompt Guardrails</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-prompt-budget-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-prompt-budget-toggle">Prompt Guardrails</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-prompt-budget-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                         <div class="test-setting">
-                            <label for="test-memory-debug-toggle">Memory Debug</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="test-memory-debug-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
+                            <div class="test-setting-row">
+                                <label for="test-memory-debug-toggle">Memory Debug</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="test-memory-debug-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <p class="test-settings-note">These overrides apply to this test run only and won't change your main orchestrator settings.</p>
