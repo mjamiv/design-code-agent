@@ -213,6 +213,118 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
     return activePromptGroup.id;
 }
 
+function appendCallToGroup(group, callData) {
+    group.subCalls.push(callData);
+    group.tokens.input += callData.tokens.input;
+    group.tokens.output += callData.tokens.output;
+    group.tokens.total += callData.tokens.total;
+    group.cost.input += callData.cost.input;
+    group.cost.output += callData.cost.output;
+    group.cost.total += callData.cost.total;
+
+    if (callData.actualModel) {
+        if (!group.actualModels.includes(callData.actualModel)) {
+            group.actualModels.push(callData.actualModel);
+        }
+    }
+    if (callData.modelFallback) {
+        group.modelFallbacks.push({
+            requestedModel: callData.requestedModel,
+            actualModel: callData.actualModel,
+            callName: callData.name
+        });
+    }
+
+    if (callData.emptyResponse) {
+        group.emptyResponse = true;
+    }
+    if (callData.retryAttempt && callData.retryAttempt > group.maxRetryAttempt) {
+        group.maxRetryAttempt = callData.retryAttempt;
+    }
+
+    if (callData.confidence) {
+        if (!group.confidence) {
+            group.confidence = { available: false, samples: [] };
+        }
+        if (!Array.isArray(group.confidence.samples)) {
+            group.confidence.samples = [];
+        }
+        group.confidence.samples.push(callData.confidence);
+    }
+
+    group.lastCallAt = Date.now();
+}
+
+function updateGroupFinishReason(group) {
+    if (!group.subCalls || group.subCalls.length === 0) {
+        return;
+    }
+
+    const finishReasonPriority = {
+        'content_filter': 4,
+        'length': 3,
+        'stop_sequence': 2,
+        'stop': 1,
+        'unknown': 0
+    };
+
+    let highestPriorityReason = 'stop';
+    let highestPriority = 1;
+
+    const successfulCalls = group.subCalls.filter(subCall => !subCall.emptyResponse);
+    const callsForReason = successfulCalls.length > 0 ? successfulCalls : group.subCalls;
+
+    callsForReason.forEach(subCall => {
+        const reason = subCall.finishReason || 'unknown';
+        const priority = finishReasonPriority[reason] !== undefined ? finishReasonPriority[reason] : 0;
+        if (priority > highestPriority) {
+            highestPriority = priority;
+            highestPriorityReason = reason;
+        }
+    });
+
+    group.finishReason = highestPriorityReason;
+}
+
+function updateGroupConfidence(group) {
+    if (!group.confidence || !group.confidence.samples || group.confidence.samples.length === 0) {
+        return;
+    }
+
+    const validSamples = group.confidence.samples.filter(s => s && s.avgLogprob !== null && s.avgLogprob !== undefined);
+    if (validSamples.length > 0) {
+        group.confidence.available = true;
+        group.confidence.avgLogprob =
+            validSamples.reduce((sum, s) => sum + s.avgLogprob, 0) / validSamples.length;
+    }
+    group.confidence.truncated =
+        group.confidence.samples.some(s => s && s.truncated);
+    const reasoningSamples = group.confidence.samples.filter(s => s && s.reasoningTokens !== null && s.reasoningTokens !== undefined);
+    if (reasoningSamples.length > 0) {
+        const reasoningTotal = reasoningSamples.reduce((sum, s) => sum + s.reasoningTokens, 0);
+        if (reasoningTotal > 0) {
+            group.confidence.reasoningTokens = reasoningTotal;
+            group.confidence.available = true;
+        }
+    }
+}
+
+function updateGroupModel(group) {
+    if (!group.actualModels || group.actualModels.length === 0) {
+        return;
+    }
+
+    if (group.actualModels.length === 1) {
+        group.model = group.actualModels[0];
+        if (group.model !== 'gpt-5.2') {
+            group.effort = 'N/A';
+        }
+    } else {
+        group.model = 'mixed';
+        group.effort = 'N/A';
+    }
+}
+
 function attachShadowPromptTelemetry(userMessage) {
     if (!activePromptGroup || !rlmPipeline?.getStats) {
         return;
@@ -286,68 +398,9 @@ function endPromptGroup() {
     activePromptGroup.responseTime = Math.round(performance.now() - activePromptGroup.startTime);
     console.log('[Metrics] Ending prompt group:', activePromptGroup.name, 'with', activePromptGroup.subCalls?.length || 0, 'sub-calls');
     
-    // Aggregate finish reasons from sub-calls (priority: content_filter > length > stop_sequence > stop > unknown)
-    if (activePromptGroup.subCalls && activePromptGroup.subCalls.length > 0) {
-        const finishReasonPriority = {
-            'content_filter': 4,
-            'length': 3,
-            'stop_sequence': 2,
-            'stop': 1,
-            'unknown': 0
-        };
-        
-        let highestPriorityReason = 'stop';
-        let highestPriority = 1;
-
-        const successfulCalls = activePromptGroup.subCalls.filter(subCall => !subCall.emptyResponse);
-        const callsForReason = successfulCalls.length > 0 ? successfulCalls : activePromptGroup.subCalls;
-
-        callsForReason.forEach(subCall => {
-            const reason = subCall.finishReason || 'unknown';
-            const priority = finishReasonPriority[reason] !== undefined ? finishReasonPriority[reason] : 0;
-            if (priority > highestPriority) {
-                highestPriority = priority;
-                highestPriorityReason = reason;
-            }
-        });
-        
-        activePromptGroup.finishReason = highestPriorityReason;
-    }
-    
-    // Aggregate confidence from sub-calls (with safe null checks)
-    if (activePromptGroup.confidence && activePromptGroup.confidence.samples && activePromptGroup.confidence.samples.length > 0) {
-        // Average the confidence scores (only from valid samples)
-        const validSamples = activePromptGroup.confidence.samples.filter(s => s && s.avgLogprob !== null && s.avgLogprob !== undefined);
-        if (validSamples.length > 0) {
-            activePromptGroup.confidence.available = true;
-            activePromptGroup.confidence.avgLogprob = 
-                validSamples.reduce((sum, s) => sum + s.avgLogprob, 0) / validSamples.length;
-        }
-        // Check for any truncations
-        activePromptGroup.confidence.truncated = 
-            activePromptGroup.confidence.samples.some(s => s && s.truncated);
-        // Get reasoning tokens total
-        const reasoningSamples = activePromptGroup.confidence.samples.filter(s => s && s.reasoningTokens !== null && s.reasoningTokens !== undefined);
-        if (reasoningSamples.length > 0) {
-            const reasoningTotal = reasoningSamples.reduce((sum, s) => sum + s.reasoningTokens, 0);
-            if (reasoningTotal > 0) {
-                activePromptGroup.confidence.reasoningTokens = reasoningTotal;
-                activePromptGroup.confidence.available = true;
-            }
-        }
-    }
-
-    if (activePromptGroup.actualModels && activePromptGroup.actualModels.length > 0) {
-        if (activePromptGroup.actualModels.length === 1) {
-            activePromptGroup.model = activePromptGroup.actualModels[0];
-            if (activePromptGroup.model !== 'gpt-5.2') {
-                activePromptGroup.effort = 'N/A';
-            }
-        } else {
-            activePromptGroup.model = 'mixed';
-            activePromptGroup.effort = 'N/A';
-        }
-    }
+    updateGroupFinishReason(activePromptGroup);
+    updateGroupConfidence(activePromptGroup);
+    updateGroupModel(activePromptGroup);
     
     // Add to prompt logs
     currentMetrics.promptLogs.push(activePromptGroup);
@@ -375,53 +428,44 @@ function addAPICallToMetrics(callData) {
     currentMetrics.totalCost += callData.cost.total;
     
     if (activePromptGroup) {
-        // Add to current group
-        activePromptGroup.subCalls.push(callData);
-        activePromptGroup.tokens.input += callData.tokens.input;
-        activePromptGroup.tokens.output += callData.tokens.output;
-        activePromptGroup.tokens.total += callData.tokens.total;
-        activePromptGroup.cost.input += callData.cost.input;
-        activePromptGroup.cost.output += callData.cost.output;
-        activePromptGroup.cost.total += callData.cost.total;
+        appendCallToGroup(activePromptGroup, callData);
+        return;
+    }
 
-        if (callData.actualModel) {
-            if (!activePromptGroup.actualModels.includes(callData.actualModel)) {
-                activePromptGroup.actualModels.push(callData.actualModel);
-            }
-        }
-        if (callData.modelFallback) {
-            activePromptGroup.modelFallbacks.push({
-                requestedModel: callData.requestedModel,
-                actualModel: callData.actualModel,
-                callName: callData.name
-            });
-        }
-        
-        // Track empty responses and retry attempts
-        if (callData.emptyResponse) {
-            activePromptGroup.emptyResponse = true;
-        }
-        if (callData.retryAttempt && callData.retryAttempt > activePromptGroup.maxRetryAttempt) {
-            activePromptGroup.maxRetryAttempt = callData.retryAttempt;
-        }
-        
-        // Collect confidence samples
-        if (callData.confidence) {
-            activePromptGroup.confidence.samples.push(callData.confidence);
-        }
-    } else {
-        // No active group - create standalone entry
-        const standaloneEntry = {
+    const inferredMode = callData.name?.startsWith('REPL:')
+        ? 'repl'
+        : (callData.name?.startsWith('RLM:') ? 'rlm' : null);
+    const lastLog = currentMetrics.promptLogs[currentMetrics.promptLogs.length - 1];
+    const lastCallAt = lastLog?.lastCallAt || (lastLog?.timestamp ? new Date(lastLog.timestamp).getTime() : 0);
+    const shouldMerge = inferredMode
+        && lastLog
+        && lastLog.inferredGroup
+        && lastLog.name === callData.name
+        && (Date.now() - lastCallAt < 120000);
+
+    if (shouldMerge) {
+        appendCallToGroup(lastLog, callData);
+        lastLog.responseTime += callData.responseTime;
+        currentMetrics.totalResponseTime += callData.responseTime;
+        updateGroupFinishReason(lastLog);
+        updateGroupConfidence(lastLog);
+        updateGroupModel(lastLog);
+        updateMetricsDisplay();
+        return;
+    }
+
+    if (inferredMode) {
+        const inferredEntry = {
             id: generatePromptLogId(),
             timestamp: callData.timestamp,
             name: callData.name,
-            usesRLM: false,
-            mode: 'direct',
+            usesRLM: true,
+            mode: inferredMode,
             model: callData.model,
             requestedModel: callData.requestedModel,
             effort: callData.effort,
             responseTime: callData.responseTime,
-            subCalls: [callData],
+            subCalls: [],
             actualModels: callData.actualModel ? [callData.actualModel] : [],
             modelFallbacks: callData.modelFallback ? [{
                 requestedModel: callData.requestedModel,
@@ -429,19 +473,58 @@ function addAPICallToMetrics(callData) {
                 callName: callData.name
             }] : [],
             cached: false,
-            tokens: callData.tokens,
-            cost: callData.cost,
-            confidence: callData.confidence,
+            tokens: { input: 0, output: 0, total: 0 },
+            cost: { input: 0, output: 0, total: 0 },
+            confidence: { available: false, samples: [] },
             promptPreview: callData.promptPreview,
-            response: callData.response,  // Store the response from the call
-            emptyResponse: callData.emptyResponse || false,  // Track empty responses
-            finishReason: callData.finishReason || 'unknown',  // Track finish reason
-            retryAttempt: callData.retryAttempt || 0  // Track retry attempts
+            response: callData.response,
+            emptyResponse: false,
+            finishReason: callData.finishReason || 'unknown',
+            maxRetryAttempt: callData.retryAttempt || 0,
+            inferredGroup: true,
+            lastCallAt: Date.now()
         };
-        currentMetrics.promptLogs.push(standaloneEntry);
+        appendCallToGroup(inferredEntry, callData);
+        updateGroupFinishReason(inferredEntry);
+        updateGroupConfidence(inferredEntry);
+        updateGroupModel(inferredEntry);
+        currentMetrics.promptLogs.push(inferredEntry);
         currentMetrics.totalResponseTime += callData.responseTime;
         updateMetricsDisplay();
+        return;
     }
+
+    // No active group - create standalone entry
+    const standaloneEntry = {
+        id: generatePromptLogId(),
+        timestamp: callData.timestamp,
+        name: callData.name,
+        usesRLM: false,
+        mode: 'direct',
+        model: callData.model,
+        requestedModel: callData.requestedModel,
+        effort: callData.effort,
+        responseTime: callData.responseTime,
+        subCalls: [callData],
+        actualModels: callData.actualModel ? [callData.actualModel] : [],
+        modelFallbacks: callData.modelFallback ? [{
+            requestedModel: callData.requestedModel,
+            actualModel: callData.actualModel,
+            callName: callData.name
+        }] : [],
+        cached: false,
+        tokens: callData.tokens,
+        cost: callData.cost,
+        confidence: callData.confidence,
+        promptPreview: callData.promptPreview,
+        response: callData.response,  // Store the response from the call
+        emptyResponse: callData.emptyResponse || false,  // Track empty responses
+        finishReason: callData.finishReason || 'unknown',  // Track finish reason
+        retryAttempt: callData.retryAttempt || 0  // Track retry attempts
+    };
+    currentMetrics.promptLogs.push(standaloneEntry);
+    currentMetrics.totalResponseTime += callData.responseTime;
+    updateMetricsDisplay();
 }
 
 // ============================================
