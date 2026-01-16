@@ -43,7 +43,12 @@ const state = {
         model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
         effort: 'none',        // 'none', 'low', 'medium', 'high' (only for gpt-5.2) - default 'none' for compatibility
         useRLM: true,          // Enable/disable RLM processing
-        rlmAuto: true          // Auto-route RLM only for ambiguous prompts
+        rlmAuto: true,         // Auto-route RLM only for ambiguous prompts
+        enableShadowPrompt: RLM_CONFIG.enableShadowPrompt,
+        enableFocusShadow: RLM_CONFIG.enableFocusShadow,
+        enableFocusEpisodes: RLM_CONFIG.enableFocusEpisodes,
+        enablePromptBudgeting: RLM_CONFIG.enablePromptBudgeting,
+        showMemoryDebug: false
     }
 };
 
@@ -216,7 +221,8 @@ function attachShadowPromptTelemetry(userMessage) {
         createdAt: shadowPrompt.createdAt,
         promptPreview: shadowPrompt.promptPreview,
         retrievalStats: shadowPrompt.retrievalStats,
-        tokenEstimate: shadowPrompt.tokenEstimate
+        tokenEstimate: shadowPrompt.tokenEstimate,
+        tokenBreakdown: shadowPrompt.tokenBreakdown
     };
 }
 
@@ -464,6 +470,11 @@ function initElements() {
         effortSelect: document.getElementById('effort-select'),
         rlmToggle: document.getElementById('rlm-toggle'),
         rlmAutoToggle: document.getElementById('rlm-auto-toggle'),
+        shadowPromptToggle: document.getElementById('shadow-prompt-toggle'),
+        focusShadowToggle: document.getElementById('focus-shadow-toggle'),
+        focusEpisodesToggle: document.getElementById('focus-episodes-toggle'),
+        promptBudgetToggle: document.getElementById('prompt-budget-toggle'),
+        memoryDebugToggle: document.getElementById('memory-debug-toggle'),
 
         // Context Window Gauge
         contextGauge: document.getElementById('context-gauge'),
@@ -684,8 +695,36 @@ function updateSettingsUI() {
         elements.rlmAutoToggle.checked = state.settings.rlmAuto;
         elements.rlmAutoToggle.disabled = !state.settings.useRLM;
     }
+    if (elements.shadowPromptToggle) {
+        elements.shadowPromptToggle.checked = state.settings.enableShadowPrompt;
+    }
+    if (elements.focusShadowToggle) {
+        elements.focusShadowToggle.checked = state.settings.enableFocusShadow;
+    }
+    if (elements.focusEpisodesToggle) {
+        elements.focusEpisodesToggle.checked = state.settings.enableFocusEpisodes;
+        elements.focusEpisodesToggle.disabled = !state.settings.enableFocusShadow;
+    }
+    if (elements.promptBudgetToggle) {
+        elements.promptBudgetToggle.checked = state.settings.enablePromptBudgeting;
+    }
+    if (elements.memoryDebugToggle) {
+        elements.memoryDebugToggle.checked = state.settings.showMemoryDebug;
+    }
     // Show/hide effort dropdown based on model
     updateEffortVisibility();
+}
+
+function applyRlmFeatureFlags() {
+    if (!rlmPipeline?.updateConfig) {
+        return;
+    }
+    rlmPipeline.updateConfig({
+        enableShadowPrompt: state.settings.enableShadowPrompt,
+        enableFocusShadow: state.settings.enableFocusShadow,
+        enableFocusEpisodes: state.settings.enableFocusEpisodes,
+        enablePromptBudgeting: state.settings.enablePromptBudgeting
+    });
 }
 
 /**
@@ -731,6 +770,7 @@ function init() {
 
     setupEventListeners();
     updateSettingsUI();
+    applyRlmFeatureFlags();
     updateUI();
 }
 
@@ -874,6 +914,21 @@ function setupEventListeners() {
     if (elements.rlmAutoToggle) {
         elements.rlmAutoToggle.addEventListener('change', handleRLMAutoToggle);
     }
+    if (elements.shadowPromptToggle) {
+        elements.shadowPromptToggle.addEventListener('change', handleShadowPromptToggle);
+    }
+    if (elements.focusShadowToggle) {
+        elements.focusShadowToggle.addEventListener('change', handleFocusShadowToggle);
+    }
+    if (elements.focusEpisodesToggle) {
+        elements.focusEpisodesToggle.addEventListener('change', handleFocusEpisodesToggle);
+    }
+    if (elements.promptBudgetToggle) {
+        elements.promptBudgetToggle.addEventListener('change', handlePromptBudgetToggle);
+    }
+    if (elements.memoryDebugToggle) {
+        elements.memoryDebugToggle.addEventListener('change', handleMemoryDebugToggle);
+    }
 }
 
 // ============================================
@@ -919,6 +974,44 @@ function handleRLMAutoToggle(e) {
     saveSettings();
     console.log('[Settings] RLM auto-routing toggled:', state.settings.rlmAuto ? 'enabled' : 'disabled');
     updateContextGauge();
+}
+
+function handleShadowPromptToggle(e) {
+    state.settings.enableShadowPrompt = e.target.checked;
+    saveSettings();
+    applyRlmFeatureFlags();
+}
+
+function handleFocusShadowToggle(e) {
+    state.settings.enableFocusShadow = e.target.checked;
+    if (!state.settings.enableFocusShadow) {
+        state.settings.enableFocusEpisodes = false;
+    }
+    saveSettings();
+    updateSettingsUI();
+    applyRlmFeatureFlags();
+}
+
+function handleFocusEpisodesToggle(e) {
+    state.settings.enableFocusEpisodes = e.target.checked;
+    if (state.settings.enableFocusEpisodes) {
+        state.settings.enableFocusShadow = true;
+    }
+    saveSettings();
+    updateSettingsUI();
+    applyRlmFeatureFlags();
+}
+
+function handlePromptBudgetToggle(e) {
+    state.settings.enablePromptBudgeting = e.target.checked;
+    saveSettings();
+    applyRlmFeatureFlags();
+}
+
+function handleMemoryDebugToggle(e) {
+    state.settings.showMemoryDebug = e.target.checked;
+    saveSettings();
+    updateMetricsDisplay();
 }
 
 // ============================================
@@ -4500,6 +4593,132 @@ function formatCost(cost) {
     return cost < 0.01 ? '<$0.01' : `$${cost.toFixed(4)}`;
 }
 
+function truncateText(text, maxLength = 140) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 3)}...`;
+}
+
+function buildMemoryDebugHtml() {
+    if (!rlmPipeline?.getStats) {
+        return '';
+    }
+
+    const stats = rlmPipeline.getStats();
+    const memoryStore = rlmPipeline.memoryStore;
+    const stateBlock = memoryStore?.getStateBlock?.();
+    const workingWindow = memoryStore?.getWorkingWindow?.();
+    const shadowPrompt = stats.shadowPrompt;
+    const focus = stats.memoryStore?.focus || {};
+    const guardrails = stats.guardrails || {};
+
+    const stateItems = [
+        { label: 'Decisions', items: stateBlock?.decisions || [] },
+        { label: 'Actions', items: stateBlock?.actions || [] },
+        { label: 'Risks', items: stateBlock?.risks || [] },
+        { label: 'Entities', items: stateBlock?.entities || [] },
+        { label: 'Constraints', items: stateBlock?.constraints || [] },
+        { label: 'Open Questions', items: stateBlock?.openQuestions || [] }
+    ];
+
+    const stateSummary = stateItems.map(({ label, items }) => (
+        `<div class="debug-row"><span>${label}</span><span>${items.length}</span></div>`
+    )).join('');
+
+    const stateSamples = stateItems.map(({ label, items }) => {
+        const sample = items.slice(0, 3).map(item => `<li>${escapeHtml(truncateText(item.text || ''))}</li>`).join('');
+        return `
+            <div class="debug-subsection">
+                <div class="debug-subtitle">${label}</div>
+                <ul class="debug-list">${sample || '<li class="muted">No entries</li>'}</ul>
+            </div>
+        `;
+    }).join('');
+
+    const workingTurns = (workingWindow?.lastUserTurns || []).map(turn => `<li>${escapeHtml(truncateText(turn, 120))}</li>`).join('');
+    const workingSummary = workingWindow?.lastAssistantSummary
+        ? `<p>${escapeHtml(truncateText(workingWindow.lastAssistantSummary, 220))}</p>`
+        : '<p class="muted">No assistant summary.</p>';
+
+    const retrievedSlices = (shadowPrompt?.retrievalSlices || []).map(slice => `
+        <li>
+            <span class="debug-pill">${escapeHtml(slice.type)}</span>
+            <span class="muted">${slice._score != null ? slice._score.toFixed(2) : 'n/a'}</span>
+            <div class="debug-text">${escapeHtml(truncateText(slice.text, 180))}</div>
+        </li>
+    `).join('');
+
+    const tokenBreakdown = (shadowPrompt?.tokenBreakdown || []).map(section => `
+        <div class="debug-row">
+            <span>${escapeHtml(section.label)}</span>
+            <span>${section.tokens}</span>
+        </div>
+    `).join('');
+
+    const reduction = shadowPrompt?.retrievalStats?.reduction;
+    const reductionHtml = reduction
+        ? `<div class="debug-row"><span>Retrieval Trim</span><span>${reduction.dropped} dropped → ${reduction.finalCount} slices</span></div>`
+        : '<div class="debug-row"><span>Retrieval Trim</span><span>None</span></div>';
+
+    return `
+        <div class="metrics-debug-panel">
+            <div class="metrics-summary-header">🧠 Memory Debug Panel</div>
+            <div class="debug-grid">
+                <div class="debug-card">
+                    <div class="debug-title">State Block Summary</div>
+                    ${stateSummary || '<div class="muted">No state block data.</div>'}
+                </div>
+                <div class="debug-card">
+                    <div class="debug-title">Focus Episodes</div>
+                    <div class="debug-row"><span>Active</span><span>${focus.active ? 'Yes' : 'No'}</span></div>
+                    <div class="debug-row"><span>Total</span><span>${focus.totalEpisodes ?? 0}</span></div>
+                    <div class="debug-row"><span>Last Completed</span><span>${focus.lastCompletedAt || 'N/A'}</span></div>
+                    <div class="debug-row"><span>Last Summary</span><span>${escapeHtml(truncateText(focus.lastSummary || 'N/A', 120))}</span></div>
+                </div>
+                <div class="debug-card">
+                    <div class="debug-title">Prompt Guardrails</div>
+                    <div class="debug-row"><span>Budget</span><span>${guardrails.lastBudget || 'N/A'}</span></div>
+                    <div class="debug-row"><span>Estimate</span><span>${guardrails.lastPromptEstimate || 'N/A'}</span></div>
+                    <div class="debug-row"><span>Trimmed</span><span>${guardrails.lastTrimmed ? `Yes (-${guardrails.lastTrimmedTokens})` : 'No'}</span></div>
+                    <div class="debug-row"><span>Mode</span><span>${guardrails.lastMode || 'N/A'}</span></div>
+                </div>
+            </div>
+
+            <div class="debug-section">
+                <div class="debug-title">Working Window</div>
+                <div class="debug-subsection">
+                    <div class="debug-subtitle">Recent User Turns</div>
+                    <ul class="debug-list">${workingTurns || '<li class="muted">No recent turns.</li>'}</ul>
+                </div>
+                <div class="debug-subsection">
+                    <div class="debug-subtitle">Last Assistant Summary</div>
+                    ${workingSummary}
+                </div>
+            </div>
+
+            <div class="debug-section">
+                <div class="debug-title">State Block Samples</div>
+                <div class="debug-grid two-col">
+                    ${stateSamples}
+                </div>
+            </div>
+
+            <div class="debug-section">
+                <div class="debug-title">Shadow Retrieval</div>
+                <div class="debug-row"><span>Token Estimate</span><span>${shadowPrompt?.tokenEstimate ?? 'N/A'}</span></div>
+                <div class="debug-row"><span>Retrieved</span><span>${shadowPrompt?.retrievalStats?.selectedCount ?? 0} / ${shadowPrompt?.retrievalStats?.requestedK ?? 0}</span></div>
+                ${reductionHtml}
+                <ul class="debug-list">${retrievedSlices || '<li class="muted">No slices retrieved.</li>'}</ul>
+            </div>
+
+            <div class="debug-section">
+                <div class="debug-title">Token Breakdown (Shadow)</div>
+                ${tokenBreakdown || '<div class="muted">No token breakdown available.</div>'}
+            </div>
+        </div>
+    `;
+}
+
 function updateMetricsDisplay() {
     console.log('[Metrics] updateMetricsDisplay called');
     
@@ -4532,6 +4751,8 @@ function updateMetricsDisplay() {
                     <span>${formatTokens(data.tokens)} tokens (${formatCost(data.cost)}), ${data.prompts} prompts, ${data.calls} calls</span>
                 </div>`;
     }).join('');
+
+    const memoryDebugHtml = state.settings.showMemoryDebug ? buildMemoryDebugHtml() : '';
 
     elements.metricsContent.innerHTML = `
         <!-- Summary Totals Section -->
@@ -4597,6 +4818,7 @@ function updateMetricsDisplay() {
                 ${promptLogsHtml}
             </div>
         </div>` : ''}
+        ${memoryDebugHtml}
     `;
 
     // Show metrics card if hidden, default content to collapsed
@@ -4665,6 +4887,9 @@ function buildPromptLogsHtml(promptLogs) {
         const shadowPrompt = log.shadowPrompt || null;
         const shadowPromptStats = shadowPrompt?.retrievalStats
             ? escapeHtml(JSON.stringify(shadowPrompt.retrievalStats, null, 2))
+            : '';
+        const shadowPromptTokens = shadowPrompt?.tokenBreakdown
+            ? escapeHtml(JSON.stringify(shadowPrompt.tokenBreakdown, null, 2))
             : '';
         
         return `
@@ -4763,6 +4988,10 @@ function buildPromptLogsHtml(promptLogs) {
                 <div class="prompt-log-row">
                     <span class="log-label">🕶️ Shadow-only tokens:</span>
                     <span class="log-value">${shadowPrompt.tokenEstimate ?? 'N/A'}</span>
+                </div>
+                <div class="prompt-log-row">
+                    <span class="log-label">🕶️ Token breakdown:</span>
+                    <span class="log-value"><pre class="prompt-json">${shadowPromptTokens || 'N/A'}</pre></span>
                 </div>
                 <div class="prompt-log-row">
                     <span class="log-label">🕶️ Shadow-only retrieval:</span>

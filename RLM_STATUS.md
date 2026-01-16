@@ -625,6 +625,39 @@ pipeline.getStats();
 
 ---
 
+## Hybrid Focus Milestones 4–6 (Guardrails, Instrumentation, Rollout)
+
+### Milestone 4 — Guardrails + Token Budgeting ✅
+- Preflight token estimation and prompt budgeting for LLM calls.
+- Auto-reduction of shadow retrieval slices when budget is exceeded.
+- Recursion caps wired to REPL max depth and sub_lm limits.
+- SWM fallback context when a prompt overflows budget.
+
+### Milestone 5 — Instrumentation + Memory Debug Panel ✅
+- Token breakdowns and retrieval diagnostics attached to prompt logs.
+- Memory Debug Panel shows state block, working window, focus summaries, and shadow retrieval slices.
+- Guardrail telemetry surfaced alongside prompt metrics.
+
+### Milestone 6 — Evaluation + Rollout ✅
+- Feature flags exposed in UI for shadow prompts, focus tracking, and guardrails.
+- QA + benchmark checklist added for rollout validation.
+
+#### QA Steps (Run Before Rollout)
+1. Enable **Shadow Prompt** and **Prompt Guardrails** toggles.
+2. Run a test prompt; confirm token estimates + retrieval stats appear in metrics.
+3. Force high-context prompts to confirm retrieval trimming + SWM fallback behavior.
+4. Trigger a focus completion (budget pressure or tool call threshold).
+5. Validate Memory Debug Panel shows state block + focus summaries.
+
+#### A/B Benchmark Checklist
+- **Cohort split:** 90/10 or 80/20 for feature-flagged users.
+- **Metrics:** p50/p95 latency, average tokens per response, cache hit rate, and user satisfaction.
+- **Quality:** manual rubric scoring on representative queries.
+- **Safety:** ensure no prompt overflows, track guardrail trim rates.
+- **Decision:** expand cohort only if latency/cost improve with neutral or better quality scores.
+
+---
+
 ## References
 
 - [RLM Paper](https://arxiv.org/abs/2512.24601) - Zhang, Kraska & Khattab

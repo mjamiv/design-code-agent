@@ -18,11 +18,26 @@ export class SubExecutor {
             tokensPerSubQuery: options.tokensPerSubQuery || 800,
             timeout: options.timeout || 30000,
             retryAttempts: options.retryAttempts || 2,
+            enforcePromptBudget: options.enforcePromptBudget || false,
+            promptTokenBudget: options.promptTokenBudget || 0,
+            promptTokenReserve: options.promptTokenReserve || 0,
+            promptTokensForSubQuery: options.promptTokensForSubQuery || null,
             ...options
         };
 
         this.currentDepth = 0;
         this.executionLog = [];
+    }
+
+    /**
+     * Update executor options at runtime.
+     * @param {Object} nextOptions
+     */
+    updateOptions(nextOptions = {}) {
+        this.options = {
+            ...this.options,
+            ...nextOptions
+        };
     }
 
     /**
@@ -103,9 +118,12 @@ export class SubExecutor {
         if (!query) return [];
 
         const store = getContextStore();
-        const agentContext = store.getCombinedContext(query.targetAgents, query.contextLevel);
+        const { agentContext, budgetInfo } = this._resolveContext(store, query);
 
         this._log('direct', query.id, 'started');
+        if (budgetInfo) {
+            this._log('direct', query.id, budgetInfo);
+        }
 
         const result = await this._executeWithRetry(
             () => llmCall(query.query, agentContext, context),
@@ -144,12 +162,12 @@ export class SubExecutor {
             const batchResults = await Promise.all(
                 batch.map(async (query) => {
                     try {
-                        const agentContext = store.getCombinedContext(
-                            query.targetAgents,
-                            query.contextLevel
-                        );
+                        const { agentContext, budgetInfo } = this._resolveContext(store, query);
 
                         this._log('parallel', query.id, 'executing');
+                        if (budgetInfo) {
+                            this._log('parallel', query.id, budgetInfo);
+                        }
 
                         const response = await this._executeWithRetry(
                             () => llmCall(query.query, agentContext, context),
@@ -209,6 +227,15 @@ export class SubExecutor {
                 .map(r => `[From ${r.agentName || 'Meeting'}]:\n${r.response}`)
                 .join('\n\n---\n\n');
 
+            if (this._shouldEnforcePromptBudget()) {
+                const contextTokens = this._estimatePromptTokens(mapContext);
+                const maxInputTokens = Math.max(0, this.options.promptTokenBudget - this.options.promptTokenReserve);
+                const budgetLog = this._buildBudgetLog('reduce', maxInputTokens, contextTokens, contextTokens > maxInputTokens);
+                if (budgetLog) {
+                    this._log('map-reduce', reduceQuery.id, budgetLog);
+                }
+            }
+
             const reduceResult = await this._executeWithRetry(
                 () => llmCall(reduceQuery.query, mapContext, context),
                 reduceQuery.id
@@ -245,10 +272,10 @@ export class SubExecutor {
 
         this._log('iterative', 'initial', 'started');
 
-        const initialContext = store.getCombinedContext(
-            initialQuery.targetAgents,
-            initialQuery.contextLevel
-        );
+        const { agentContext: initialContext, budgetInfo: initialBudget } = this._resolveContext(store, initialQuery);
+        if (initialBudget) {
+            this._log('iterative', initialQuery.id, initialBudget);
+        }
 
         const initialResult = await this._executeWithRetry(
             () => llmCall(initialQuery.query, initialContext, context),
@@ -271,10 +298,15 @@ export class SubExecutor {
 
             // Expand context for followup
             const allActiveAgents = store.getActiveAgents();
-            const followupContext = store.getCombinedContext(
-                allActiveAgents.map(a => a.id),
-                'full'
-            );
+            const followupQueryContext = {
+                query: followupQuery.query,
+                targetAgents: allActiveAgents.map(agent => agent.id),
+                contextLevel: 'full'
+            };
+            const { agentContext: followupContext, budgetInfo: followupBudget } = this._resolveContext(store, followupQueryContext);
+            if (followupBudget) {
+                this._log('iterative', followupQuery.id, followupBudget);
+            }
 
             // Generate followup query based on initial result
             const dynamicFollowupQuery = `Based on the initial finding: "${initialResult.substring(0, 200)}..."
@@ -297,6 +329,59 @@ Please provide more details and check all meetings for related information.`;
         }
 
         return results;
+    }
+
+    _resolveContext(store, query) {
+        if (!this._shouldEnforcePromptBudget()) {
+            return {
+                agentContext: store.getCombinedContext(query.targetAgents, query.contextLevel),
+                budgetInfo: null
+            };
+        }
+
+        const baseTokens = this.options.promptTokensForSubQuery
+            ? this.options.promptTokensForSubQuery(query.query)
+            : 0;
+        const maxInputTokens = Math.max(0, this.options.promptTokenBudget - this.options.promptTokenReserve);
+        const availableForContext = Math.max(0, maxInputTokens - baseTokens);
+
+        if (!availableForContext) {
+            return {
+                agentContext: '',
+                budgetInfo: this._buildBudgetLog('context', maxInputTokens, 0, true)
+            };
+        }
+
+        const budgeted = store.getCombinedContextWithBudget(query.targetAgents, availableForContext, {
+            preferredLevel: query.contextLevel
+        });
+
+        return {
+            agentContext: budgeted.context,
+            budgetInfo: this._buildBudgetLog(
+                'context',
+                maxInputTokens,
+                budgeted.tokenEstimate,
+                budgeted.skippedAgents?.length > 0
+            )
+        };
+    }
+
+    _shouldEnforcePromptBudget() {
+        return Boolean(this.options.enforcePromptBudget && this.options.promptTokenBudget);
+    }
+
+    _estimatePromptTokens(text) {
+        const store = getContextStore();
+        return store.estimateTokens(text);
+    }
+
+    _buildBudgetLog(scope, maxInputTokens, contextTokens, truncated = false) {
+        if (!maxInputTokens) {
+            return null;
+        }
+        const status = truncated ? 'trimmed' : 'ok';
+        return `Prompt budget (${scope}): ${contextTokens}/${maxInputTokens} tokens (${status}).`;
     }
 
     /**

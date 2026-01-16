@@ -78,6 +78,11 @@ export const RLM_CONFIG = {
     shadowPromptMaxPerAgent: 2,
     shadowPromptRecencyWindowDays: 30,
 
+    // Milestone 4: Guardrails + token budgeting
+    enablePromptBudgeting: true,
+    promptTokenBudget: 12000,
+    promptTokenReserve: 2000,
+
     // Milestone 3: Focus episodes (shadow mode, gated)
     enableFocusShadow: true,
     enableFocusEpisodes: false,
@@ -104,7 +109,11 @@ export class RLMPipeline {
             maxConcurrent: this.config.maxConcurrent,
             maxDepth: this.config.maxDepth,
             tokensPerSubQuery: this.config.tokensPerSubQuery,
-            timeout: this.config.timeout
+            timeout: this.config.timeout,
+            enforcePromptBudget: this.config.enablePromptBudgeting,
+            promptTokenBudget: this.config.promptTokenBudget,
+            promptTokenReserve: this.config.promptTokenReserve,
+            promptTokensForSubQuery: (subQuery) => this._estimateSubQueryBaseTokens(subQuery)
         });
         this.aggregator = createAggregator({
             maxFinalLength: this.config.maxFinalLength,
@@ -157,6 +166,17 @@ export class RLMPipeline {
             turns: 0,
             pendingReason: null,
             lastTokenEstimate: 0
+        };
+
+        // Guardrail telemetry (Milestone 4)
+        this.guardrails = {
+            lastPromptEstimate: 0,
+            lastBudget: 0,
+            lastMode: null,
+            lastTrimmed: false,
+            lastTrimmedTokens: 0,
+            lastContextTokens: 0,
+            lastUpdatedAt: null
         };
     }
 
@@ -472,23 +492,152 @@ If the information is not available in the provided context, say so briefly.`;
         }
     }
 
+    _estimateTokens(text) {
+        if (!text) return 0;
+        return Math.ceil(text.length / 4);
+    }
+
+    _getPromptBudget() {
+        const budget = this.config.promptTokenBudget || 0;
+        const reserve = this.config.promptTokenReserve || this.config.maxOutputTokens || 0;
+        const maxInputTokens = Math.max(0, budget - reserve);
+        return { budget, reserve, maxInputTokens };
+    }
+
+    _buildSubQueryPrompts(subQuery, contextText) {
+        const systemPrompt = `You are analyzing meeting data to answer a specific question.
+Be concise and focus only on information relevant to the question.
+If the information is not available in the provided context, say so briefly.`;
+
+        const userPrompt = `Context from meetings:
+${contextText}
+
+Question: ${subQuery}
+
+Provide a focused answer based only on the context above.`;
+
+        return { systemPrompt, userPrompt };
+    }
+
+    _buildLegacyPrompts(query, contextText) {
+        const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
+Use the following meeting data to answer questions accurately and comprehensively.`;
+
+        const userPrompt = `${contextText}\n\nQuestion: ${query}`.trim();
+        return { systemPrompt, userPrompt };
+    }
+
+    _formatStateBlock(stateBlock) {
+        if (!stateBlock) return '';
+        const sections = [];
+        const addSection = (label, items) => {
+            if (!items || items.length === 0) return;
+            sections.push(`${label}:\n${items.map(item => `- ${item.text}`).join('\n')}`);
+        };
+
+        addSection('Decisions', stateBlock.decisions);
+        addSection('Actions', stateBlock.actions);
+        addSection('Risks', stateBlock.risks);
+        addSection('Entities', stateBlock.entities);
+        addSection('Constraints', stateBlock.constraints);
+        addSection('Open Questions', stateBlock.openQuestions);
+
+        return sections.join('\n\n');
+    }
+
+    _formatWorkingWindow(workingWindow) {
+        if (!workingWindow) return '';
+        const parts = [];
+        if (workingWindow.lastUserTurns?.length) {
+            parts.push(`Recent User Turns:\n${workingWindow.lastUserTurns.map(turn => `- ${turn}`).join('\n')}`);
+        }
+        if (workingWindow.lastAssistantSummary) {
+            parts.push(`Last Assistant Summary:\n${workingWindow.lastAssistantSummary}`);
+        }
+        return parts.join('\n\n');
+    }
+
+    _buildSwmFallbackContext() {
+        if (!this.memoryStore) return '';
+        const stateBlock = this._formatStateBlock(this.memoryStore.getStateBlock());
+        const workingWindow = this._formatWorkingWindow(this.memoryStore.getWorkingWindow());
+        return [stateBlock, workingWindow].filter(Boolean).join('\n\n');
+    }
+
+    _estimateSubQueryBaseTokens(subQuery) {
+        const { systemPrompt, userPrompt } = this._buildSubQueryPrompts(subQuery, '');
+        return this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
+    }
+
+    _truncateToTokenBudget(text, tokenBudget) {
+        if (!text || !tokenBudget) return '';
+        const maxChars = Math.max(0, tokenBudget * 4);
+        if (text.length <= maxChars) return text;
+        return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
+    }
+
+    _recordGuardrail(mode, promptEstimate, budget, trimmed, trimmedTokens, contextTokens) {
+        this.guardrails = {
+            lastPromptEstimate: promptEstimate,
+            lastBudget: budget,
+            lastMode: mode,
+            lastTrimmed: trimmed,
+            lastTrimmedTokens: trimmedTokens,
+            lastContextTokens: contextTokens,
+            lastUpdatedAt: new Date().toISOString()
+        };
+    }
+
+    async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic') {
+        const guardrail = this._getPromptBudget();
+        const systemTokens = this._estimateTokens(systemPrompt);
+        const userTokens = this._estimateTokens(userPrompt);
+        let trimmed = false;
+        let trimmedTokens = 0;
+        let finalUserPrompt = userPrompt;
+
+        if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+            const availableForUser = Math.max(0, guardrail.maxInputTokens - systemTokens);
+            if (systemTokens + userTokens > guardrail.maxInputTokens) {
+                finalUserPrompt = this._truncateToTokenBudget(userPrompt, availableForUser);
+                trimmedTokens = userTokens - this._estimateTokens(finalUserPrompt);
+                trimmed = true;
+            }
+        }
+
+        const promptEstimate = systemTokens + this._estimateTokens(finalUserPrompt);
+        this._recordGuardrail(mode, promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, userTokens);
+
+        return llmCall(systemPrompt, finalUserPrompt, context);
+    }
+
     /**
      * Wrap LLM call function for sub-queries
      * @private
      */
     _wrapLLMCall(llmCall) {
         return async (subQuery, agentContext, context) => {
-            // Build a focused prompt for sub-query
-            const systemPrompt = `You are analyzing meeting data to answer a specific question.
-Be concise and focus only on information relevant to the question.
-If the information is not available in the provided context, say so briefly.`;
+            const { systemPrompt, userPrompt: baseUserPrompt } = this._buildSubQueryPrompts(subQuery, agentContext);
+            let userPrompt = baseUserPrompt;
+            const guardrail = this._getPromptBudget();
+            const baseTokens = this._estimateTokens(this._buildSubQueryPrompts(subQuery, '').userPrompt)
+                + this._estimateTokens(systemPrompt);
+            const contextTokens = this._estimateTokens(agentContext);
+            let trimmed = false;
+            let trimmedTokens = 0;
 
-            const userPrompt = `Context from meetings:
-${agentContext}
+            if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+                const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+                if (contextTokens > availableForContext) {
+                    const trimmedContext = this._truncateToTokenBudget(agentContext, availableForContext);
+                    trimmedTokens = contextTokens - this._estimateTokens(trimmedContext);
+                    userPrompt = this._buildSubQueryPrompts(subQuery, trimmedContext).userPrompt;
+                    trimmed = true;
+                }
+            }
 
-Question: ${subQuery}
-
-Provide a focused answer based only on the context above.`;
+            const promptEstimate = this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
+            this._recordGuardrail('subquery', promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, contextTokens);
 
             return llmCall(systemPrompt, userPrompt, context);
         };
@@ -500,19 +649,44 @@ Provide a focused answer based only on the context above.`;
      */
     async _legacyProcess(query, llmCall, context) {
         const activeAgents = this.contextStore.getActiveAgents();
-        const combinedContext = this.contextStore.getCombinedContext(
-            activeAgents.map(a => a.id),
-            'standard'
-        );
+        const agentIds = activeAgents.map(agent => agent.id);
+        let combinedContext = this.contextStore.getCombinedContext(agentIds, 'standard');
+        const guardrail = this._getPromptBudget();
+        const { systemPrompt, userPrompt: baseUserPrompt } = this._buildLegacyPrompts(query, '');
+        const baseTokens = this._estimateTokens(systemPrompt) + this._estimateTokens(baseUserPrompt);
+        const contextTokens = this._estimateTokens(combinedContext);
+        let trimmed = false;
+        let trimmedTokens = 0;
 
-        const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
-Use the following meeting data to answer questions accurately and comprehensively.`;
+        if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+            const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+            if (contextTokens > availableForContext) {
+                const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
+                    preferredLevel: 'standard'
+                });
+                combinedContext = budgeted.context;
+                trimmedTokens = contextTokens - budgeted.tokenEstimate;
+                trimmed = true;
+            }
+        }
+
+        if (!combinedContext) {
+            const fallbackContext = this._buildSwmFallbackContext();
+            if (fallbackContext) {
+                combinedContext = fallbackContext;
+                trimmed = true;
+            }
+        }
+
+        const { userPrompt } = this._buildLegacyPrompts(query, combinedContext);
+        const promptEstimate = this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
+        this._recordGuardrail('legacy', promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, contextTokens);
 
         this._startFocusIfEnabled('Legacy pipeline', query);
         this._runShadowPromptBuild(query, context, 'legacy');
         this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'legacy' });
 
-        const response = await llmCall(systemPrompt, `${combinedContext}\n\nQuestion: ${query}`, context);
+        const response = await llmCall(systemPrompt, userPrompt, context);
 
         const result = {
             success: true,
@@ -596,10 +770,17 @@ Use the following meeting data to answer questions accurately and comprehensivel
             // Step 2: Call LLM to generate code (with retry support)
             console.log('[RLM:REPL] Generating Python code...');
             this._emitProgress('Calling GPT to generate Python analysis code', 'code');
+            const guardedCodeCall = (systemPrompt, userPrompt, callContext) => this._callWithPromptGuardrails(
+                llmCall,
+                systemPrompt,
+                userPrompt,
+                callContext,
+                'repl-code'
+            );
             const codeResult = await this.codeGenerator.generateWithRetry(
                 query,
                 { activeAgents: stats.activeAgents, agentNames },
-                llmCall
+                guardedCodeCall
             );
 
             if (!codeResult.success) {
@@ -751,7 +932,13 @@ Be concise and focus only on information relevant to the question.`;
                     ? `Context:\n${call.context}\n\nQuestion: ${call.query}`
                     : `Question: ${call.query}`;
 
-                const response = await llmCall(systemPrompt, userPrompt, context);
+                const response = await this._callWithPromptGuardrails(
+                    llmCall,
+                    systemPrompt,
+                    userPrompt,
+                    context,
+                    'sub-lm'
+                );
                 results.push({
                     id: call.id,
                     success: true,
@@ -817,20 +1004,47 @@ Be concise and focus only on information relevant to the question.`;
             ? performance.now()
             : Date.now();
 
-        const promptData = buildShadowPrompt({
+        const basePromptInput = {
             query,
             stateBlock: this.memoryStore.getStateBlock(),
             workingWindow: this.memoryStore.getWorkingWindow(),
-            retrievedSlices: retrieval.slices,
             localContext: context?.localContext || ''
+        };
+
+        let retrievedSlices = retrieval.slices;
+        let promptData = buildShadowPrompt({
+            ...basePromptInput,
+            retrievedSlices
         });
+        const guardrail = this._getPromptBudget();
+        let reduction = null;
+
+        if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0 && promptData.tokenEstimate > guardrail.maxInputTokens) {
+            const originalCount = retrievedSlices.length;
+            let trimmed = [...retrievedSlices];
+            while (trimmed.length > 0 && promptData.tokenEstimate > guardrail.maxInputTokens) {
+                trimmed.pop();
+                promptData = buildShadowPrompt({
+                    ...basePromptInput,
+                    retrievedSlices: trimmed
+                });
+            }
+            retrievedSlices = trimmed;
+            reduction = {
+                originalCount,
+                finalCount: trimmed.length,
+                dropped: Math.max(0, originalCount - trimmed.length),
+                budget: guardrail.maxInputTokens,
+                finalTokens: promptData.tokenEstimate
+            };
+        }
 
         const promptFinishedAt = (typeof performance !== 'undefined' && performance.now)
             ? performance.now()
             : Date.now();
 
         const previousIds = new Set(this.shadowPrompt?.retrievalStats?.selectedIds || []);
-        const currentIds = retrieval.slices.map(slice => slice.id);
+        const currentIds = retrievedSlices.map(slice => slice.id);
         const addedIds = currentIds.filter(id => !previousIds.has(id));
         const removedIds = [...previousIds].filter(id => !currentIds.includes(id));
 
@@ -838,7 +1052,7 @@ Be concise and focus only on information relevant to the question.`;
             acc[slice.type] = (acc[slice.type] || 0) + 1;
             return acc;
         }, {});
-        const currentTypeCounts = summarizeByType(retrieval.slices);
+        const currentTypeCounts = summarizeByType(retrievedSlices);
         const previousTypeCounts = summarizeByType(this.shadowPrompt?.retrievalSlices || []);
 
         this.shadowPrompt = {
@@ -847,7 +1061,9 @@ Be concise and focus only on information relevant to the question.`;
             createdAt: new Date().toISOString(),
             retrievalStats: {
                 ...retrieval.stats,
+                selectedCount: retrievedSlices.length,
                 selectedIds: currentIds,
+                reduction,
                 diff: {
                     addedCount: addedIds.length,
                     removedCount: removedIds.length,
@@ -858,7 +1074,7 @@ Be concise and focus only on information relevant to the question.`;
                 },
                 latencyMs: retrieval.stats.latencyMs ?? Math.max(0, retrievalFinishedAt - startedAt)
             },
-            retrievalSlices: retrieval.slices,
+            retrievalSlices: retrievedSlices,
             promptPreview: promptData.prompt,
             tokenEstimate: promptData.tokenEstimate,
             tokenBreakdown: promptData.tokenBreakdown,
@@ -900,8 +1116,8 @@ Be concise and focus only on information relevant to the question.`;
             totalLatencyMs: this.shadowPrompt.totalLatencyMs
         });
 
-        if (retrieval.slices.length > 0) {
-            console.log('[RLM:ShadowPrompt] Retrieved slices (shadow only)', retrieval.slices.map(slice => ({
+        if (retrievedSlices.length > 0) {
+            console.log('[RLM:ShadowPrompt] Retrieved slices (shadow only)', retrievedSlices.map(slice => ({
                 id: slice.id,
                 type: slice.type,
                 score: slice._score,
@@ -1182,10 +1398,37 @@ Be concise and focus only on information relevant to the question.`;
             contextStore: this.contextStore.getStats(),
             memoryStore: this.memoryStore.getStats(),
             shadowPrompt: this.shadowPrompt,
+            guardrails: this.guardrails,
             repl: replStats,
             cache: cacheStats,
             config: this.config
         };
+    }
+
+    /**
+     * Update pipeline configuration at runtime.
+     * @param {Object} overrides
+     */
+    updateConfig(overrides = {}) {
+        this.config = { ...this.config, ...overrides };
+
+        if (this.executor?.updateOptions) {
+            this.executor.updateOptions({
+                maxConcurrent: this.config.maxConcurrent,
+                maxDepth: this.config.maxDepth,
+                tokensPerSubQuery: this.config.tokensPerSubQuery,
+                timeout: this.config.timeout,
+                enforcePromptBudget: this.config.enablePromptBudgeting,
+                promptTokenBudget: this.config.promptTokenBudget,
+                promptTokenReserve: this.config.promptTokenReserve,
+                promptTokensForSubQuery: (subQuery) => this._estimateSubQueryBaseTokens(subQuery)
+            });
+        }
+
+        if (this.repl) {
+            this.repl.config.maxRecursionDepth = this.config.maxDepth;
+            this.repl.config.subLmTimeout = this.config.subLmTimeout;
+        }
     }
 
     /**

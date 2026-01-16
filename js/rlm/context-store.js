@@ -230,6 +230,79 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
     }
 
     /**
+     * Get combined context with a token budget by falling back to smaller slices.
+     * @param {Array} agentIds - Array of agent IDs
+     * @param {number} tokenBudget - Maximum tokens to use
+     * @param {Object} options - Options
+     * @returns {Object} Context bundle with budget stats
+     */
+    getCombinedContextWithBudget(agentIds, tokenBudget, options = {}) {
+        const {
+            preferredLevel = 'standard',
+            separator = '\n\n---\n\n',
+            minRemainingTokens = 0
+        } = options;
+
+        const ids = agentIds?.length
+            ? agentIds
+            : this.getActiveAgents().map(agent => agent.id);
+
+        if (!ids.length || !tokenBudget || tokenBudget <= 0) {
+            return {
+                context: '',
+                tokenEstimate: 0,
+                levelsUsed: [],
+                skippedAgents: ids || [],
+                remainingBudget: Math.max(0, tokenBudget || 0)
+            };
+        }
+
+        const levelFallbacks = {
+            full: ['full', 'standard', 'summary'],
+            standard: ['standard', 'summary'],
+            summary: ['summary']
+        };
+        const levelOrder = levelFallbacks[preferredLevel] || levelFallbacks.standard;
+
+        const sections = [];
+        const levelsUsed = [];
+        const skippedAgents = [];
+        let remainingBudget = tokenBudget;
+        let tokenEstimate = 0;
+
+        ids.forEach(agentId => {
+            let accepted = false;
+            for (const level of levelOrder) {
+                const slice = this.getContextSlice(agentId, level);
+                const sliceTokens = this.estimateTokens(slice);
+                if (sliceTokens <= remainingBudget) {
+                    sections.push(slice);
+                    levelsUsed.push({ agentId, level, tokens: sliceTokens });
+                    remainingBudget -= sliceTokens;
+                    tokenEstimate += sliceTokens;
+                    accepted = true;
+                    break;
+                }
+            }
+            if (!accepted) {
+                skippedAgents.push(agentId);
+            }
+        });
+
+        if (remainingBudget <= minRemainingTokens) {
+            remainingBudget = Math.max(0, remainingBudget);
+        }
+
+        return {
+            context: sections.filter(Boolean).join(separator),
+            tokenEstimate,
+            levelsUsed,
+            skippedAgents,
+            remainingBudget
+        };
+    }
+
+    /**
      * Get store statistics
      * @returns {Object} Store metadata and stats
      */
