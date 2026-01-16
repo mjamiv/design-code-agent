@@ -105,6 +105,125 @@ export class MemoryStore {
         };
     }
 
+    /**
+     * Retrieve memory slices relevant to a query (Milestone 2 shadow mode).
+     * @param {string} query
+     * @param {Object} options
+     * @returns {{ slices: Array, stats: Object }}
+     */
+    retrieveSlices(query, options = {}) {
+        const {
+            maxResults = 6,
+            tags,
+            entities,
+            recencyWindowMs = null,
+            maxPerTag = 2,
+            maxPerAgent = 2,
+            allowedAgentIds = null,
+            updateStats = false
+        } = options;
+
+        const normalizedQuery = (query || '').toLowerCase();
+        const queryTags = tags || this._inferTagsFromQuery(normalizedQuery);
+        const queryEntities = entities || this._extractEntities(query || '');
+        const queryKeywords = this._extractKeywords(normalizedQuery);
+
+        const now = Date.now();
+        const candidates = this.slices.filter(slice => {
+            if (recencyWindowMs && slice.timestamp) {
+                const ageMs = now - Date.parse(slice.timestamp);
+                if (!Number.isNaN(ageMs) && ageMs > recencyWindowMs) {
+                    return false;
+                }
+            }
+
+            if (allowedAgentIds && allowedAgentIds.length > 0) {
+                const agentMatches = (slice.source_agent_ids || []).some(id => allowedAgentIds.includes(id));
+                if (!agentMatches) return false;
+            }
+
+            if (queryTags.length > 0) {
+                const tagMatches = (slice.tags || []).some(tag => queryTags.includes(tag));
+                if (!tagMatches) return false;
+            }
+
+            if (queryEntities.length > 0) {
+                const entityMatches = (slice.entities || []).some(entity => queryEntities.includes(entity));
+                if (!entityMatches) return false;
+            }
+
+            return true;
+        });
+
+        const scored = candidates.map(slice => {
+            const tagScore = (slice.tags || []).filter(tag => queryTags.includes(tag)).length * 2;
+            const entityScore = (slice.entities || []).filter(entity => queryEntities.includes(entity)).length * 2;
+            const recencyScore = this._scoreRecency(slice.timestamp) * 1.5;
+            const importanceScore = (slice.importance_score || 0) * 1.2;
+            const keywordScore = this._scoreKeywordMatch(slice.text, queryKeywords);
+
+            return {
+                ...slice,
+                _score: tagScore + entityScore + recencyScore + importanceScore + keywordScore
+            };
+        });
+
+        scored.sort((a, b) => b._score - a._score);
+
+        const selected = [];
+        const seenHashes = new Set();
+        const tagCounts = new Map();
+        const agentCounts = new Map();
+
+        scored.forEach(slice => {
+            if (selected.length >= maxResults) return;
+            if (seenHashes.has(slice.source_hash)) return;
+
+            if (maxPerAgent && slice.source_agent_ids?.length) {
+                const tooManyAgents = slice.source_agent_ids.some(agentId => (agentCounts.get(agentId) || 0) >= maxPerAgent);
+                if (tooManyAgents) return;
+            }
+
+            if (maxPerTag && slice.tags?.length) {
+                const tagLimitReached = slice.tags.every(tag => (tagCounts.get(tag) || 0) >= maxPerTag);
+                if (tagLimitReached) return;
+            }
+
+            selected.push(slice);
+            seenHashes.add(slice.source_hash);
+
+            slice.tags?.forEach(tag => {
+                tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+            });
+            slice.source_agent_ids?.forEach(agentId => {
+                agentCounts.set(agentId, (agentCounts.get(agentId) || 0) + 1);
+            });
+        });
+
+        if (updateStats) {
+            const retrievedAt = new Date().toISOString();
+            selected.forEach(slice => {
+                const target = this.slices.find(entry => entry.id === slice.id);
+                if (!target) return;
+                target.retrieval_count += 1;
+                target.last_retrieved_at = retrievedAt;
+            });
+        }
+
+        return {
+            slices: selected,
+            stats: {
+                queryTags,
+                queryEntities,
+                queryKeywords,
+                candidateCount: candidates.length,
+                selectedCount: selected.length,
+                requestedK: maxResults,
+                recencyWindowMs
+            }
+        };
+    }
+
     _updateWorkingWindow(query, response) {
         if (query) {
             this.workingWindow.lastUserTurns = [query, ...this.workingWindow.lastUserTurns].slice(0, 2);
@@ -250,6 +369,59 @@ export class MemoryStore {
         if (!text) return [];
         const candidates = text.match(/\b[A-Z][a-zA-Z0-9_-]{2,}\b/g) || [];
         return [...new Set(candidates)].slice(0, 8);
+    }
+
+    _extractKeywords(text) {
+        if (!text) return [];
+        const stopWords = new Set([
+            'the', 'is', 'at', 'which', 'on', 'a', 'an', 'and', 'or', 'but',
+            'in', 'with', 'to', 'for', 'of', 'as', 'by', 'from', 'what',
+            'where', 'when', 'why', 'how', 'who', 'about', 'can', 'could',
+            'should', 'would', 'will', 'are', 'was', 'were', 'been', 'be',
+            'have', 'has', 'had', 'do', 'does', 'did', 'this', 'that',
+            'these', 'those', 'there', 'here', 'all', 'each', 'every',
+            'both', 'few', 'more', 'most', 'other', 'some', 'such', 'than',
+            'too', 'very', 'just', 'also', 'now', 'only', 'then', 'so'
+        ]);
+
+        return [...new Set(
+            text.replace(/[^\w\s]/g, ' ')
+                .split(/\s+/)
+                .filter(word => word.length > 2 && !stopWords.has(word))
+        )];
+    }
+
+    _scoreKeywordMatch(text, keywords) {
+        if (!text || keywords.length === 0) return 0;
+        const lowerText = text.toLowerCase();
+        let score = 0;
+        keywords.forEach(keyword => {
+            if (lowerText.includes(keyword)) {
+                score += 0.5;
+            }
+        });
+        return score;
+    }
+
+    _scoreRecency(timestamp) {
+        if (!timestamp) return 0;
+        const ageMs = Date.now() - Date.parse(timestamp);
+        if (Number.isNaN(ageMs)) return 0;
+        const days = ageMs / (1000 * 60 * 60 * 24);
+        return Math.max(0, 1 - days / 30);
+    }
+
+    _inferTagsFromQuery(query) {
+        if (!query) return [];
+        const tags = [];
+        if (/\bdecision(s)?\b/.test(query)) tags.push('decision');
+        if (/\baction(s| items)?\b/.test(query)) tags.push('action');
+        if (/\brisk(s)?\b/.test(query)) tags.push('risk');
+        if (/\bconstraint(s)?\b/.test(query)) tags.push('constraint');
+        if (/\bentit(y|ies)\b/.test(query)) tags.push('entity');
+        if (/\bopen question(s)?\b/.test(query)) tags.push('open_question');
+        if (/\bepisode(s)?\b/.test(query)) tags.push('episode');
+        return tags;
     }
 
     _estimateTokens(text) {

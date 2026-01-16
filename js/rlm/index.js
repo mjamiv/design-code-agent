@@ -30,6 +30,7 @@ import { REPLEnvironment, getREPLEnvironment, resetREPLEnvironment, isREPLSuppor
 import { CodeGenerator, createCodeGenerator, generateCodePrompt, parseCodeOutput, parseFinalAnswer, validateCode, classifyQuery, QueryType } from './code-generator.js';
 import { QueryCache, getQueryCache, resetQueryCache, CACHE_CONFIG } from './query-cache.js';
 import { MemoryStore, getMemoryStore, resetMemoryStore } from './memory-store.js';
+import { buildShadowPrompt } from './prompt-builder.js';
 
 /**
  * RLM Configuration
@@ -68,7 +69,14 @@ export const RLM_CONFIG = {
     enableCache: true,         // Enable query result caching
     cacheMaxEntries: 50,       // Maximum cache entries
     cacheTTL: 5 * 60 * 1000,   // Cache TTL (5 minutes)
-    enableFuzzyCache: false    // Enable fuzzy matching for similar queries
+    enableFuzzyCache: false,   // Enable fuzzy matching for similar queries
+
+    // Milestone 2: Shadow prompt builder (no behavior change)
+    enableShadowPrompt: true,
+    shadowPromptMaxSlices: 6,
+    shadowPromptMaxPerTag: 2,
+    shadowPromptMaxPerAgent: 2,
+    shadowPromptRecencyWindowDays: 30
 };
 
 /**
@@ -130,6 +138,9 @@ export class RLMPipeline {
 
         // Progress callback for train-of-thought UI updates
         this._progressCallback = null;
+
+        // Shadow prompt storage (Milestone 2)
+        this.shadowPrompt = null;
     }
 
     /**
@@ -346,6 +357,7 @@ If the information is not available in the provided context, say so briefly.`;
         try {
             console.log('[RLM] Starting pipeline for query:', query.substring(0, 50) + '...');
             this._emitProgress('Starting RLM pipeline...', 'info');
+            this._runShadowPromptBuild(query, context, 'rlm');
 
             // Step 1: Decompose the query
             console.log('[RLM] Step 1: Decomposing query...');
@@ -461,6 +473,8 @@ Provide a focused answer based only on the context above.`;
         const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
 Use the following meeting data to answer questions accurately and comprehensively.`;
 
+        this._runShadowPromptBuild(query, context, 'legacy');
+
         const response = await llmCall(systemPrompt, `${combinedContext}\n\nQuestion: ${query}`, context);
 
         const result = {
@@ -512,6 +526,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
         this._currentContext = context;
 
         try {
+            this._runShadowPromptBuild(query, context, 'repl');
             // Ensure REPL is initialized
             if (!this.isREPLReady()) {
                 const initialized = await this.initializeREPL();
@@ -719,6 +734,63 @@ Be concise and focus only on information relevant to the question.`;
         });
     }
 
+    /**
+     * Build a shadow prompt for retrieval logging (Milestone 2).
+     * @private
+     */
+    _runShadowPromptBuild(query, context, mode) {
+        if (!this.config.enableShadowPrompt || !this.memoryStore) {
+            return;
+        }
+
+        const recencyWindowMs = this.config.shadowPromptRecencyWindowDays
+            ? this.config.shadowPromptRecencyWindowDays * 24 * 60 * 60 * 1000
+            : null;
+
+        const retrieval = this.memoryStore.retrieveSlices(query, {
+            maxResults: this.config.shadowPromptMaxSlices,
+            maxPerTag: this.config.shadowPromptMaxPerTag,
+            maxPerAgent: this.config.shadowPromptMaxPerAgent,
+            recencyWindowMs,
+            updateStats: false
+        });
+
+        const promptData = buildShadowPrompt({
+            query,
+            stateBlock: this.memoryStore.getStateBlock(),
+            workingWindow: this.memoryStore.getWorkingWindow(),
+            retrievedSlices: retrieval.slices,
+            localContext: context?.localContext || ''
+        });
+
+        this.shadowPrompt = {
+            mode,
+            query,
+            createdAt: new Date().toISOString(),
+            retrievalStats: retrieval.stats,
+            promptPreview: promptData.prompt,
+            tokenEstimate: promptData.tokenEstimate
+        };
+
+        console.log('[RLM:ShadowPrompt] Built prompt in shadow mode', {
+            mode,
+            retrieved: retrieval.stats.selectedCount,
+            candidates: retrieval.stats.candidateCount,
+            tokenEstimate: promptData.tokenEstimate
+        });
+
+        if (retrieval.slices.length > 0) {
+            console.log('[RLM:ShadowPrompt] Retrieved slices (shadow only)', retrieval.slices.map(slice => ({
+                id: slice.id,
+                type: slice.type,
+                score: slice._score,
+                text: slice.text
+            })));
+        } else {
+            console.log('[RLM:ShadowPrompt] No slices retrieved for shadow prompt');
+        }
+    }
+
     // ==========================================
     // Phase 3.1: Cache Methods
     // ==========================================
@@ -870,6 +942,7 @@ Be concise and focus only on information relevant to the question.`;
             ...this.stats,
             contextStore: this.contextStore.getStats(),
             memoryStore: this.memoryStore.getStats(),
+            shadowPrompt: this.shadowPrompt,
             repl: replStats,
             cache: cacheStats,
             config: this.config
@@ -930,6 +1003,7 @@ Be concise and focus only on information relevant to the question.`;
         this.contextStore = getContextStore();
         resetMemoryStore();
         this.memoryStore = getMemoryStore();
+        this.shadowPrompt = null;
 
         // Reset REPL if initialized
         if (this.repl) {
