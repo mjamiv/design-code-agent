@@ -40,7 +40,9 @@ export const RLM_CONFIG = {
 
     // Execution settings
     maxConcurrent: 3,
-    maxDepth: 3,              // Max recursion depth for sub_lm calls
+    maxDepth: 2,              // Max recursion depth for sub_lm calls
+    maxSubLmCalls: 2,         // Max internal sub_lm expansions per prompt
+    maxOutputTokens: 2000,    // Max output tokens per LLM call
     tokensPerSubQuery: 800,
     timeout: 30000,
 
@@ -568,10 +570,18 @@ Use the following meeting data to answer questions accurately and comprehensivel
             // Phase 2.2: Handle async fallback sub-LM calls if sync was not available
             // (these are queued calls that weren't processed synchronously)
             if (finalAnswer.subLmCalls && finalAnswer.subLmCalls.length > 0) {
-                console.log(`[RLM:REPL] Processing ${finalAnswer.subLmCalls.length} async fallback sub-LM calls...`);
-                this._emitProgress(`Processing ${finalAnswer.subLmCalls.length} recursive sub_lm() calls`, 'recurse');
+                const maxSubLmCalls = this.config.maxSubLmCalls || finalAnswer.subLmCalls.length;
+                const pendingCalls = finalAnswer.subLmCalls.slice(0, maxSubLmCalls);
+                const skippedCalls = finalAnswer.subLmCalls.length - pendingCalls.length;
+
+                console.log(`[RLM:REPL] Processing ${pendingCalls.length} async fallback sub-LM calls...`);
+                this._emitProgress(`Processing ${pendingCalls.length} recursive sub_lm() calls`, 'recurse');
+                if (skippedCalls > 0) {
+                    this._emitProgress(`Skipping ${skippedCalls} sub_lm() calls due to expansion limits`, 'warning');
+                }
+
                 // Process sub-LM calls and aggregate results
-                const subResults = await this._processSubLmCalls(finalAnswer.subLmCalls, llmCall, context);
+                const subResults = await this._processSubLmCalls(pendingCalls, llmCall, context);
                 
                 // Combine with the main answer
                 let combinedAnswer = finalAnswer.answer || '';
@@ -579,6 +589,9 @@ Use the following meeting data to answer questions accurately and comprehensivel
                     combinedAnswer += '\n\n---\n\n**Additional Analysis:**\n\n';
                     combinedAnswer += subResults.map(r => r.response).join('\n\n');
                     this._emitProgress(`Aggregated ${subResults.length} recursive results`, 'success');
+                }
+                if (skippedCalls > 0) {
+                    combinedAnswer += `\n\n---\n\nNote: ${skippedCalls} recursive call${skippedCalls > 1 ? 's' : ''} skipped due to expansion limits.`;
                 }
                 finalAnswer.answer = combinedAnswer;
             }

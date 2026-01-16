@@ -26,6 +26,18 @@ const state = {
     agents: [],  // In-memory storage (session-only)
     insights: null,
     chatHistory: [],
+    signalState: {
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        constraints: [],
+        entities: [],
+        sourcePointers: []
+    },
+    stateBlockMarkdown: '',
+    summaryLastTurn: '',
+    memoryIndex: [],
+    promptCounter: 0,
     isProcessing: false,
     settings: {
         model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
@@ -473,7 +485,12 @@ function initElements() {
 const STORAGE_KEYS = {
     AGENTS: 'orch_agents',
     CHAT_HISTORY: 'orch_chat_history',
-    INSIGHTS: 'orch_insights'
+    INSIGHTS: 'orch_insights',
+    SIGNAL_STATE: 'orch_signal_state',
+    STATE_BLOCK_MD: 'orch_state_block_md',
+    SUMMARY_LAST_TURN: 'orch_summary_last_turn',
+    MEMORY_INDEX: 'orch_memory_index',
+    PROMPT_COUNTER: 'orch_prompt_counter'
 };
 
 /**
@@ -483,12 +500,18 @@ function saveState() {
     try {
         sessionStorage.setItem(STORAGE_KEYS.AGENTS, JSON.stringify(state.agents));
         sessionStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(state.chatHistory));
+        sessionStorage.setItem(STORAGE_KEYS.SIGNAL_STATE, JSON.stringify(state.signalState));
+        sessionStorage.setItem(STORAGE_KEYS.STATE_BLOCK_MD, state.stateBlockMarkdown || '');
+        sessionStorage.setItem(STORAGE_KEYS.SUMMARY_LAST_TURN, state.summaryLastTurn || '');
+        sessionStorage.setItem(STORAGE_KEYS.MEMORY_INDEX, JSON.stringify(state.memoryIndex));
+        sessionStorage.setItem(STORAGE_KEYS.PROMPT_COUNTER, String(state.promptCounter || 0));
         if (state.insights) {
             sessionStorage.setItem(STORAGE_KEYS.INSIGHTS, JSON.stringify(state.insights));
         }
         console.log('[State] Saved to sessionStorage:', {
             agents: state.agents.length,
-            chatHistory: state.chatHistory.length
+            chatHistory: state.chatHistory.length,
+            memoryIndex: state.memoryIndex.length
         });
     } catch (error) {
         console.warn('[State] Failed to save state:', error.message);
@@ -503,6 +526,11 @@ function restoreState() {
         const savedAgents = sessionStorage.getItem(STORAGE_KEYS.AGENTS);
         const savedChatHistory = sessionStorage.getItem(STORAGE_KEYS.CHAT_HISTORY);
         const savedInsights = sessionStorage.getItem(STORAGE_KEYS.INSIGHTS);
+        const savedSignalState = sessionStorage.getItem(STORAGE_KEYS.SIGNAL_STATE);
+        const savedStateBlockMarkdown = sessionStorage.getItem(STORAGE_KEYS.STATE_BLOCK_MD);
+        const savedSummaryLastTurn = sessionStorage.getItem(STORAGE_KEYS.SUMMARY_LAST_TURN);
+        const savedMemoryIndex = sessionStorage.getItem(STORAGE_KEYS.MEMORY_INDEX);
+        const savedPromptCounter = sessionStorage.getItem(STORAGE_KEYS.PROMPT_COUNTER);
 
         if (savedAgents) {
             state.agents = JSON.parse(savedAgents);
@@ -526,6 +554,32 @@ function restoreState() {
             if (state.insights) {
                 displayInsights(state.insights);
             }
+        }
+
+        if (savedSignalState) {
+            state.signalState = JSON.parse(savedSignalState);
+            console.log('[State] Restored signal state');
+        }
+
+        if (savedStateBlockMarkdown !== null) {
+            state.stateBlockMarkdown = savedStateBlockMarkdown;
+        }
+
+        if (savedSummaryLastTurn !== null) {
+            state.summaryLastTurn = savedSummaryLastTurn;
+        }
+
+        if (savedMemoryIndex) {
+            state.memoryIndex = JSON.parse(savedMemoryIndex);
+            console.log('[State] Restored memory index:', state.memoryIndex.length);
+        }
+
+        if (savedPromptCounter) {
+            state.promptCounter = Number(savedPromptCounter) || 0;
+        }
+
+        if (!state.stateBlockMarkdown && state.signalState) {
+            state.stateBlockMarkdown = buildStateBlockMarkdown();
         }
 
         return state.agents.length > 0; // Return true if we restored anything
@@ -632,6 +686,11 @@ function clearSavedState() {
     sessionStorage.removeItem(STORAGE_KEYS.AGENTS);
     sessionStorage.removeItem(STORAGE_KEYS.CHAT_HISTORY);
     sessionStorage.removeItem(STORAGE_KEYS.INSIGHTS);
+    sessionStorage.removeItem(STORAGE_KEYS.SIGNAL_STATE);
+    sessionStorage.removeItem(STORAGE_KEYS.STATE_BLOCK_MD);
+    sessionStorage.removeItem(STORAGE_KEYS.SUMMARY_LAST_TURN);
+    sessionStorage.removeItem(STORAGE_KEYS.MEMORY_INDEX);
+    sessionStorage.removeItem(STORAGE_KEYS.PROMPT_COUNTER);
     console.log('[State] Cleared sessionStorage');
 }
 
@@ -1180,6 +1239,7 @@ function clearAllAgents() {
     state.agents = [];
     state.insights = null;
     state.chatHistory = [];
+    resetSignalMemory();
     resetMetrics();
     rlmPipeline.reset(); // Reset RLM pipeline state
     clearSavedState(); // Clear sessionStorage
@@ -1196,9 +1256,15 @@ function clearChatAndCache() {
     
     // Clear chat history
     state.chatHistory = [];
+    resetSignalMemory();
     
     // Clear chat session storage
     sessionStorage.removeItem(STORAGE_KEYS.CHAT_HISTORY);
+    sessionStorage.removeItem(STORAGE_KEYS.SIGNAL_STATE);
+    sessionStorage.removeItem(STORAGE_KEYS.STATE_BLOCK_MD);
+    sessionStorage.removeItem(STORAGE_KEYS.SUMMARY_LAST_TURN);
+    sessionStorage.removeItem(STORAGE_KEYS.MEMORY_INDEX);
+    sessionStorage.removeItem(STORAGE_KEYS.PROMPT_COUNTER);
     
     // Reset chat UI to welcome state
     if (elements.chatMessages) {
@@ -2046,10 +2112,17 @@ function estimateTokens(text) {
     return Math.ceil(trimmed.length / 4);
 }
 
-const CHAT_HISTORY_TOKEN_BUFFER = 1000;
-
 const CONTEXT_GAUGE_MESSAGE_OVERHEAD = 4;
 let contextGaugeRunId = 0;
+
+const SIGNAL_MEMORY_LIMITS = {
+    stateBlockMaxTokens: 1200,
+    summaryMinTokens: 200,
+    summaryMaxTokens: 500,
+    workingWindowMaxTokens: 900,
+    retrievalMaxTokens: 2400,
+    chunkMaxTokens: 350
+};
 
 const RLM_SUBQUERY_SYSTEM_PROMPT = `You are analyzing meeting data to answer a specific question.
 Be concise and focus only on information relevant to the question.
@@ -2087,33 +2160,8 @@ function getDraftQuery() {
     return elements.chatInput ? elements.chatInput.value.trim() : '';
 }
 
-function buildHistoryWithinTokenBudget(maxTokens) {
-    if (!maxTokens || maxTokens <= 0) return [];
-    let totalTokens = 0;
-    const selected = [];
-
-    for (let i = state.chatHistory.length - 1; i >= 0; i -= 1) {
-        const message = state.chatHistory[i];
-        const messageTokens = estimateMessageTokens(message);
-        if (totalTokens + messageTokens > maxTokens) {
-            break;
-        }
-        selected.push(message);
-        totalTokens += messageTokens;
-    }
-
-    return selected.reverse();
-}
-
-function getHistoryTokenBudget(systemPrompt, userPrompt) {
-    const modelLimit = MODEL_CONTEXT_WINDOWS[state.settings.model] || 64000;
-    const baseTokens = estimatePromptTokens(systemPrompt, [], userPrompt);
-    return Math.max(modelLimit - baseTokens - CHAT_HISTORY_TOKEN_BUFFER, 0);
-}
-
 function getHistoryForPrompt(systemPrompt, userPrompt) {
-    const budget = getHistoryTokenBudget(systemPrompt, userPrompt);
-    return buildHistoryWithinTokenBudget(budget);
+    return buildSignalWeightedHistory(systemPrompt, userPrompt);
 }
 
 function estimatePromptTokens(systemPrompt, historyMessages, userPrompt) {
@@ -2140,6 +2188,358 @@ function buildSubLmUserPrompt(contextSlice, query) {
 ${contextSlice}
 
 Question: ${query}`;
+}
+
+function normalizeBulletText(text) {
+    return text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function truncateTextToTokenBudget(text, maxTokens) {
+    if (!text) return '';
+    const tokenEstimate = estimateTokens(text);
+    if (tokenEstimate <= maxTokens) return text.trim();
+
+    const maxChars = Math.max(maxTokens * 4, 0);
+    let truncated = text.slice(0, maxChars);
+    const lastBullet = truncated.lastIndexOf('\n- ');
+    const lastSentence = truncated.lastIndexOf('. ');
+    const cutPoint = Math.max(lastBullet, lastSentence);
+    if (cutPoint > 50) {
+        truncated = truncated.slice(0, cutPoint).trim();
+    }
+    return `${truncated.trim()}...`;
+}
+
+function sanitizeHistoryChunk(text, maxTokens = SIGNAL_MEMORY_LIMITS.chunkMaxTokens) {
+    if (!text) return '';
+    const boilerplatePatterns = [
+        /^as an ai/i,
+        /^i (?:cannot|can't|won't|am unable)/i,
+        /^sorry/i,
+        /^note:/i
+    ];
+
+    const lines = String(text)
+        .replace(/\r/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    const bulletLines = [];
+    lines.forEach(line => {
+        if (boilerplatePatterns.some(pattern => pattern.test(line))) {
+            return;
+        }
+        if (/^[-*•]\s+/.test(line)) {
+            bulletLines.push(line.replace(/^[-*•]\s+/, '- '));
+            return;
+        }
+        if (/^\d+\.\s+/.test(line)) {
+            bulletLines.push(line.replace(/^\d+\.\s+/, '- '));
+            return;
+        }
+        const sentences = line.split(/(?<=[.!?])\s+/);
+        sentences.forEach(sentence => {
+            const trimmed = sentence.trim();
+            if (trimmed) {
+                bulletLines.push(`- ${trimmed}`);
+            }
+        });
+    });
+
+    const seen = new Set();
+    const deduped = [];
+    bulletLines.forEach(line => {
+        const normalized = normalizeBulletText(line);
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        deduped.push(line);
+    });
+
+    const sanitized = deduped.join('\n');
+    return truncateTextToTokenBudget(sanitized, maxTokens);
+}
+
+function extractSentences(text) {
+    if (!text) return [];
+    return String(text)
+        .replace(/\r/g, '\n')
+        .split(/(?<=[.!?])\s+/)
+        .map(sentence => sentence.trim())
+        .filter(sentence => sentence.length > 0);
+}
+
+function summarizeAssistantResponse(responseText) {
+    if (!responseText) return '';
+    let summary = sanitizeHistoryChunk(responseText, SIGNAL_MEMORY_LIMITS.summaryMaxTokens);
+    const summaryTokens = estimateTokens(summary);
+
+    if (summaryTokens < SIGNAL_MEMORY_LIMITS.summaryMinTokens) {
+        const sentences = extractSentences(responseText);
+        const additional = [];
+        for (const sentence of sentences) {
+            const bullet = `- ${sentence}`;
+            additional.push(bullet);
+            const combined = [summary, ...additional].filter(Boolean).join('\n');
+            if (estimateTokens(combined) >= SIGNAL_MEMORY_LIMITS.summaryMinTokens) {
+                summary = combined;
+                break;
+            }
+            if (estimateTokens(combined) >= SIGNAL_MEMORY_LIMITS.summaryMaxTokens) {
+                summary = truncateTextToTokenBudget(combined, SIGNAL_MEMORY_LIMITS.summaryMaxTokens);
+                break;
+            }
+        }
+    }
+
+    return truncateTextToTokenBudget(summary, SIGNAL_MEMORY_LIMITS.summaryMaxTokens);
+}
+
+function addUniqueItems(target, items, maxItems = 20) {
+    const seen = new Set(target.map(item => normalizeBulletText(item)));
+    items.forEach(item => {
+        const normalized = normalizeBulletText(item);
+        if (!normalized || seen.has(normalized)) return;
+        target.push(item);
+        seen.add(normalized);
+    });
+    if (target.length > maxItems) {
+        target.splice(0, target.length - maxItems);
+    }
+}
+
+function extractEntities(text) {
+    if (!text) return [];
+    const matches = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g) || [];
+    const stopWords = new Set(['Meeting', 'Summary', 'Action', 'Actions', 'Decision', 'Decisions', 'Open', 'Question', 'Questions']);
+    return [...new Set(matches.filter(match => !stopWords.has(match)))];
+}
+
+function updateSignalState(summary, userPrompt) {
+    if (!summary) return;
+    const lines = summary.split('\n').map(line => line.replace(/^[-*•]\s+/, '').trim()).filter(Boolean);
+
+    const decisions = lines.filter(line => /decided|decision|approved|agreed|commit|commitment/i.test(line));
+    const actionItems = lines.filter(line => /action item|todo|follow[- ]?up|owner|assign|due|deliverable/i.test(line));
+    const openQuestions = lines.filter(line => /open question|question|unresolved|tbd|unknown/i.test(line));
+    const constraints = lines.filter(line => /constraint|assumption|dependency|risk|limit/i.test(line));
+
+    addUniqueItems(state.signalState.decisions, decisions);
+    addUniqueItems(state.signalState.actionItems, actionItems);
+    addUniqueItems(state.signalState.openQuestions, openQuestions);
+    addUniqueItems(state.signalState.constraints, constraints);
+    addUniqueItems(state.signalState.entities, extractEntities(summary));
+
+    const pointer = `P${state.promptCounter}: ${userPrompt.substring(0, 80)}${userPrompt.length > 80 ? '…' : ''}`;
+    addUniqueItems(state.signalState.sourcePointers, [pointer], 30);
+}
+
+function buildStateBlockMarkdown() {
+    const sections = [
+        { title: 'Decisions', items: state.signalState.decisions },
+        { title: 'Action Items (owner + due date)', items: state.signalState.actionItems },
+        { title: 'Open Questions', items: state.signalState.openQuestions },
+        { title: 'Key Constraints / Assumptions', items: state.signalState.constraints },
+        { title: 'Entities / Glossary', items: state.signalState.entities },
+        { title: 'Source pointers', items: state.signalState.sourcePointers }
+    ];
+
+    const content = sections.map(section => {
+        const bullets = section.items.length > 0
+            ? section.items.map(item => `- ${item}`).join('\n')
+            : '- None';
+        return `## ${section.title}\n${bullets}`;
+    }).join('\n\n');
+
+    const truncated = truncateTextToTokenBudget(content, SIGNAL_MEMORY_LIMITS.stateBlockMaxTokens);
+    state.stateBlockMarkdown = truncated;
+    return truncated;
+}
+
+function classifyPromptTags(prompt) {
+    const tags = new Set();
+    const text = (prompt || '').toLowerCase();
+    if (/decision|decide|approve|agreement|commit/.test(text)) tags.add('decisions');
+    if (/action|todo|owner|assign|due|deadline|follow up/.test(text)) tags.add('actions');
+    if (/risk|blocker|issue|concern/.test(text)) tags.add('risks');
+    if (/contradiction|conflict|inconsistent/.test(text)) tags.add('contradictions');
+    if (/who|owner|team|person|stakeholder/.test(text)) tags.add('entities');
+    if (/when|deadline|date|timeline/.test(text)) tags.add('deadlines');
+    if (/question|unknown|open/.test(text)) tags.add('open_questions');
+    return Array.from(tags).slice(0, 3);
+}
+
+function buildMemoryIndexEntry(summary, userPrompt, tags) {
+    const cleanSummary = sanitizeHistoryChunk(summary, SIGNAL_MEMORY_LIMITS.chunkMaxTokens);
+    const summaryLines = cleanSummary
+        .split('\n')
+        .slice(0, 2)
+        .map(line => line.replace(/^-\s+/, '').trim())
+        .filter(Boolean)
+        .join(' • ');
+    const entityMatches = extractEntities(summaryLines);
+    return {
+        id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        promptNumber: state.promptCounter,
+        tags,
+        summary: summaryLines,
+        hasDecision: /decided|decision|approved|agreed|commit|commitment/i.test(summaryLines),
+        hasAction: /action item|todo|follow[- ]?up|owner|assign|due|deliverable/i.test(summaryLines),
+        hasRisk: /risk|blocker|issue|concern/i.test(summaryLines),
+        hasContradiction: /contradiction|conflict|inconsistent/i.test(summaryLines),
+        hasEntities: entityMatches.length > 0,
+        hasDeadline: /due|deadline|by\s+\w+|date/i.test(summaryLines),
+        createdAt: Date.now()
+    };
+}
+
+function scoreMemoryEntry(entry, queryTags) {
+    let score = 0;
+    if (entry.hasDecision) score += 3;
+    if (entry.hasAction) score += 3;
+    if (entry.hasRisk || entry.hasContradiction) score += 2;
+    if (entry.hasEntities || entry.hasDeadline) score += 2;
+    if (entry.summary && estimateTokens(entry.summary) > SIGNAL_MEMORY_LIMITS.chunkMaxTokens) {
+        score -= 2;
+    }
+
+    const tagMatch = entry.tags?.some(tag => queryTags.includes(tag));
+    if (tagMatch) score += 2;
+
+    const ageMinutes = (Date.now() - entry.createdAt) / (1000 * 60);
+    const recencyBoost = Math.max(0, 1 - (ageMinutes / 120));
+    score += recencyBoost;
+
+    return score;
+}
+
+function retrieveMemorySlices(userPrompt, budgetTokens = SIGNAL_MEMORY_LIMITS.retrievalMaxTokens) {
+    if (!state.memoryIndex.length) return [];
+    const queryTags = classifyPromptTags(userPrompt);
+    const requireTagMatch = queryTags.length > 0;
+    const scored = state.memoryIndex.map(entry => ({
+        entry,
+        score: scoreMemoryEntry(entry, queryTags)
+    }));
+
+    const sorted = scored
+        .filter(item => item.score > 0 && (!requireTagMatch || item.entry.tags?.some(tag => queryTags.includes(tag))))
+        .sort((a, b) => b.score - a.score);
+
+    const selected = [];
+    let usedTokens = 0;
+
+    for (const item of sorted) {
+        const sanitized = sanitizeHistoryChunk(item.entry.summary, SIGNAL_MEMORY_LIMITS.chunkMaxTokens)
+            .replace(/^-\s+/, '')
+            .trim();
+        const tokens = estimateTokens(sanitized);
+        if (usedTokens + tokens > budgetTokens) continue;
+        usedTokens += tokens;
+        selected.push({
+            promptNumber: item.entry.promptNumber,
+            summary: sanitized
+        });
+        if (usedTokens >= budgetTokens) break;
+    }
+
+    if (selected.length === 0) return [];
+
+    const content = selected
+        .map(item => `- [P${item.promptNumber}] ${item.summary}`)
+        .join('\n');
+
+    return [{
+        role: 'system',
+        content: `Retrieved memory snippets:\n${content}`
+    }];
+}
+
+function buildWorkingWindowMessages() {
+    const userMessages = state.chatHistory
+        .filter(message => message.role === 'user')
+        .slice(-2)
+        .map(message => ({
+            role: 'user',
+            content: sanitizeHistoryChunk(message.content, SIGNAL_MEMORY_LIMITS.chunkMaxTokens)
+        }));
+
+    const summary = state.summaryLastTurn
+        ? sanitizeHistoryChunk(state.summaryLastTurn, SIGNAL_MEMORY_LIMITS.chunkMaxTokens)
+        : '';
+    const assistantMessage = summary
+        ? [{ role: 'assistant', content: summary }]
+        : [];
+
+    const combined = [...userMessages, ...assistantMessage];
+    if (combined.length === 0) return [];
+
+    const trimmed = [];
+    let totalTokens = 0;
+    for (let i = combined.length - 1; i >= 0; i -= 1) {
+        const message = combined[i];
+        const messageTokens = estimateMessageTokens(message);
+        if (totalTokens + messageTokens > SIGNAL_MEMORY_LIMITS.workingWindowMaxTokens) {
+            break;
+        }
+        trimmed.push(message);
+        totalTokens += messageTokens;
+    }
+
+    return trimmed.reverse();
+}
+
+function buildSignalWeightedHistory(systemPrompt, userPrompt) {
+    const messages = [];
+
+    const stateBlock = buildStateBlockMarkdown();
+    if (stateBlock) {
+        messages.push({
+            role: 'system',
+            content: `State Block (compact working memory):\n${stateBlock}`
+        });
+    }
+
+    messages.push(...buildWorkingWindowMessages());
+
+    const retrieved = retrieveMemorySlices(userPrompt, SIGNAL_MEMORY_LIMITS.retrievalMaxTokens);
+    messages.push(...retrieved);
+
+    return messages;
+}
+
+function recordSignalMemory(userPrompt, assistantResponse) {
+    state.promptCounter += 1;
+    const summary = summarizeAssistantResponse(assistantResponse);
+    state.summaryLastTurn = summary;
+    updateSignalState(summary, userPrompt);
+    state.stateBlockMarkdown = buildStateBlockMarkdown();
+
+    if (!summary) {
+        return;
+    }
+
+    const tags = classifyPromptTags(userPrompt);
+    const entry = buildMemoryIndexEntry(summary, userPrompt, tags);
+    state.memoryIndex.push(entry);
+    if (state.memoryIndex.length > 120) {
+        state.memoryIndex = state.memoryIndex.slice(-120);
+    }
+}
+
+function resetSignalMemory() {
+    state.signalState = {
+        decisions: [],
+        actionItems: [],
+        openQuestions: [],
+        constraints: [],
+        entities: [],
+        sourcePointers: []
+    };
+    state.stateBlockMarkdown = '';
+    state.summaryLastTurn = '';
+    state.memoryIndex = [];
+    state.promptCounter = 0;
 }
 
 function resolveContextGaugeMode(draftMessage) {
@@ -2185,7 +2585,6 @@ function estimateDirectContextUsage(draftMessage) {
 async function estimateRlmContextUsage(draftMessage) {
     const contextStore = rlmPipeline.contextStore;
     const decomposer = rlmPipeline.decomposer;
-    const modelLimit = MODEL_CONTEXT_WINDOWS[state.settings.model] || 64000;
 
     if (!contextStore || !decomposer) {
         return estimateDirectContextUsage(draftMessage);
@@ -2225,8 +2624,7 @@ async function estimateRlmContextUsage(draftMessage) {
                 '\n\nProvide a focused answer based only on the context above.'
             ]);
             const reduceUserTokens = reduceContentTokens + CONTEXT_GAUGE_MESSAGE_OVERHEAD;
-            const reduceBudget = Math.max(modelLimit - (systemTokens + reduceUserTokens) - CHAT_HISTORY_TOKEN_BUFFER, 0);
-            const reduceHistory = buildHistoryWithinTokenBudget(reduceBudget);
+            const reduceHistory = getHistoryForPrompt(RLM_SUBQUERY_SYSTEM_PROMPT, queryText);
             const reduceHistoryTokens = estimateMessagesTokens(reduceHistory);
             const reduceTotal = systemTokens + reduceHistoryTokens + reduceUserTokens;
             currentMax = Math.max(currentMax, reduceTotal);
@@ -2239,15 +2637,13 @@ async function estimateRlmContextUsage(draftMessage) {
 
         const agentContext = contextStore.getCombinedContext(targetAgents, contextLevel);
         const userPrompt = buildRlmUserPrompt(agentContext, queryText);
-        const historyBudget = Math.max(modelLimit - (systemTokens + estimateMessageTokens({ role: 'user', content: userPrompt })) - CHAT_HISTORY_TOKEN_BUFFER, 0);
-        const history = buildHistoryWithinTokenBudget(historyBudget);
+        const history = getHistoryForPrompt(RLM_SUBQUERY_SYSTEM_PROMPT, userPrompt);
         const currentTokens = systemTokens + estimateMessagesTokens(history) + estimateMessageTokens({ role: 'user', content: userPrompt });
         currentMax = Math.max(currentMax, currentTokens);
 
         const rawContext = contextStore.getCombinedContext(targetAgents, 'full');
         const rawPrompt = buildRlmUserPrompt(rawContext, queryText);
-        const rawHistoryBudget = Math.max(modelLimit - (systemTokens + estimateMessageTokens({ role: 'user', content: rawPrompt })) - CHAT_HISTORY_TOKEN_BUFFER, 0);
-        const rawHistory = buildHistoryWithinTokenBudget(rawHistoryBudget);
+        const rawHistory = getHistoryForPrompt(RLM_SUBQUERY_SYSTEM_PROMPT, rawPrompt);
         const rawTokens = systemTokens + estimateMessagesTokens(rawHistory) + estimateMessageTokens({ role: 'user', content: rawPrompt });
         rawMax = Math.max(rawMax, rawTokens);
     });
@@ -2257,7 +2653,7 @@ async function estimateRlmContextUsage(draftMessage) {
         rawTokens: rawMax,
         details: {
             mode: 'rlm',
-            historyCount: state.chatHistory.length,
+            historyCount: getHistoryForPrompt(RLM_SUBQUERY_SYSTEM_PROMPT, draftMessage).length,
             subQueryCount: subQueries.length,
             strategy: decomposition?.strategy?.type || 'unknown'
         }
@@ -2771,7 +3167,9 @@ async function chatWithREPL(userMessage, thinkingId = null) {
             messages.splice(1, 0, ...recentHistory);
         }
 
-        return callGPTWithMessages(messages, `REPL: ${userMessage.substring(0, 20)}...`);
+        return callGPTWithMessages(messages, `REPL: ${userMessage.substring(0, 20)}...`, {
+            maxTokens: RLM_CONFIG.maxOutputTokens
+        });
     };
 
     // Set up progress callback if we have a thinking ID
@@ -2814,6 +3212,7 @@ async function chatWithREPL(userMessage, thinkingId = null) {
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: result.response });
+    recordSignalMemory(userMessage, result.response);
     updateContextGauge();
 
     // Log REPL metadata for debugging
@@ -2844,7 +3243,9 @@ async function chatWithRLM(userMessage, thinkingId = null) {
             messages.splice(1, 0, ...recentHistory);
         }
 
-        return callGPTWithMessages(messages, `RLM: ${userMessage.substring(0, 20)}...`);
+        return callGPTWithMessages(messages, `RLM: ${userMessage.substring(0, 20)}...`, {
+            maxTokens: RLM_CONFIG.maxOutputTokens
+        });
     };
 
     // Set up progress callback if we have a thinking ID
@@ -2884,6 +3285,7 @@ async function chatWithRLM(userMessage, thinkingId = null) {
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: result.response });
+    recordSignalMemory(userMessage, result.response);
 
     // Log RLM metadata for debugging
     if (result.metadata) {
@@ -2924,6 +3326,7 @@ async function chatWithAgentsLegacy(userMessage, streamHandlers = null) {
     // Store in history
     state.chatHistory.push({ role: 'user', content: userMessage });
     state.chatHistory.push({ role: 'assistant', content: response });
+    recordSignalMemory(userMessage, response);
     updateContextGauge();
 
     return response;
@@ -3280,6 +3683,7 @@ function removeThinkingIndicator(id) {
 
 function resetChatHistory() {
     state.chatHistory = [];
+    resetSignalMemory();
     elements.chatMessages.innerHTML = `
         <div class="chat-welcome">
             <div class="chat-welcome-icon">🤖</div>
@@ -3548,9 +3952,10 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
     throw finalError;
 }
 
-async function callGPTWithMessages(messages, callName = 'Chat Query') {
+async function callGPTWithMessages(messages, callName = 'Chat Query', options = {}) {
     const model = state.settings.model;
     const effort = state.settings.effort;
+    const { maxTokens = null } = options;
     
     let lastError = null;
     let retryAttempt = 0;
@@ -3567,7 +3972,7 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${state.apiKey}`
                 },
-                body: JSON.stringify(buildAPIRequestBody(messages))
+                body: JSON.stringify(buildAPIRequestBody(messages, maxTokens))
             });
 
             // Calculate response time
@@ -3662,10 +4067,11 @@ async function callGPTWithMessages(messages, callName = 'Chat Query') {
     throw finalError;
 }
 
-async function callGPTWithMessagesStream(messages, callName = 'Chat Query', streamHandlers = {}) {
+async function callGPTWithMessagesStream(messages, callName = 'Chat Query', streamHandlers = {}, options = {}) {
     const model = state.settings.model;
     const effort = state.settings.effort;
     const { onStart, onToken, onComplete } = streamHandlers || {};
+    const { maxTokens = null } = options;
     let lastError = null;
     let retryAttempt = 0;
     const maxRetries = 3;
@@ -3673,7 +4079,7 @@ async function callGPTWithMessagesStream(messages, callName = 'Chat Query', stre
     while (retryAttempt < maxRetries) {
         try {
             const startTime = performance.now();
-            const requestBody = buildAPIRequestBody(messages);
+            const requestBody = buildAPIRequestBody(messages, maxTokens);
             requestBody.stream = true;
             requestBody.stream_options = { include_usage: true };
 
