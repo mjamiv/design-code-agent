@@ -586,6 +586,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
             lastContextTokens: contextTokens,
             lastUpdatedAt: new Date().toISOString()
         };
+        this._checkFocusBudgetTrigger(promptEstimate);
     }
 
     async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic') {
@@ -1151,12 +1152,13 @@ Be concise and focus only on information relevant to the question.`;
             return;
         }
 
+        const previousEstimate = this.focusTracker.lastTokenEstimate || 0;
         this.focusTracker.lastTokenEstimate = tokenEstimate;
         if (!this.config.focusTokenBudget) {
             return;
         }
         const threshold = this.config.focusTokenBudget * this.config.focusBudgetThreshold;
-        if (tokenEstimate >= threshold) {
+        if (tokenEstimate >= threshold && previousEstimate < threshold) {
             this._appendFocusEvent(
                 `Prompt estimate ${tokenEstimate} tokens exceeded budget threshold ${threshold}.`,
                 { trigger: 'budget_pressure' }
