@@ -276,10 +276,12 @@ export class MemoryStore {
             const recencyScore = this._scoreRecency(slice.timestamp) * 1.5;
             const importanceScore = (slice.importance_score || 0) * 1.2;
             const keywordScore = this._scoreKeywordMatch(slice.text, queryKeywords);
+            const redundancyPenalty = Math.min(2, (slice.retrieval_count || 0) * 0.15);
 
             return {
                 ...slice,
-                _score: tagScore + entityScore + recencyScore + importanceScore + keywordScore
+                _score: tagScore + entityScore + recencyScore + importanceScore + keywordScore - redundancyPenalty,
+                _redundancyPenalty: redundancyPenalty
             };
         });
 

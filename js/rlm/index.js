@@ -176,6 +176,8 @@ export class RLMPipeline {
             lastTrimmed: false,
             lastTrimmedTokens: 0,
             lastContextTokens: 0,
+            lastSwmFallbackUsed: false,
+            lastFallbackReason: null,
             lastUpdatedAt: null
         };
     }
@@ -318,7 +320,13 @@ If the information is not available in the provided context, say so briefly.`;
                 ? `Context:\n${contextSlice}\n\nQuestion: ${query}`
                 : `Question: ${query}`;
 
-            const response = await this._currentLlmCall(systemPrompt, userPrompt, this._currentContext);
+            const response = await this._callWithPromptGuardrails(
+                this._currentLlmCall,
+                systemPrompt,
+                userPrompt,
+                this._currentContext,
+                'sub-lm'
+            );
             return response;
             
         } catch (error) {
@@ -412,9 +420,10 @@ If the information is not available in the provided context, say so briefly.`;
             // Step 2: Execute sub-queries
             console.log('[RLM] Step 2: Executing sub-queries...');
             this._emitProgress(`Executing ${decomposition.subQueries.length} sub-queries in parallel`, 'execute');
+            const guardedSubQueryCall = this._wrapLLMCall(llmCall);
             const executionResult = await this.executor.execute(
                 decomposition,
-                this._wrapLLMCall(llmCall),
+                guardedSubQueryCall,
                 context
             );
 
@@ -434,10 +443,17 @@ If the information is not available in the provided context, say so briefly.`;
             // Step 3: Aggregate results
             console.log('[RLM] Step 3: Aggregating results...');
             this._emitProgress('Synthesizing results via LLM aggregation', 'aggregate');
+            const guardedAggregationCall = (systemPrompt, userPrompt, callContext) => this._callWithPromptGuardrails(
+                llmCall,
+                systemPrompt,
+                userPrompt,
+                callContext,
+                'aggregate'
+            );
             const aggregation = await this.aggregator.aggregate(
                 executionResult,
                 decomposition,
-                this._wrapLLMCall(llmCall),
+                guardedAggregationCall,
                 context
             );
             this._appendFocusEvent('Aggregated sub-query results into final response.', { step: 'aggregate' });
@@ -576,7 +592,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
         return `${text.slice(0, Math.max(0, maxChars - 3))}...`;
     }
 
-    _recordGuardrail(mode, promptEstimate, budget, trimmed, trimmedTokens, contextTokens) {
+    _recordGuardrail(mode, promptEstimate, budget, trimmed, trimmedTokens, contextTokens, metadata = {}) {
         this.guardrails = {
             lastPromptEstimate: promptEstimate,
             lastBudget: budget,
@@ -584,12 +600,14 @@ Use the following meeting data to answer questions accurately and comprehensivel
             lastTrimmed: trimmed,
             lastTrimmedTokens: trimmedTokens,
             lastContextTokens: contextTokens,
+            lastSwmFallbackUsed: Boolean(metadata.swmFallbackUsed),
+            lastFallbackReason: metadata.fallbackReason || null,
             lastUpdatedAt: new Date().toISOString()
         };
         this._checkFocusBudgetTrigger(promptEstimate);
     }
 
-    async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic') {
+    async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic', metadata = {}) {
         const guardrail = this._getPromptBudget();
         const systemTokens = this._estimateTokens(systemPrompt);
         const userTokens = this._estimateTokens(userPrompt);
@@ -607,7 +625,15 @@ Use the following meeting data to answer questions accurately and comprehensivel
         }
 
         const promptEstimate = systemTokens + this._estimateTokens(finalUserPrompt);
-        this._recordGuardrail(mode, promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, userTokens);
+        this._recordGuardrail(
+            mode,
+            promptEstimate,
+            guardrail.maxInputTokens,
+            trimmed,
+            trimmedTokens,
+            userTokens,
+            metadata
+        );
 
         return llmCall(systemPrompt, finalUserPrompt, context);
     }
@@ -618,27 +644,62 @@ Use the following meeting data to answer questions accurately and comprehensivel
      */
     _wrapLLMCall(llmCall) {
         return async (subQuery, agentContext, context) => {
-            const { systemPrompt, userPrompt: baseUserPrompt } = this._buildSubQueryPrompts(subQuery, agentContext);
-            let userPrompt = baseUserPrompt;
+            const { systemPrompt } = this._buildSubQueryPrompts(subQuery, agentContext);
+            let userPrompt = '';
             const guardrail = this._getPromptBudget();
             const baseTokens = this._estimateTokens(this._buildSubQueryPrompts(subQuery, '').userPrompt)
                 + this._estimateTokens(systemPrompt);
             const contextTokens = this._estimateTokens(agentContext);
             let trimmed = false;
             let trimmedTokens = 0;
+            let fallbackUsed = false;
+            let finalContext = agentContext;
 
             if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
                 const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
                 if (contextTokens > availableForContext) {
-                    const trimmedContext = this._truncateToTokenBudget(agentContext, availableForContext);
-                    trimmedTokens = contextTokens - this._estimateTokens(trimmedContext);
-                    userPrompt = this._buildSubQueryPrompts(subQuery, trimmedContext).userPrompt;
+                    finalContext = this._truncateToTokenBudget(agentContext, availableForContext);
+                    trimmedTokens = contextTokens - this._estimateTokens(finalContext);
                     trimmed = true;
+                }
+                if (!finalContext) {
+                    const fallbackContext = this._buildSwmFallbackContext();
+                    if (fallbackContext && availableForContext > 0) {
+                        const fallbackTokens = this._estimateTokens(fallbackContext);
+                        finalContext = fallbackTokens > availableForContext
+                            ? this._truncateToTokenBudget(fallbackContext, availableForContext)
+                            : fallbackContext;
+                        fallbackUsed = true;
+                        const finalTokens = this._estimateTokens(finalContext);
+                        trimmedTokens = Math.max(trimmedTokens, contextTokens - finalTokens);
+                        trimmed = trimmed || fallbackTokens > availableForContext;
+                    }
                 }
             }
 
+            if (!finalContext) {
+                const fallbackContext = this._buildSwmFallbackContext();
+                if (fallbackContext) {
+                    finalContext = fallbackContext;
+                    fallbackUsed = true;
+                }
+            }
+
+            userPrompt = this._buildSubQueryPrompts(subQuery, finalContext).userPrompt;
+
             const promptEstimate = this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
-            this._recordGuardrail('subquery', promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, contextTokens);
+            this._recordGuardrail(
+                'subquery',
+                promptEstimate,
+                guardrail.maxInputTokens,
+                trimmed,
+                trimmedTokens,
+                this._estimateTokens(finalContext),
+                {
+                    swmFallbackUsed: fallbackUsed,
+                    fallbackReason: fallbackUsed ? 'context_trim' : null
+                }
+            );
 
             return llmCall(systemPrompt, userPrompt, context);
         };
@@ -655,39 +716,48 @@ Use the following meeting data to answer questions accurately and comprehensivel
         const guardrail = this._getPromptBudget();
         const { systemPrompt, userPrompt: baseUserPrompt } = this._buildLegacyPrompts(query, '');
         const baseTokens = this._estimateTokens(systemPrompt) + this._estimateTokens(baseUserPrompt);
-        const contextTokens = this._estimateTokens(combinedContext);
-        let trimmed = false;
-        let trimmedTokens = 0;
-
         if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
             const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+            const contextTokens = this._estimateTokens(combinedContext);
             if (contextTokens > availableForContext) {
                 const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
                     preferredLevel: 'standard'
                 });
                 combinedContext = budgeted.context;
-                trimmedTokens = contextTokens - budgeted.tokenEstimate;
-                trimmed = true;
             }
         }
 
+        let swmFallbackUsed = false;
         if (!combinedContext) {
             const fallbackContext = this._buildSwmFallbackContext();
             if (fallbackContext) {
-                combinedContext = fallbackContext;
-                trimmed = true;
+                swmFallbackUsed = true;
+                if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+                    const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+                    combinedContext = this._truncateToTokenBudget(fallbackContext, availableForContext);
+                } else {
+                    combinedContext = fallbackContext;
+                }
             }
         }
 
         const { userPrompt } = this._buildLegacyPrompts(query, combinedContext);
-        const promptEstimate = this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
-        this._recordGuardrail('legacy', promptEstimate, guardrail.maxInputTokens, trimmed, trimmedTokens, contextTokens);
 
         this._startFocusIfEnabled('Legacy pipeline', query);
         this._runShadowPromptBuild(query, context, 'legacy');
         this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'legacy' });
 
-        const response = await llmCall(systemPrompt, userPrompt, context);
+        const response = await this._callWithPromptGuardrails(
+            llmCall,
+            systemPrompt,
+            userPrompt,
+            context,
+            'legacy',
+            {
+                swmFallbackUsed,
+                fallbackReason: swmFallbackUsed ? 'overflow' : null
+            }
+        );
 
         const result = {
             success: true,
