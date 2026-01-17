@@ -67,11 +67,39 @@ const state = {
     urlContent: null // Stores fetched URL content
 };
 
+const GPT_52_MODEL = 'gpt-5.2-2025-12-11';
+
+function isCorsError(error) {
+    if (!error) {
+        return false;
+    }
+    return error.name === 'TypeError' && /failed to fetch|networkerror|load resource/i.test(error.message || '');
+}
+
+function buildCorsErrorMessage() {
+    return 'Browser blocked this request due to CORS. When running from GitHub Pages, you must route OpenAI API calls through your own backend/proxy so the response includes Access-Control-Allow-Origin.';
+}
+
+async function fetchOpenAI(url, options) {
+    try {
+        return await fetch(url, options);
+    } catch (error) {
+        if (isCorsError(error)) {
+            throw new Error(buildCorsErrorMessage());
+        }
+        throw error;
+    }
+}
+
 // ============================================
 // Pricing Configuration (per 1M tokens / per minute / per unit)
 // ============================================
 const PRICING = {
     'gpt-5.2': {
+        input: 1.75,   // $ per 1M input tokens
+        output: 14.00  // $ per 1M output tokens
+    },
+    'gpt-5.2-2025-12-11': {
         input: 1.75,   // $ per 1M input tokens
         output: 14.00  // $ per 1M output tokens
     },
@@ -990,14 +1018,14 @@ async function analyzeImageBasedPdf(pdf, totalPages) {
 // Image Analysis with Vision API
 // ============================================
 async function analyzeImageWithVision(base64Image) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchOpenAI('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${state.apiKey}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'gpt-5.2',
+            model: GPT_52_MODEL,
             messages: [
                 {
                     role: 'system',
@@ -1039,7 +1067,7 @@ async function analyzeImageWithVision(base64Image) {
     }
     currentMetrics.apiCalls.push({
         endpoint: 'chat/completions (vision)',
-        model: 'gpt-5.2',
+        model: GPT_52_MODEL,
         tokens: data.usage?.total_tokens || 0
     });
 
@@ -1169,7 +1197,7 @@ async function startAnalysis() {
         state.exportMeta.processing.analysis = {
             ...state.exportMeta.processing.analysis,
             ...analysisMeta,
-            model: 'gpt-5.2',
+            model: GPT_52_MODEL,
             completedAt: new Date().toISOString(),
             durationMs: Math.round(performance.now() - analysisStartMs)
         };
@@ -1296,7 +1324,7 @@ async function transcribeAudio(file) {
         formData.append('file', file);
         formData.append('model', 'whisper-1');
 
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        const response = await fetchOpenAI('https://api.openai.com/v1/audio/transcriptions', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${state.apiKey}`
@@ -1337,14 +1365,14 @@ async function callChatAPI(systemPrompt, userContent, callName = 'API Call', use
     }
 
     const result = await callAPIWithRetry(async () => {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const response = await fetchOpenAI('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${state.apiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: 'gpt-5.2',
+                model: GPT_52_MODEL,
                 temperature: 0,
                 messages: [
                     { role: 'system', content: systemPrompt },
@@ -1368,7 +1396,7 @@ async function callChatAPI(systemPrompt, userContent, callName = 'API Call', use
             currentMetrics.gptOutputTokens += data.usage.completion_tokens || 0;
             currentMetrics.apiCalls.push({
                 name: callName,
-                model: 'gpt-5.2',
+                model: GPT_52_MODEL,
                 inputTokens: data.usage.prompt_tokens || 0,
                 outputTokens: data.usage.completion_tokens || 0
             });
@@ -1477,8 +1505,8 @@ async function analyzeSentiment(text) {
 // ============================================
 function calculateMetrics() {
     const whisperCost = currentMetrics.whisperMinutes * PRICING['whisper-1'].perMinute;
-    const gptInputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING['gpt-5.2'].input;
-    const gptOutputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING['gpt-5.2'].output;
+    const gptInputCost = (currentMetrics.gptInputTokens / 1000000) * PRICING[GPT_52_MODEL].input;
+    const gptOutputCost = (currentMetrics.gptOutputTokens / 1000000) * PRICING[GPT_52_MODEL].output;
     const ttsCost = (currentMetrics.ttsCharacters / 1000) * PRICING['gpt-4o-mini-tts'].perKChars;
     const imageInputCost = (currentMetrics.imageInputTokens / 1000000) * PRICING['gpt-image-1.5'].input;
     const imageOutputCost = (currentMetrics.imageOutputTokens / 1000000) * PRICING['gpt-image-1.5'].output;
@@ -2939,7 +2967,7 @@ Sentiment: ${state.results.sentiment}`;
 }
 
 async function textToSpeech(text, voice = 'nova') {
-    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+    const response = await fetchOpenAI('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${state.apiKey}`,
@@ -3055,7 +3083,7 @@ CRITICAL DESIGN REQUIREMENTS:
 }
 
 async function generateImage(prompt) {
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
+    const response = await fetchOpenAI('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${state.apiKey}`,
@@ -3317,7 +3345,7 @@ async function sendChatMessage() {
         state.chatHistory.push({
             role: 'assistant',
             content: response,
-            model: 'gpt-5.2',
+            model: GPT_52_MODEL,
             timestamp: new Date().toISOString()
         });
         
@@ -3376,14 +3404,14 @@ async function chatWithData(context, history) {
         })) // Keep last 10 messages to avoid token limits
     ];
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchOpenAI('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${state.apiKey}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: 'gpt-5.2',
+            model: GPT_52_MODEL,
             messages: messages,
             max_completion_tokens: 1000,
             temperature: 0.7
@@ -3403,7 +3431,7 @@ async function chatWithData(context, history) {
     currentMetrics.gptOutputTokens += usage.completion_tokens || 0;
     currentMetrics.apiCalls.push({
         name: 'Chat Query',
-        model: 'gpt-5.2',
+        model: GPT_52_MODEL,
         inputTokens: usage.prompt_tokens || 0,
         outputTokens: usage.completion_tokens || 0
     });
@@ -3790,7 +3818,7 @@ function buildExportPayload(agentName, now, readableDate) {
             actionItems: results.actionItems || '',
             sentiment: results.sentiment || '',
             transcript,
-            model: 'gpt-5.2'
+            model: GPT_52_MODEL
         },
         kpis: {
             wordsAnalyzed: wordCount,
