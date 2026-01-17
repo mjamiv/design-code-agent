@@ -756,7 +756,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             if (this.config.enableRetrievalPrompt && this.memoryStore) {
                 const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
-                const retrievalData = this._buildRetrievalPromptContext(queryText, agentContext, {
+                const retrievalData = this._buildRetrievalPromptContext(subQuery, agentContext, {
                     maxInputTokens: availableForContext
                 });
                 finalContext = retrievalData.contextText;
