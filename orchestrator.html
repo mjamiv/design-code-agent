@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=60">
+    <link rel="stylesheet" href="css/styles.css?v=61">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -80,10 +80,11 @@
             <!-- Upload Zone -->
             <div class="upload-area">
                 <input type="file" id="agent-files" class="sr-only" accept="*/*" multiple>
-                <label for="agent-files" class="upload-zone-compact" id="agents-drop-zone" role="button" tabindex="0">
+                <!-- Note: Removed for="agent-files" to prevent double-triggering with JS click handler -->
+                <div class="upload-zone-compact" id="agents-drop-zone" role="button" tabindex="0" aria-label="Add Agent Files">
                     <span class="upload-icon-small">➕</span>
                     <span>Add Agent Files</span>
-                </label>
+                </div>
             </div>
 
             <!-- Knowledge Base Container -->
@@ -651,9 +652,12 @@
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
+        // Fallback handlers only activate if the main module fails to load
+        // This provides basic functionality as a safety net
         (function () {
             function setupFallbackHandlers() {
-                if (window.__orchestratorFallbackInitialized) {
+                // Don't initialize if module already loaded or fallback already ran
+                if (window.__orchestratorInitialized || window.__orchestratorFallbackInitialized) {
                     return;
                 }
 
@@ -663,8 +667,11 @@
                 const agentsDropZone = document.getElementById('agents-drop-zone');
 
                 if (!apiKeyInput || !saveKeyBtn || !agentFilesInput || !agentsDropZone) {
+                    console.warn('[Fallback] Required elements not found, skipping fallback setup');
                     return;
                 }
+
+                console.warn('[Fallback] Module did not initialize in time, activating fallback handlers');
 
                 const originalSaveText = saveKeyBtn.textContent;
                 const saveApiKeyFallback = () => {
@@ -708,16 +715,17 @@
                 window.__orchestratorFallbackInitialized = true;
             }
 
+            // Wait longer before fallback to give module more time to load
             window.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => {
                     if (!window.__orchestratorInitialized) {
                         setupFallbackHandlers();
                     }
-                }, 800);
+                }, 1500);
             });
         })();
     </script>
-    <script src="js/orchestrator.js?v=33" type="module"></script>
+    <script src="js/orchestrator.js?v=34" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>
