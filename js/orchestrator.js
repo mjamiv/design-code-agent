@@ -21,6 +21,9 @@ const rlmPipeline = getRLMPipeline();
 // State Management
 // ============================================
 
+const GPT_52_MODEL = 'gpt-5.2-2025-12-11';
+const GPT_52_ALIASES = new Set(['gpt-5.2', GPT_52_MODEL]);
+
 const state = {
     apiKey: '',
     agents: [],  // In-memory storage (session-only)
@@ -40,8 +43,8 @@ const state = {
     promptCounter: 0,
     isProcessing: false,
     settings: {
-        model: 'gpt-5.2',      // 'gpt-5.2', 'gpt-5-mini', or 'gpt-5-nano'
-        effort: 'none',        // 'none', 'low', 'medium', 'high' (only for gpt-5.2) - default 'none' for compatibility
+        model: GPT_52_MODEL,      // 'gpt-5.2-2025-12-11', 'gpt-5-mini', or 'gpt-5-nano'
+        effort: 'none',        // 'none', 'low', 'medium', 'high' (only for GPT-5.2) - default 'none' for compatibility
         processingMode: 'rlm-hybrid', // 'direct', 'rlm-swm', 'rlm-hybrid'
         useRLM: true,          // Enable/disable RLM processing
         rlmAuto: false,        // Auto-route RLM only for ambiguous prompts
@@ -82,13 +85,15 @@ const PROCESSING_MODE_CONFIG = {
 
 // Model pricing (per 1M tokens) - Standard tier
 const PRICING = {
-    'gpt-5.2': { input: 1.75, output: 14.00 },      // Full reasoning model
+    'gpt-5.2': { input: 1.75, output: 14.00 },      // Full reasoning model (legacy alias)
+    'gpt-5.2-2025-12-11': { input: 1.75, output: 14.00 }, // Full reasoning model (versioned)
     'gpt-5-mini': { input: 0.25, output: 2.00 },    // Fast, cost-efficient
     'gpt-5-nano': { input: 0.05, output: 0.40 }     // Fastest, cheapest
 };
 
 const MODEL_DISPLAY_NAMES = {
     'gpt-5.2': 'GPT-5.2',
+    'gpt-5.2-2025-12-11': 'GPT-5.2',
     'gpt-5-mini': 'GPT-5-mini',
     'gpt-5-nano': 'GPT-5-nano'
 };
@@ -98,6 +103,7 @@ const fallbackNoticeKeys = new Set();
 // Model-specific max completion token limits (model caps)
 const MODEL_TOKEN_LIMITS = {
     'gpt-5.2': 128000,
+    'gpt-5.2-2025-12-11': 128000,
     'gpt-5-mini': 128000,
     'gpt-5-nano': 128000  // Updated max output tokens per model spec
 };
@@ -105,6 +111,7 @@ const MODEL_TOKEN_LIMITS = {
 // Estimated context window sizes for visualization (tokens)
 const MODEL_CONTEXT_WINDOWS = {
     'gpt-5.2': 400000,
+    'gpt-5.2-2025-12-11': 400000,
     'gpt-5-mini': 400000,
     'gpt-5-nano': 400000
 };
@@ -221,6 +228,10 @@ function formatModelName(model) {
     return MODEL_DISPLAY_NAMES[model] || model || 'unknown';
 }
 
+function isGpt52Model(model) {
+    return GPT_52_ALIASES.has(model);
+}
+
 function recordModelFallback(requestedModel, actualModel, callName = 'API Call') {
     if (!requestedModel || !actualModel || requestedModel === actualModel) {
         return;
@@ -266,7 +277,7 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         mode: mode,  // 'direct', 'rlm', or 'repl'
         model: state.settings.model,
         requestedModel: state.settings.model,
-        effort: state.settings.model === 'gpt-5.2' ? state.settings.effort : 'N/A',
+        effort: isGpt52Model(state.settings.model) ? state.settings.effort : 'N/A',
         startTime: performance.now(),
         subCalls: [],  // Individual API calls within this group
         tokens: { input: 0, output: 0, total: 0 },
@@ -386,7 +397,7 @@ function updateGroupModel(group) {
 
     if (group.actualModels.length === 1) {
         group.model = group.actualModels[0];
-        if (group.model !== 'gpt-5.2') {
+        if (!isGpt52Model(group.model)) {
             group.effort = 'N/A';
         }
     } else {
@@ -882,6 +893,15 @@ function loadSettings() {
                 saveSettings(); // Save the migrated settings
             }
 
+            if (!settingsVersion || settingsVersion < '3') {
+                if (state.settings.model === 'gpt-5.2') {
+                    state.settings.model = GPT_52_MODEL;
+                    console.log('[Settings] Migrated: Updated GPT-5.2 model to versioned ID for API compatibility');
+                }
+                localStorage.setItem('northstar.LM_settings_v', '3');
+                saveSettings();
+            }
+
             console.log('[Settings] Loaded from localStorage:', state.settings);
         }
     } catch (error) {
@@ -987,7 +1007,7 @@ function applyRlmFeatureFlags() {
 function updateEffortVisibility() {
     if (elements.effortGroup) {
         // Only show effort for GPT-5.2 (reasoning model), not for mini
-        const showEffort = state.settings.model === 'gpt-5.2';
+    const showEffort = isGpt52Model(state.settings.model);
         elements.effortGroup.style.display = showEffort ? 'flex' : 'none';
     }
 }
@@ -3519,7 +3539,7 @@ async function sendChatMessage() {
         const useREPL = rlmEnabled && rlmPipeline.shouldUseREPL && rlmPipeline.shouldUseREPL(message, { auto: rlmAuto });
         const useRLM = rlmEnabled && !useREPL && rlmPipeline.shouldUseRLM(message, { auto: rlmAuto });
         const activeAgentCount = state.agents.filter(a => a.enabled).length;
-        const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
+        const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5.2-2025-12-11': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
         const modelName = modelNames[state.settings.model] || 'GPT-5.2';
 
         // Determine processing mode for metrics
@@ -3593,7 +3613,7 @@ async function sendChatMessage() {
         
         // Enhanced error messages with model-specific guidance
         let errorMessage = `Sorry, I encountered an error: ${error.message}`;
-        const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
+        const modelNames = { 'gpt-5.2': 'GPT-5.2', 'gpt-5.2-2025-12-11': 'GPT-5.2', 'gpt-5-mini': 'GPT-5-mini', 'gpt-5-nano': 'GPT-5-nano' };
         const modelName = modelNames[state.settings.model] || state.settings.model;
         
         // Provide helpful guidance based on error type
@@ -4280,7 +4300,7 @@ function buildAPIRequestBody(messages, maxTokens = null) {
     // Only GPT-5.2 supports logprobs for confidence tracking
     // IMPORTANT: logprobs only work when effort is 'none' (not supported with reasoning_effort)
     // Other models (gpt-5-mini, gpt-5-nano) may not support this parameter
-    if (model === 'gpt-5.2') {
+    if (isGpt52Model(model)) {
         const effort = state.settings.effort || 'none';
 
         if (effort !== 'none') {
@@ -4324,7 +4344,7 @@ function buildCallDataFromResponse({
     const inputTokens = data.usage.prompt_tokens || 0;
     const outputTokens = data.usage.completion_tokens || 0;
 
-    const pricing = PRICING[actualModel] || PRICING[requestedModel] || PRICING['gpt-5.2'];
+    const pricing = PRICING[actualModel] || PRICING[requestedModel] || PRICING[GPT_52_MODEL];
     const inputCost = (inputTokens / 1000000) * pricing.input;
     const outputCost = (outputTokens / 1000000) * pricing.output;
     const callCost = inputCost + outputCost;
@@ -4340,7 +4360,7 @@ function buildCallDataFromResponse({
         requestedModel,
         actualModel,
         modelFallback,
-        effort: actualModel === 'gpt-5.2' ? effort : 'N/A',
+        effort: isGpt52Model(actualModel) ? effort : 'N/A',
         tokens: {
             input: inputTokens,
             output: outputTokens,
@@ -5314,7 +5334,7 @@ function buildPromptLogsHtml(promptLogs) {
         const modeLabel = modeLabels[log.mode] || 'Direct';
         
         // Effort level display (only for GPT-5.2)
-        const effortDisplay = log.model === 'gpt-5.2' && log.effort && log.effort !== 'none' && log.effort !== 'N/A'
+        const effortDisplay = isGpt52Model(log.model) && log.effort && log.effort !== 'none' && log.effort !== 'N/A'
             ? `<span class="effort-badge effort-${log.effort}">${log.effort}</span>`
             : '';
         
@@ -5394,7 +5414,7 @@ function buildPromptLogsHtml(promptLogs) {
                     <span class="log-label">Cache:</span>
                     <span class="log-value">Hit (no API calls)</span>
                 </div>` : ''}
-                ${log.model === 'gpt-5.2' ? `
+                ${isGpt52Model(log.model) ? `
                 <div class="prompt-log-row">
                     <span class="log-label">🧠 Effort:</span>
                     <span class="log-value effort-display ${log.effort && log.effort !== 'none' ? 'effort-' + log.effort : 'effort-none'}">
