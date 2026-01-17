@@ -203,7 +203,7 @@ Per prompt:
 - Add retrieval pipeline and prompt assembler.
 - Run in shadow: build prompt but do not send to model.
 - Log diffs: what would have been retrieved.
-- **Progress update:** Stage B scoring now applies a redundancy penalty to down-rank frequently retrieved slices (see `js/rlm/memory-store.js`). Orchestrator UI toggles now reflect the shadow retrieval state and should remain scoped to `orchestrator.html` (not Agent Builder).
+- **Progress update:** Stage B scoring now applies a redundancy penalty to down-rank frequently retrieved slices (see `js/rlm/memory-store.js`). The query decomposer now emits intent, data preference, and format constraints to inform routing, and the RLM pipeline can short-circuit to direct retrieval when slices are already tight (see `js/rlm/query-decomposer.js`, `js/rlm/index.js`). Orchestrator UI toggles reflect the shadow retrieval state and should remain scoped to `orchestrator.html` (not Agent Builder).
 - **Success criteria:** retrieval logs populated; latency stable.
 
 ### Milestone 3 — Focus Episodes (Shadow then gated)
@@ -403,7 +403,7 @@ Per prompt:
    - Format-constrained summarization (e.g., “6 bullets per topic”) → direct with strict template or RLM with capped scope + paging.
 
 2) **Implement routing layer in decomposer**
-   - Extend query classifier to emit `intent`, `format_constraints`, and `data_preference`.
+   - ✅ Extend query classifier to emit `intent`, `format_constraints`, and `data_preference`.
    - Map classifier outputs to retrieval presets (structured vs slices vs hybrid).
 
 3) **Prompt builder alignment**
@@ -424,8 +424,8 @@ Per prompt:
    - Reserve GPT-5.2 for aggregation/synthesis.
 
 3) **Early-stop heuristics**
-   - If retrieval returns ≤ N slices, skip full multi-call pipeline.
-   - Short-circuit to direct synthesis on low-variance answers.
+   - ✅ If retrieval returns ≤ N slices, skip full multi-call pipeline.
+   - ✅ Short-circuit to direct synthesis on low-variance answers.
 
 **Exit criteria:** lower latency telemetry without quality regressions on eval set.
 
@@ -436,6 +436,7 @@ Per prompt:
    - Coverage, correctness, formatting compliance, citations to meeting sources.
 
 2) **Add eval runner**
+   - ✅ Eval harness scaffold added (see `js/rlm/eval-harness.js`).
    - Manual scoring option + automated judge pass for regression checks.
 
 3) **Track key metrics**
@@ -492,7 +493,7 @@ Per prompt:
 ## 15) Session Update (End-of-Session Required)
 
 **Planned Updates (Next Session):**
-- Implement intent-based query routing with structured payload preferences.
-- Add early-stop heuristics and model tiering controls in RLM pipeline.
-- Draft eval harness rubric and scoring scaffold.
+- Map routing presets to structured payload vs transcript-heavy retrieval in prompt builder.
+- Add model tiering controls and telemetry for decomposer/aggregation calls.
+- Expand eval harness with rubric scoring + regression report output.
 - Update SWM retrieval Stage A/B with intent tag boosts.

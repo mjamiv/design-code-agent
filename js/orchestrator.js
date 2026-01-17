@@ -1063,11 +1063,24 @@ function setupEventListeners() {
     // API Key
     elements.toggleKeyBtn.addEventListener('click', toggleApiKeyVisibility);
     elements.saveKeyBtn.addEventListener('click', saveApiKey);
+    elements.apiKeyInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            saveApiKey();
+        }
+    });
     if (elements.expandKeyBtn) {
         elements.expandKeyBtn.addEventListener('click', expandApiKeySection);
     }
 
     // Agent Upload
+    elements.agentsDropZone.addEventListener('click', () => elements.agentFilesInput.click());
+    elements.agentsDropZone.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            elements.agentFilesInput.click();
+        }
+    });
     elements.agentsDropZone.addEventListener('dragover', handleDragOver);
     elements.agentsDropZone.addEventListener('dragleave', handleDragLeave);
     elements.agentsDropZone.addEventListener('drop', handleDrop);
@@ -1385,7 +1398,12 @@ function loadApiKey() {
 
 function saveApiKey() {
     const key = elements.apiKeyInput.value.trim();
-    if (key) {
+    if (!key) {
+        showError('Please enter an API key before saving.');
+        return;
+    }
+
+    try {
         state.apiKey = key;
         localStorage.setItem('northstar.LM_api_key', key);
         showTemporaryMessage(elements.saveKeyBtn, 'Saved!', 'Save');
@@ -1393,6 +1411,9 @@ function saveApiKey() {
         setTimeout(() => {
             collapseApiKeySection();
         }, 1000);
+    } catch (error) {
+        console.warn('[Settings] Failed to save API key:', error.message);
+        showError('Failed to save API key. Check browser storage permissions and try again.');
     }
 }
 
