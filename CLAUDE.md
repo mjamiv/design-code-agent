@@ -14,9 +14,23 @@ Features include multi-meeting orchestration, agent export/import, image OCR wit
 
 ## Recent Updates
 
-- Agent export now embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) with a stable agent ID.
-- Agent import prefers the embedded payload for restoring session metadata; the Orchestrator builds `extendedContext` from a sanitized payload (base64 stripped) for richer search/context/REPL usage.
-- GitHub Pages deployment now copies optional asset folders (`images/`, `flowcharts/`, `static/`) when present to avoid build failures.
+### January 2026
+- **Bug Fixes:**
+  - Fixed orchestrator file upload button double-trigger issue by removing conflicting `for` attribute and JS click handler
+  - Fixed JavaScript syntax error: nullish coalescing (`??`) mixed with logical OR (`||`) requires parentheses
+  - Added fallback handlers with longer timeout (1500ms) for slower module loading
+  - Improved accessibility with ARIA labels and `role="button"` on upload zone
+
+- **RLM Optimizations:**
+  - Query decomposer now emits `intent`, `dataPreference`, and `formatConstraints` for intelligent routing
+  - Early-stop heuristics skip full RLM pipeline when retrieval returns few slices
+  - Eval harness scaffold added for quality benchmarking (`js/rlm/eval-harness.js`)
+  - Stage B retrieval scoring applies redundancy penalty to down-rank frequently retrieved slices
+
+- **Core Features:**
+  - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) with a stable agent ID
+  - Agent import prefers the embedded payload for restoring session metadata; the Orchestrator builds `extendedContext` from a sanitized payload (base64 stripped) for richer search/context/REPL usage
+  - GitHub Pages deployment now copies optional asset folders (`images/`, `flowcharts/`, `static/`) when present to avoid build failures
 
 ## Architecture
 
@@ -422,13 +436,17 @@ flowchart TB
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| **ContextStore** | `context-store.js` | Stores agent data as queryable variables with search indexing |
-| **QueryDecomposer** | `query-decomposer.js` | Analyzes queries, classifies intent, generates sub-queries |
-| **SubExecutor** | `sub-executor.js` | Runs sub-queries in parallel with concurrency control |
-| **Aggregator** | `aggregator.js` | Merges sub-responses into coherent final answer |
 | **RLMPipeline** | `index.js` | Main orchestration class tying all components together |
+| **ContextStore** | `context-store.js` | Stores agent data as queryable variables with search indexing |
+| **QueryDecomposer** | `query-decomposer.js` | Analyzes queries, classifies intent/dataPreference/formatConstraints, generates sub-queries |
+| **SubExecutor** | `sub-executor.js` | Runs sub-queries in parallel with concurrency control |
+| **Aggregator** | `aggregator.js` | Merges sub-responses into coherent final answer with early-stop detection |
+| **MemoryStore** | `memory-store.js` | Signal-weighted memory with focus episodes, Stage A/B retrieval scoring |
+| **PromptBuilder** | `prompt-builder.js` | Assembles prompts with token budgeting (state block + working window + retrieved slices) |
+| **QueryCache** | `query-cache.js` | Caches query results with TTL and similarity matching |
+| **EvalHarness** | `eval-harness.js` | Quality benchmarking scaffold for rubric-based evaluation |
 | **REPLEnvironment** | `repl-environment.js` | Manages Pyodide Web Worker for Python code execution |
-| **REPLWorker** | `repl-worker.js` | Web Worker running sandboxed Python via Pyodide |
+| **REPLWorker** | `repl-worker.js` | Web Worker running sandboxed Python via Pyodide with sync sub_lm |
 | **CodeGenerator** | `code-generator.js` | LLM prompts for Python code generation and output parsing |
 
 ### Query Strategies
@@ -586,10 +604,17 @@ else:
 
 ### Future Enhancements
 
-Remaining items for optimization:
-- Result caching for repeated queries
-- Token optimization and batching
-- Progress indicators during sub_lm execution
+Completed optimizations:
+- ✅ Query caching with TTL and similarity matching (`query-cache.js`)
+- ✅ Token budgeting and prompt guardrails
+- ✅ Progress indicators during query processing (train of thought display)
+- ✅ Intent-based routing with data preference classification
+- ✅ Early-stop heuristics for low-slice retrievals
+
+Remaining items:
+- Eval harness rubric scoring and regression reports
+- Model tiering (smaller models for decomposer/subtasks)
+- A/B testing framework for RLM vs Direct mode
 
 ## Data Flow: Agent Export/Import
 

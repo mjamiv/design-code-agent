@@ -13,12 +13,26 @@ northstar.LM consists of two main applications:
 
 ## Recent Updates
 
-- Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) alongside the markdown summary.
-- Imports now restore richer session state, and the Orchestrator consumes the embedded payload to enrich cross-meeting context without loading base64 blobs.
-- GitHub Pages deploy now copies optional asset folders when present (e.g., `images/`, `flowcharts/`, `static/`) to avoid build failures.
-- RLM now builds **signal-weighted chat history** (state block + working window + retrieved memory slices) to keep recursive prompts focused and within token budgets.
-- Hybrid focus + shadow prompting adds structured diagnostics: a compact focus window drives live reasoning while a parallel shadow prompt logs retrieval slices and guardrail telemetry without affecting user-facing outputs.
-- Orchestrator modes now let you choose between Direct chat, RLM with signal-weighted memory, or RLM with hybrid focus + shadow diagnostics.
+### January 2026
+- **Bug Fixes:**
+  - Fixed orchestrator file upload button double-trigger issue (dialog opening and immediately closing)
+  - Fixed JavaScript syntax error with nullish coalescing operator (`??`) mixed with logical OR (`||`)
+  - Added fallback handlers for orchestrator controls when module loading is delayed
+  - Improved accessibility with ARIA labels and keyboard navigation for upload zone
+
+- **RLM Optimizations:**
+  - Added intent-based query routing with data preference and format constraint classification
+  - Implemented early-stop heuristics to skip full pipeline when retrieval returns few slices
+  - Added eval harness scaffold for quality benchmarking (`js/rlm/eval-harness.js`)
+  - Stage B scoring now applies redundancy penalty to down-rank frequently retrieved slices
+
+- **Core Features:**
+  - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) alongside the markdown summary
+  - Imports now restore richer session state, and the Orchestrator consumes the embedded payload to enrich cross-meeting context without loading base64 blobs
+  - GitHub Pages deploy now copies optional asset folders when present (e.g., `images/`, `flowcharts/`, `static/`) to avoid build failures
+  - RLM now builds **signal-weighted chat history** (state block + working window + retrieved memory slices) to keep recursive prompts focused and within token budgets
+  - Hybrid focus + shadow prompting adds structured diagnostics: a compact focus window drives live reasoning while a parallel shadow prompt logs retrieval slices and guardrail telemetry without affecting user-facing outputs
+  - Orchestrator modes now let you choose between Direct chat, RLM with signal-weighted memory, or RLM with hybrid focus + shadow diagnostics
 
 ## Application Workflow
 

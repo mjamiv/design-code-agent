@@ -304,10 +304,15 @@ Per prompt:
 ---
 
 ## Next Actions (Continue Milestones)
-1) **Milestone 3 (Focus Episodes):** Gate Focus Episodes behind feature flags and verify summary quality on real traffic.  
-2) **Milestone 4 (Guardrails):** Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow.  
-3) **Milestone 5 (Instrumentation):** Add UI telemetry for shadow prompt and focus summaries to compare with direct mode.  
+1) **Milestone 3 (Focus Episodes):** ✅ Shadow mode implemented. Next: Gate Focus Episodes behind feature flags and verify summary quality on real traffic.
+2) **Milestone 4 (Guardrails):** ✅ Preflight estimator and auto-reduction implemented. Next: Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow.
+3) **Milestone 5 (Instrumentation):** Add UI telemetry for shadow prompt and focus summaries to compare with direct mode.
 4) **Milestone 6 (Evaluation):** Formal A/B with latency/cost dashboards; require eval-gated acceptance.
+
+**Bug Fixes Completed (2026-01-17):**
+- ✅ Orchestrator file upload button double-trigger fix
+- ✅ JavaScript syntax error fix (nullish coalescing with logical OR)
+- ✅ Fallback handlers with longer timeout for module loading
 
 ---
 
@@ -492,8 +497,27 @@ Per prompt:
 
 ## 15) Session Update (End-of-Session Required)
 
+### Session: 2026-01-17
+
+**Completed This Session:**
+- Fixed orchestrator file upload button double-trigger issue (removed conflicting `for` attribute)
+- Fixed JavaScript syntax error: nullish coalescing (`??`) mixed with logical OR (`||`) requires parentheses per ECMAScript spec
+- Added fallback handlers with longer timeout (1500ms) for slower module loading
+- Improved accessibility with ARIA labels and `role="button"` on upload zone
+- Updated README.md and CLAUDE.md with recent changes
+- Verified RLM components table reflects all 12 modules in `js/rlm/`
+
+**Current State:**
+- Milestones 1-2 complete (Data Model + SWM Capture, Retrieval + Prompt Builder shadow mode)
+- Milestone 3 (Focus Episodes) in progress - shadow mode implemented, gated persistence pending
+- Milestone 4 (Guardrails) partially complete - preflight estimator and auto-reduction implemented
+- Milestone 5-6 (Instrumentation + Evaluation) pending
+
 **Planned Updates (Next Session):**
-- Map routing presets to structured payload vs transcript-heavy retrieval in prompt builder.
-- Add model tiering controls and telemetry for decomposer/aggregation calls.
-- Expand eval harness with rubric scoring + regression report output.
-- Update SWM retrieval Stage A/B with intent tag boosts.
+- Gate Focus Episodes behind feature flags and verify summary quality on real traffic
+- Turn on prompt budgeting in live calls to actively trim retrieval K and avoid overflow
+- Add UI telemetry for shadow prompt and focus summaries to compare with direct mode
+- Map routing presets to structured payload vs transcript-heavy retrieval in prompt builder
+- Add model tiering controls and telemetry for decomposer/aggregation calls
+- Expand eval harness with rubric scoring + regression report output
+- Update SWM retrieval Stage A/B with intent tag boosts
