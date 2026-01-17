@@ -180,20 +180,15 @@
                         </select>
                         <p class="setting-help">Choose how the Orchestrator builds context and diagnostics for responses.</p>
                     </div>
+                    <div class="setting-section">
+                        <span class="setting-section-title">Core Orchestration (Managed by Processing Mode)</span>
+                        <p class="setting-section-help">These core toggles follow the mode above and stay on in the recommended hybrid setting.</p>
+                    </div>
                     <div class="setting-group setting-toggle">
                         <div class="setting-row">
                             <label for="rlm-toggle">RLM</label>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="rlm-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="rlm-auto-toggle">RLM Auto</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="rlm-auto-toggle" checked>
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>
@@ -230,16 +225,6 @@
                     </div>
                     <div class="setting-group setting-toggle">
                         <div class="setting-row">
-                            <label for="focus-episodes-toggle">Focus Episodes</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="focus-episodes-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Persists completed focus episodes into memory slices.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
                             <label for="prompt-budget-toggle">Prompt Guardrails</label>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="prompt-budget-toggle" checked>
@@ -247,6 +232,20 @@
                             </label>
                         </div>
                         <p class="setting-help">Caps prompt size and trims context to stay within budget.</p>
+                    </div>
+                    <div class="setting-section">
+                        <span class="setting-section-title">User Controls</span>
+                        <p class="setting-section-help">Optional toggles you can change without affecting the mode presets.</p>
+                    </div>
+                    <div class="setting-group setting-toggle">
+                        <div class="setting-row">
+                            <label for="focus-episodes-toggle">Focus Episodes</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="focus-episodes-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <p class="setting-help">Persists completed focus episodes into memory slices.</p>
                     </div>
                     <div class="setting-group setting-toggle">
                         <div class="setting-row">

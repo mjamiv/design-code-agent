@@ -48,7 +48,7 @@ const state = {
         enableShadowPrompt: true,
         enableRetrievalPrompt: true,
         enableFocusShadow: true,
-        enableFocusEpisodes: RLM_CONFIG.enableFocusEpisodes,
+        enableFocusEpisodes: true,
         enablePromptBudgeting: RLM_CONFIG.enablePromptBudgeting,
         showMemoryDebug: false
     }
@@ -860,6 +860,10 @@ function loadSettings() {
         if (savedSettings) {
             const parsed = JSON.parse(savedSettings);
             state.settings = { ...state.settings, ...parsed };
+            state.settings.enablePromptBudgeting = true;
+            if (typeof state.settings.enableFocusEpisodes !== 'boolean') {
+                state.settings.enableFocusEpisodes = true;
+            }
             if (!state.settings.processingMode) {
                 state.settings.processingMode = deriveProcessingMode(state.settings);
             }
@@ -941,9 +945,6 @@ function updateSettingsUI() {
 }
 
 function updateModeControlState() {
-    const mode = state.settings.processingMode;
-    const isHybrid = mode === 'rlm-hybrid';
-
     if (elements.rlmToggle) {
         elements.rlmToggle.disabled = true;
     }
@@ -960,7 +961,10 @@ function updateModeControlState() {
         elements.focusShadowToggle.disabled = true;
     }
     if (elements.focusEpisodesToggle) {
-        elements.focusEpisodesToggle.disabled = !(isHybrid && state.settings.enableFocusShadow);
+        elements.focusEpisodesToggle.disabled = !state.settings.enableFocusShadow;
+    }
+    if (elements.promptBudgetToggle) {
+        elements.promptBudgetToggle.disabled = true;
     }
 }
 

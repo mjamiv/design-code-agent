@@ -3911,6 +3911,29 @@ details[open] .about-toggle {
     letter-spacing: 0.05em;
 }
 
+.setting-section {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+}
+
+.setting-section-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.setting-section-help {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
 .setting-group.setting-toggle {
     padding: var(--space-xs) var(--space-sm);
     border-radius: var(--radius-md);
