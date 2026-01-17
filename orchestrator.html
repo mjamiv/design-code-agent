@@ -79,8 +79,8 @@
         <section class="knowledge-base-section">
             <!-- Upload Zone -->
             <div class="upload-area">
-                <input type="file" id="agent-files" accept="*/*" multiple hidden>
-                <label for="agent-files" class="upload-zone-compact" id="agents-drop-zone">
+                <input type="file" id="agent-files" class="sr-only" accept="*/*" multiple>
+                <label for="agent-files" class="upload-zone-compact" id="agents-drop-zone" role="button" tabindex="0">
                     <span class="upload-icon-small">➕</span>
                     <span>Add Agent Files</span>
                 </label>
@@ -650,7 +650,74 @@
 
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="js/orchestrator.js?v=32" type="module"></script>
+    <script>
+        (function () {
+            function setupFallbackHandlers() {
+                if (window.__orchestratorFallbackInitialized) {
+                    return;
+                }
+
+                const apiKeyInput = document.getElementById('api-key');
+                const saveKeyBtn = document.getElementById('save-key');
+                const agentFilesInput = document.getElementById('agent-files');
+                const agentsDropZone = document.getElementById('agents-drop-zone');
+
+                if (!apiKeyInput || !saveKeyBtn || !agentFilesInput || !agentsDropZone) {
+                    return;
+                }
+
+                const originalSaveText = saveKeyBtn.textContent;
+                const saveApiKeyFallback = () => {
+                    const key = apiKeyInput.value.trim();
+                    if (!key) {
+                        apiKeyInput.focus();
+                        return;
+                    }
+
+                    try {
+                        localStorage.setItem('northstar.LM_api_key', key);
+                        saveKeyBtn.textContent = 'Saved!';
+                        setTimeout(() => {
+                            saveKeyBtn.textContent = originalSaveText;
+                        }, 1200);
+                    } catch (error) {
+                        console.warn('[Fallback] Failed to save API key:', error);
+                        saveKeyBtn.textContent = 'Save failed';
+                        setTimeout(() => {
+                            saveKeyBtn.textContent = originalSaveText;
+                        }, 1600);
+                    }
+                };
+
+                saveKeyBtn.addEventListener('click', saveApiKeyFallback);
+                apiKeyInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        saveApiKeyFallback();
+                    }
+                });
+
+                agentsDropZone.addEventListener('click', () => agentFilesInput.click());
+                agentsDropZone.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        agentFilesInput.click();
+                    }
+                });
+
+                window.__orchestratorFallbackInitialized = true;
+            }
+
+            window.addEventListener('DOMContentLoaded', () => {
+                setTimeout(() => {
+                    if (!window.__orchestratorInitialized) {
+                        setupFallbackHandlers();
+                    }
+                }, 800);
+            });
+        })();
+    </script>
+    <script src="js/orchestrator.js?v=33" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>
