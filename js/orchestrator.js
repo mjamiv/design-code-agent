@@ -1716,21 +1716,24 @@ async function generateCrossInsights() {
     console.log('[generateCrossInsights] Starting...');
     const activeAgents = state.agents.filter(a => a.enabled);
     console.log('[generateCrossInsights] Active agents:', activeAgents.length);
-    
+
     if (activeAgents.length < 2 || !state.apiKey) {
         showError('Please enable at least 2 agents and enter your API key.');
         return;
     }
-    
+
     state.isProcessing = true;
     showButtonLoader(elements.generateInsightsBtn);
     updateButtonStates();
-    
+
+    // Start prompt group to aggregate all API calls for insights generation
+    startPromptGroup('Cross-Meeting Insights', false, 'direct');
+
     try {
         const combinedContext = buildCombinedContext();
         console.log('[generateCrossInsights] Combined context length:', combinedContext.length);
-        
-        const systemPrompt = `You are an expert business analyst specializing in meeting synthesis and strategic insights. 
+
+        const systemPrompt = `You are an expert business analyst specializing in meeting synthesis and strategic insights.
 You have been given data from multiple meetings and must identify cross-meeting patterns, themes, and actionable recommendations.
 
 Analyze the meetings holistically and provide insights in the following categories:
@@ -1746,7 +1749,12 @@ Each should be an array of strings (bullet points).`;
         console.log('[generateCrossInsights] Calling GPT API...');
         const response = await callGPT(systemPrompt, combinedContext, 'Cross-Meeting Insights');
         console.log('[generateCrossInsights] Got response, length:', response?.length);
-        
+
+        // Store response in active prompt group for metrics
+        if (activePromptGroup) {
+            activePromptGroup.response = response;
+        }
+
         // Parse JSON response
         let insights;
         try {
@@ -1782,6 +1790,9 @@ Each should be an array of strings (bullet points).`;
         console.error('[generateCrossInsights] Error:', error);
         showError(`Failed to generate insights: ${error.message}`);
     } finally {
+        // End prompt group and finalize metrics
+        endPromptGroup();
+
         state.isProcessing = false;
         hideButtonLoader(elements.generateInsightsBtn);
         updateButtonStates();
