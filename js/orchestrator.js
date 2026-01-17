@@ -4340,7 +4340,7 @@ function buildAPIRequestBody(messages, maxTokens = null, overrides = {}) {
     // IMPORTANT: logprobs only work when effort is 'none' (not supported with reasoning_effort)
     // Other models (gpt-5-mini, gpt-5-nano) may not support this parameter
     if (isGpt52Model(model)) {
-        const effort = overrides.effort ?? state.settings.effort || 'none';
+        const effort = (overrides.effort ?? state.settings.effort) || 'none';
 
         if (effort !== 'none') {
             // When using reasoning, temperature is NOT supported
