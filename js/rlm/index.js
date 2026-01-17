@@ -744,7 +744,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
             if (this.config.enableRetrievalPrompt && this.memoryStore) {
                 const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
-                const retrievalData = this._buildRetrievalPromptContext(subQuery, '', {
+                const retrievalData = this._buildRetrievalPromptContext(subQuery, agentContext, {
                     maxInputTokens: availableForContext
                 });
                 finalContext = retrievalData.contextText;
@@ -817,25 +817,25 @@ Use the following meeting data to answer questions accurately and comprehensivel
         const { systemPrompt, userPrompt: baseUserPrompt } = this._buildLegacyPrompts(query, '');
         const baseTokens = this._estimateTokens(systemPrompt) + this._estimateTokens(baseUserPrompt);
         let retrievalStats = null;
+        combinedContext = this.contextStore.getCombinedContext(agentIds, 'standard');
+        if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
+            const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
+            const contextTokens = this._estimateTokens(combinedContext);
+            if (contextTokens > availableForContext) {
+                const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
+                    preferredLevel: 'standard'
+                });
+                combinedContext = budgeted.context;
+            }
+        }
+
         if (this.config.enableRetrievalPrompt && this.memoryStore) {
             const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
-            const retrievalData = this._buildRetrievalPromptContext(query, '', {
+            const retrievalData = this._buildRetrievalPromptContext(query, combinedContext, {
                 maxInputTokens: availableForContext
             });
             combinedContext = retrievalData.contextText;
             retrievalStats = retrievalData.retrievalStats;
-        } else {
-            combinedContext = this.contextStore.getCombinedContext(agentIds, 'standard');
-            if (this.config.enablePromptBudgeting && guardrail.maxInputTokens > 0) {
-                const availableForContext = Math.max(0, guardrail.maxInputTokens - baseTokens);
-                const contextTokens = this._estimateTokens(combinedContext);
-                if (contextTokens > availableForContext) {
-                    const budgeted = this.contextStore.getCombinedContextWithBudget(agentIds, availableForContext, {
-                        preferredLevel: 'standard'
-                    });
-                    combinedContext = budgeted.context;
-                }
-            }
         }
 
         let swmFallbackUsed = false;
