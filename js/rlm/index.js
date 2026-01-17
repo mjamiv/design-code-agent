@@ -530,7 +530,18 @@ If the information is not available in the provided context, say so briefly.`;
         return { budget, reserve, maxInputTokens };
     }
 
+    _getSubQueryText(subQuery) {
+        if (typeof subQuery === 'string') {
+            return subQuery;
+        }
+        if (subQuery && typeof subQuery === 'object' && subQuery.query) {
+            return subQuery.query;
+        }
+        return String(subQuery || '');
+    }
+
     _buildSubQueryPrompts(subQuery, contextText) {
+        const queryText = this._getSubQueryText(subQuery);
         const systemPrompt = `You are analyzing meeting data to answer a specific question.
 Be concise and focus only on information relevant to the question.
 If the information is not available in the provided context, say so briefly.`;
@@ -538,7 +549,7 @@ If the information is not available in the provided context, say so briefly.`;
         const userPrompt = `Context from meetings:
 ${contextText}
 
-Question: ${subQuery}
+Question: ${queryText}
 
 Provide a focused answer based only on the context above.`;
 
@@ -591,7 +602,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
     }
 
     _estimateSubQueryBaseTokens(subQuery) {
-        const { systemPrompt, userPrompt } = this._buildSubQueryPrompts(subQuery, '');
+        const { systemPrompt, userPrompt } = this._buildSubQueryPrompts(this._getSubQueryText(subQuery), '');
         return this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
     }
 
@@ -731,10 +742,11 @@ Use the following meeting data to answer questions accurately and comprehensivel
      */
     _wrapLLMCall(llmCall) {
         return async (subQuery, agentContext, context) => {
-            const { systemPrompt } = this._buildSubQueryPrompts(subQuery, '');
+            const queryText = this._getSubQueryText(subQuery);
+            const { systemPrompt } = this._buildSubQueryPrompts(queryText, '');
             let userPrompt = '';
             const guardrail = this._getPromptBudget();
-            const baseTokens = this._estimateTokens(this._buildSubQueryPrompts(subQuery, '').userPrompt)
+            const baseTokens = this._estimateTokens(this._buildSubQueryPrompts(queryText, '').userPrompt)
                 + this._estimateTokens(systemPrompt);
             let trimmed = false;
             let trimmedTokens = 0;
@@ -784,7 +796,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 }
             }
 
-            userPrompt = this._buildSubQueryPrompts(subQuery, finalContext).userPrompt;
+            userPrompt = this._buildSubQueryPrompts(queryText, finalContext).userPrompt;
 
             const promptEstimate = this._estimateTokens(systemPrompt) + this._estimateTokens(userPrompt);
             this._recordGuardrail(
