@@ -31,3 +31,7 @@ Commit messages are short, imperative, and sentence case (e.g., `Fix metrics agg
 
 ## Security & Configuration Tips
 API keys are stored in browser localStorage; never commit secrets. The app runs fully client-side, so avoid adding server dependencies unless they are explicitly archived or documented.
+
+## Latest Improvements
+
+- Normalized GPT-5 model routing so fallback telemetry and warnings treat versioned outputs (e.g., `gpt-5-mini-2025-08-07`) as the same family; the UI only calls out real tier shifts and records the actual API model once per family.

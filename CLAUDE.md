@@ -33,8 +33,9 @@ Features include multi-meeting orchestration, agent export/import, image OCR wit
   - Model tiering uses GPT-5-mini for sub-queries and REPL sub_lm calls when GPT-5.2 is selected
   - Summary prompts cap sub-query fan-out and use a lighter retrieval preset to reduce tail latency
   - Per-stage timing telemetry (decompose/retrieve/execute/aggregate/shadow) appears in metrics and CSV export
-  - Memory debug shows retrieval cache hit rate for cache discipline checks
-  - Test runs capture canonical prompt-set metadata in analytics and HTML exports
+- Memory debug shows retrieval cache hit rate for cache discipline checks
+- Test runs capture canonical prompt-set metadata in analytics and HTML exports
+- GPT-5 fallback logging now normalizes versioned names so Claude only reports tier changes when the API actually falls back to a different GPT-5 class (avoids repeated warnings from `gpt-5-mini-<date>` responses)
 
 - **Core Features:**
   - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) with a stable agent ID

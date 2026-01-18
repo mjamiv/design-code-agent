@@ -331,6 +331,29 @@ function isGpt5NanoModel(model) {
     return typeof model === 'string' && model.startsWith('gpt-5-nano');
 }
 
+function normalizeModelFamily(model) {
+    if (!model) {
+        return '';
+    }
+    if (GPT_52_ALIASES.has(model)) {
+        return 'gpt-5.2';
+    }
+    if (isGpt5MiniModel(model)) {
+        return 'gpt-5-mini';
+    }
+    if (isGpt5NanoModel(model)) {
+        return 'gpt-5-nano';
+    }
+    return model;
+}
+
+function isSameModelFamily(requestedModel, actualModel) {
+    if (!requestedModel || !actualModel) {
+        return false;
+    }
+    return normalizeModelFamily(requestedModel) === normalizeModelFamily(actualModel);
+}
+
 function isCorsError(error) {
     if (!error) {
         return false;
@@ -343,7 +366,7 @@ function buildCorsErrorMessage() {
 }
 
 function recordModelFallback(requestedModel, actualModel, callName = 'API Call') {
-    if (!requestedModel || !actualModel || requestedModel === actualModel) {
+    if (!requestedModel || !actualModel || isSameModelFamily(requestedModel, actualModel)) {
         return;
     }
 
@@ -4728,7 +4751,7 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
 
             const data = await response.json();
             const actualModel = data.model || model;
-            const modelFallback = actualModel !== model;
+            const modelFallback = !isSameModelFamily(model, actualModel);
 
             if (modelFallback) {
                 recordModelFallback(model, actualModel, callName);
@@ -4845,7 +4868,7 @@ async function callGPTWithMessages(messages, callName = 'Chat Query', options = 
 
             const data = await response.json();
             const actualModel = data.model || model;
-            const modelFallback = actualModel !== model;
+            const modelFallback = !isSameModelFamily(model, actualModel);
 
             if (modelFallback) {
                 recordModelFallback(model, actualModel, callName);
@@ -5037,7 +5060,7 @@ async function callGPTWithMessagesStream(messages, callName = 'Chat Query', stre
                 callName,
                 requestedModel: model,
                 actualModel,
-                modelFallback: actualModel !== model,
+                modelFallback: !isSameModelFamily(model, actualModel),
                 effort,
                 responseTime,
                 promptPreview,
