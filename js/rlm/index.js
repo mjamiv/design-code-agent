@@ -90,6 +90,7 @@ export const RLM_CONFIG = {
     shadowPromptMaxPerTag: 2,
     shadowPromptMaxPerAgent: 2,
     shadowPromptRecencyWindowDays: 30,
+    shadowPromptCompareConfig: false,
 
     // Milestone 2.5: Retrieval prompt builder (live SWM context)
     enableRetrievalPrompt: true,
@@ -474,7 +475,6 @@ If the information is not available in the provided context, say so briefly.`;
             console.log('[RLM] Starting pipeline for query:', query.substring(0, 50) + '...');
             this._emitProgress('Starting RLM pipeline...', 'info');
             this._startFocusIfEnabled('RLM pipeline', query);
-            this._runShadowPromptBuild(query, context, 'rlm');
             this._appendFocusEvent(`Received query: "${query}"`, { step: 'start', mode: 'rlm' });
 
             // Step 1: Decompose the query
@@ -496,6 +496,7 @@ If the information is not available in the provided context, say so briefly.`;
                     routing: routingPlan
                 });
             }
+            this._runShadowPromptBuild(query, context, 'rlm', routingPlan);
 
             const earlyStopCheck = this._evaluateEarlyStop(query, decomposition, routingPlan);
             if (earlyStopCheck.shouldStop) {
@@ -1079,6 +1080,8 @@ Use the following meeting data to answer questions accurately and comprehensivel
             ...retrieval.stats,
             selectedCount: retrievedSlices.length,
             selectedIds: retrievedSlices.map(slice => slice.id),
+            maxPerTag,
+            maxPerAgent,
             reduction
         };
 
@@ -1100,10 +1103,52 @@ Use the following meeting data to answer questions accurately and comprehensivel
                 }
             }
         }
+        if (this.config.shadowPromptCompareConfig && this.shadowPrompt?.query === query && this.shadowPrompt?.retrievalConfig) {
+            const liveConfig = {
+                maxResults,
+                maxPerTag,
+                maxPerAgent,
+                intentTags,
+                intentBoost,
+                intentFilter,
+                recencyWindowMs
+            };
+            const diff = {};
+            Object.keys(liveConfig).forEach(key => {
+                const shadowValue = this.shadowPrompt.retrievalConfig[key];
+                const liveValue = liveConfig[key];
+                if (JSON.stringify(shadowValue) !== JSON.stringify(liveValue)) {
+                    diff[key] = { shadow: shadowValue, live: liveValue };
+                }
+            });
+            if (Object.keys(diff).length > 0) {
+                this.shadowPrompt.retrievalConfigDiff = diff;
+                console.log('[RLM:ShadowPrompt] Retrieval config diff (shadow vs live)', diff);
+            }
+        }
         if (promptCacheKey) {
             this.promptCache.set(promptCacheKey, result, this.config.promptCacheTTL);
         }
         return result;
+    }
+
+    _buildShadowRetrievalOptions(routingPlan = null) {
+        const recencyWindowMs = this.config.shadowPromptRecencyWindowDays
+            ? this.config.shadowPromptRecencyWindowDays * 24 * 60 * 60 * 1000
+            : null;
+        return {
+            maxResults: routingPlan?.retrieval?.maxResults ?? this.config.shadowPromptMaxSlices,
+            maxPerTag: routingPlan?.retrieval?.maxPerTag ?? this.config.shadowPromptMaxPerTag,
+            maxPerAgent: routingPlan?.retrieval?.maxPerAgent ?? this.config.shadowPromptMaxPerAgent,
+            intentTags: routingPlan?.intentTags || [],
+            intentBoost: routingPlan?.intentBoost ?? this.config.intentTagBoost,
+            intentFilter: routingPlan?.intentFilter ?? false,
+            recencyWindowMs,
+            updateStats: false,
+            updateShadowStats: true,
+            shadowMode: true,
+            useCache: this.config.enableRetrievalCache
+        };
     }
 
     async _callWithPromptGuardrails(llmCall, systemPrompt, userPrompt, context, mode = 'generic', metadata = {}) {
@@ -1622,7 +1667,7 @@ Be concise and focus only on information relevant to the question.`;
      * Build a shadow prompt for retrieval logging (Milestone 2).
      * @private
      */
-    _runShadowPromptBuild(query, context, mode) {
+    _runShadowPromptBuild(query, context, mode, routingPlan = null) {
         if (!this.config.enableShadowPrompt || !this.memoryStore) {
             return;
         }
@@ -1632,20 +1677,8 @@ Be concise and focus only on information relevant to the question.`;
                 const startedAt = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now()
                     : Date.now();
-                const recencyWindowMs = this.config.shadowPromptRecencyWindowDays
-                    ? this.config.shadowPromptRecencyWindowDays * 24 * 60 * 60 * 1000
-                    : null;
-
-                const retrieval = this.memoryStore.retrieveSlices(query, {
-                    maxResults: this.config.shadowPromptMaxSlices,
-                    maxPerTag: this.config.shadowPromptMaxPerTag,
-                    maxPerAgent: this.config.shadowPromptMaxPerAgent,
-                    recencyWindowMs,
-                    updateStats: false,
-                    updateShadowStats: true,
-                    shadowMode: true,
-                    useCache: this.config.enableRetrievalCache
-                });
+                const retrievalOptions = this._buildShadowRetrievalOptions(routingPlan);
+                const retrieval = this.memoryStore.retrieveSlices(query, retrievalOptions);
 
                 const retrievalFinishedAt = (typeof performance !== 'undefined' && performance.now)
                     ? performance.now()
@@ -1706,6 +1739,9 @@ Be concise and focus only on information relevant to the question.`;
                     mode,
                     query,
                     createdAt: new Date().toISOString(),
+                    retrievalConfig: {
+                        ...retrievalOptions
+                    },
                     retrievalStats: {
                         ...retrieval.stats,
                         selectedCount: retrievedSlices.length,

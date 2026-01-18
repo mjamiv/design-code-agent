@@ -391,6 +391,8 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         effort: isGpt52Model(state.settings.model) ? state.settings.effort : 'N/A',
         startTime: performance.now(),
         subCalls: [],  // Individual API calls within this group
+        uniqueSubCalls: 0,
+        retryCalls: 0,
         tokens: { input: 0, output: 0, total: 0 },
         cost: { input: 0, output: 0, total: 0 },
         confidence: { available: false, samples: [] },
@@ -403,6 +405,27 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         focusEpisodes: []
     };
     return activePromptGroup.id;
+}
+
+function updateSubCallStats(group) {
+    if (!group) return;
+    const subCalls = Array.isArray(group.subCalls) ? group.subCalls : [];
+    const retryCalls = subCalls.filter(call => (call?.retryAttempt || 0) > 0).length;
+    group.retryCalls = retryCalls;
+    group.uniqueSubCalls = Math.max(0, subCalls.length - retryCalls);
+}
+
+function getSubCallStats(log) {
+    const total = Array.isArray(log?.subCalls) ? log.subCalls.length : 0;
+    const retryCalls = Number.isFinite(log?.retryCalls)
+        ? log.retryCalls
+        : (Array.isArray(log?.subCalls)
+            ? log.subCalls.filter(call => (call?.retryAttempt || 0) > 0).length
+            : 0);
+    const uniqueCalls = Number.isFinite(log?.uniqueSubCalls)
+        ? log.uniqueSubCalls
+        : Math.max(0, total - retryCalls);
+    return { total, uniqueCalls, retryCalls };
 }
 
 function appendCallToGroup(group, callData) {
@@ -445,6 +468,7 @@ function appendCallToGroup(group, callData) {
     }
 
     group.lastCallAt = Date.now();
+    updateSubCallStats(group);
 }
 
 function updateGroupFinishReason(group) {
@@ -594,7 +618,11 @@ function endPromptGroup() {
     
     // Calculate total response time (wall-clock time for entire group, not sum of sub-calls)
     activePromptGroup.responseTime = Math.round(performance.now() - activePromptGroup.startTime);
-    console.log('[Metrics] Ending prompt group:', activePromptGroup.name, 'with', activePromptGroup.subCalls?.length || 0, 'sub-calls');
+    updateSubCallStats(activePromptGroup);
+    const retrySuffix = activePromptGroup.retryCalls > 0
+        ? ` (+${activePromptGroup.retryCalls} retries)`
+        : '';
+    console.log('[Metrics] Ending prompt group:', activePromptGroup.name, 'with', activePromptGroup.uniqueSubCalls || 0, 'sub-calls' + retrySuffix);
     
     updateGroupFinishReason(activePromptGroup);
     updateGroupConfidence(activePromptGroup);
@@ -720,6 +748,7 @@ function addAPICallToMetrics(callData) {
         finishReason: callData.finishReason || 'unknown',  // Track finish reason
         retryAttempt: callData.retryAttempt || 0  // Track retry attempts
     };
+    updateSubCallStats(standaloneEntry);
     currentMetrics.promptLogs.push(standaloneEntry);
     currentMetrics.totalResponseTime += callData.responseTime;
     updateMetricsDisplay();
@@ -5258,6 +5287,8 @@ function calculateMetrics() {
     let outputCost = 0;
     let totalResponseTime = 0;
     let apiCallCount = 0;
+    let uniqueCallCount = 0;
+    let retryCallCount = 0;
     let cacheHits = 0;
 
     const modeTotals = {
@@ -5274,7 +5305,7 @@ function calculateMetrics() {
 
         const mode = log.mode || 'unknown';
         const modeBucket = modeTotals[mode] || modeTotals.unknown;
-        const subCallCount = log.subCalls ? log.subCalls.length : 0;
+        const { total: subCallCount, uniqueCalls, retryCalls } = getSubCallStats(log);
         const logTokens = log.tokens?.total || 0;
         const logCost = log.cost?.total || 0;
 
@@ -5284,6 +5315,8 @@ function calculateMetrics() {
         modeBucket.calls += subCallCount;
 
         apiCallCount += subCallCount;
+        uniqueCallCount += uniqueCalls;
+        retryCallCount += retryCalls;
 
         if (log.cached) {
             cacheHits += 1;
@@ -5309,6 +5342,8 @@ function calculateMetrics() {
         avgResponseTime,
         promptCount: currentMetrics.promptLogs.length,
         apiCallCount,
+        uniqueCallCount,
+        retryCallCount,
         cacheHits,
         cacheHitRate,
         modeTotals,
@@ -5570,6 +5605,14 @@ function updateMetricsDisplay() {
                 <span>Cache Hits</span>
                 <span>${metrics.cacheHits} (${metrics.cacheHitRate}%)</span>
             </div>
+            <div class="metric-breakdown-item">
+                <span>Unique Calls</span>
+                <span>${metrics.uniqueCallCount}</span>
+            </div>
+            <div class="metric-breakdown-item">
+                <span>Retries</span>
+                <span>${metrics.retryCallCount}</span>
+            </div>
         </div>
         <div class="metric-breakdown metric-breakdown-modes">
             <div class="metric-breakdown-header">Mode Breakdown</div>
@@ -5647,9 +5690,11 @@ function buildPromptLogsHtml(promptLogs) {
             : '';
         
         // Sub-calls count (for RLM/REPL grouped calls)
-        const subCallsCount = log.subCalls ? log.subCalls.length : 1;
-        const subCallsDisplay = subCallsCount > 1 
-            ? `<span class="subcalls-badge">${subCallsCount} calls</span>` 
+        const { total: subCallsCount, uniqueCalls, retryCalls } = getSubCallStats(log);
+        const callLabel = uniqueCalls === 1 ? 'call' : 'calls';
+        const retryLabel = retryCalls === 1 ? 'retry' : 'retries';
+        const subCallsDisplay = subCallsCount > 1
+            ? `<span class="subcalls-badge">${uniqueCalls} ${callLabel}${retryCalls > 0 ? ` (+${retryCalls} ${retryLabel})` : ''}</span>`
             : '';
         const cacheDisplay = log.cached
             ? `<span class="cache-badge">Cached</span>`
@@ -5761,10 +5806,10 @@ function buildPromptLogsHtml(promptLogs) {
                     <span class="log-label">💰 Cost:</span>
                     <span class="log-value cost-highlight">${formatCost(cost.total)}</span>
                 </div>
-                ${subCallsCount > 1 ? `
+                ${(subCallsCount > 1 || retryCalls > 0) ? `
                 <div class="prompt-log-row">
                     <span class="log-label">🔢 API Calls:</span>
-                    <span class="log-value">${subCallsCount} sub-calls aggregated</span>
+                    <span class="log-value">${uniqueCalls} ${callLabel}${retryCalls > 0 ? ` (+${retryCalls} ${retryLabel})` : ''}</span>
                 </div>` : ''}
                 ${(log.emptyResponse || (log.retryAttempt > 0) || (log.maxRetryAttempt > 0)) ? `
                 <div class="prompt-log-row">
@@ -6082,7 +6127,9 @@ function downloadMetricsCSV() {
         'Truncated',
         'Empty Response',
         'Retry Attempts',
-        'Sub-Calls Count',
+        'Retry Calls',
+        'Unique Sub-Calls',
+        'Total Sub-Calls',
         'Prompt Preview',
         'Response'
     ];
@@ -6114,6 +6161,7 @@ function downloadMetricsCSV() {
     metrics.promptLogs.forEach((log, index) => {
         // For grouped calls, use the group-level data
         const timings = log.timings || {};
+        const subCallStats = getSubCallStats(log);
         const row = [
             escapeCSV(log.timestamp || ''),
             escapeCSV(log.name || ''),
@@ -6155,7 +6203,9 @@ function downloadMetricsCSV() {
             escapeCSV(log.confidence?.truncated ? 'Yes' : 'No'),
             escapeCSV(log.emptyResponse ? 'Yes' : 'No'),
             escapeCSV(log.maxRetryAttempt || log.retryAttempt || 0),
-            escapeCSV(log.subCalls?.length || 1),
+            escapeCSV(subCallStats.retryCalls),
+            escapeCSV(subCallStats.uniqueCalls || 1),
+            escapeCSV(subCallStats.total || 1),
             escapeCSV(log.promptPreview || ''),
             escapeCSV(log.response || '')  // Include the full response
         ];

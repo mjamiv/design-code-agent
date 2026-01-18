@@ -219,10 +219,11 @@ export class MemoryStore {
             const entry = this._buildSliceEntry({
                 type: 'episode',
                 text: summary,
-                tags: ['episode'],
+                tags: ['episode', 'focus'],
                 entities: this._extractEntities(summary),
                 confidence: 0.6,
-                importance: 0.6
+                importance: 0.6,
+                internal: true
             }, metadata, completedAt);
             this.slices.push(entry);
 
@@ -270,7 +271,8 @@ export class MemoryStore {
             updateStats = false,
             updateShadowStats = false,
             shadowMode = false,
-            useCache = true
+            useCache = true,
+            includeInternal = false
         } = options;
 
         const normalizedQuery = (query || '').toLowerCase();
@@ -294,7 +296,8 @@ export class MemoryStore {
                 maxPerAgent,
                 allowedAgentIds,
                 updateStats,
-                shadowMode
+                shadowMode,
+                includeInternal
             })
             : null;
 
@@ -316,6 +319,9 @@ export class MemoryStore {
 
         const now = Date.now();
         const candidates = this.slices.filter(slice => {
+            if (!includeInternal && slice.is_internal) {
+                return false;
+            }
             if (recencyWindowMs && slice.timestamp) {
                 const ageMs = now - Date.parse(slice.timestamp);
                 if (!Number.isNaN(ageMs) && ageMs > recencyWindowMs) {
@@ -450,7 +456,8 @@ export class MemoryStore {
             last_retrieved_shadow_at: null,
             token_estimate: this._estimateTokens(slice.text),
             confidence: slice.confidence,
-            source_hash: this._hashText(slice.text)
+            source_hash: this._hashText(slice.text),
+            is_internal: Boolean(slice.internal)
         };
     }
 
@@ -474,6 +481,7 @@ export class MemoryStore {
             allowedAgentIds: normalizeArray(options.allowedAgentIds),
             updateStats: Boolean(options.updateStats),
             shadowMode: Boolean(options.shadowMode),
+            includeInternal: Boolean(options.includeInternal),
             epoch: this.retrievalCacheEpoch
         };
 
