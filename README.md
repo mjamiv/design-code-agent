@@ -361,10 +361,6 @@ Based on how the system is designed and what the metrics show:
 * **Large-scale meeting corpora (dozens of meetings)** where direct prompting becomes cost-prohibitive — aligns with the scalability intent in the README.
 * **Diagnostics / governance / regression testing** — use Hybrid Focus + Shadow.
 
----
-
-If you want, I can also produce a “mode selection rubric” (a one-pager decision tree: *when to use Direct vs SWM vs Hybrid*) based on latency/cost thresholds and query type.
-
 ## RLM: Recursive Language Model
 
 The Agent Orchestrator is powered by **RLM** (Recursive Language Model), based on the paper ["Recursive Language Models"](https://arxiv.org/abs/2512.24601) by Zhang, Kraska & Khattab.
