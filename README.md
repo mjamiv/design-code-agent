@@ -28,6 +28,10 @@ northstar.LM consists of two main applications:
   - Implemented early-stop heuristics to skip full pipeline when retrieval returns few slices
   - Added eval harness scaffold for quality benchmarking (`js/rlm/eval-harness.js`)
   - Stage B scoring now applies redundancy penalty to down-rank frequently retrieved slices
+  - Cached retrieval slices, prompt templates, and context slices to reduce repeated work
+  - Parallel/map-reduce sub-queries now run via a worker pool with higher concurrency
+  - Shadow prompt diagnostics run asynchronously so hybrid mode doesn't block the response
+  - Model tiering uses GPT-5-mini for sub-queries and REPL sub_lm calls when GPT-5.2 is selected
 
 - **Core Features:**
   - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) alongside the markdown summary
@@ -308,19 +312,21 @@ Hybrid Focus + Shadow is designed to add a tight “focus window” for live rea
 
 #### A. Latency reduction (highest ROI)
 
-1. **Parallelize sub-calls by default where safe**
+Status: items 1, 2, 3, and 5 are implemented; item 4 remains on the roadmap.
+
+1. **Parallelize sub-calls by default where safe (done)**
 
    * The Orchestrator already supports “parallel” and “map-reduce” strategies. If subcalls are being executed sequentially in practice, the fastest win is concurrency.
-2. **Make Hybrid diagnostics asynchronous (or user-toggle)**
+2. **Make Hybrid diagnostics asynchronous (or user-toggle) (done)**
 
    * Hybrid is valuable, but it shouldn’t block the primary response path unless explicitly requested.
-3. **Add caching (none was used in the dataset)**
+3. **Add caching (none was used in the dataset) (done)**
 
    * Cache retrieval slices, agent summaries, and repeated prompt templates.
-4. **Tune / expand early-stop behavior**
+4. **Tune / expand early-stop behavior (pending)**
 
    * The README mentions **early-stop heuristics** and other SWM optimizations; push these further so RLM can short-circuit back toward “Direct-like” latency when retrieval is light.
-5. **Model-mix for orchestration**
+5. **Model-mix for orchestration (done)**
 
    * Run retrieval and intermediate subcalls on smaller/faster models; reserve the top model for final synthesis.
 
@@ -760,6 +766,7 @@ At-a-glance metrics displayed at the top of every analysis:
 - **Knowledge Base Visualization** - Visual chain display of loaded agents with enable/disable controls
 - **Smart Query Routing** - Automatically chooses optimal strategy (direct, parallel, map-reduce, iterative, REPL)
 - **Model Selection** - Choose between GPT-5.2, GPT-5-mini, or GPT-5-nano
+- **Model Tiering** - Uses GPT-5-mini for sub-queries and REPL sub_lm calls when GPT-5.2 is selected
 - **Reasoning Effort Control** - Configure reasoning depth for GPT-5.2 (none/low/medium/high/xhigh)
 - **RLM Toggle** - Enable/disable RLM processing for A/B testing
 - **Enhanced Metrics** - Detailed per-prompt logging with response storage and CSV export
