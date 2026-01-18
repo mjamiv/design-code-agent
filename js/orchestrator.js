@@ -318,6 +318,14 @@ function isGpt52Model(model) {
     return GPT_52_ALIASES.has(model);
 }
 
+function isGpt5MiniModel(model) {
+    return typeof model === 'string' && model.startsWith('gpt-5-mini');
+}
+
+function isGpt5NanoModel(model) {
+    return typeof model === 'string' && model.startsWith('gpt-5-nano');
+}
+
 function isCorsError(error) {
     if (!error) {
         return false;
@@ -4710,7 +4718,11 @@ async function callGPT(systemPrompt, userContent, callName = 'API Call') {
 }
 
 async function callGPTWithMessages(messages, callName = 'Chat Query', options = {}) {
-    const model = options.modelOverride || state.settings.model;
+    let model = options.modelOverride || state.settings.model;
+    const baseModel = state.settings.model;
+    const fallbackModel = options.fallbackModel || baseModel;
+    const canFallbackToBase = Boolean(options.modelOverride && fallbackModel && fallbackModel !== model);
+    let usedFallbackModel = false;
     const effort = options.effortOverride ?? state.settings.effort;
     const { maxTokens = null } = options;
     
@@ -4782,6 +4794,19 @@ async function callGPTWithMessages(messages, callName = 'Chat Query', options = 
                 return validationResult.content;
             }
             
+            const fallbackEligible = canFallbackToBase
+                && !usedFallbackModel
+                && validationResult.shouldRetry
+                && isGpt5MiniModel(actualModel || model);
+
+            if (fallbackEligible) {
+                console.warn(`[API] ${formatModelName(actualModel || model)} returned empty response; retrying with ${formatModelName(fallbackModel)}.`);
+                model = fallbackModel;
+                usedFallbackModel = true;
+                lastError = new Error(validationResult.error || `${model} returned empty response`);
+                continue;
+            }
+
             // Handle empty response
             if (!validationResult.shouldRetry) {
                 // Don't retry for content_filter, length, stop_sequence
@@ -5134,12 +5159,12 @@ function validateAndExtractResponse(data, model) {
             
             // For GPT-5-nano, don't retry empty responses - they're likely a model limitation
             // Retrying doesn't help if the model consistently returns empty strings
-            const shouldRetry = model !== 'gpt-5-nano';
+            const shouldRetry = !isGpt5NanoModel(model);
             
             return {
                 content: '',
                 finishReason: finishReason,
-                error: `${model} returned empty string content (finish_reason: ${finishReason})${model === 'gpt-5-nano' ? '. GPT-5-nano may not support this query type - try GPT-5-mini or GPT-5.2.' : ''}`,
+                error: `${model} returned empty string content (finish_reason: ${finishReason})${isGpt5NanoModel(model) ? '. GPT-5-nano may not support this query type - try GPT-5-mini or GPT-5.2.' : ''}`,
                 shouldRetry: shouldRetry
             };
         }

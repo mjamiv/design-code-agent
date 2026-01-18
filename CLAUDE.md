@@ -26,6 +26,10 @@ Features include multi-meeting orchestration, agent export/import, image OCR wit
   - Early-stop heuristics skip full RLM pipeline when retrieval returns few slices
   - Eval harness scaffold added for quality benchmarking (`js/rlm/eval-harness.js`)
   - Stage B retrieval scoring applies redundancy penalty to down-rank frequently retrieved slices
+  - Retrieval slices, prompt templates, and context slices are cached to reduce repeated work
+  - Parallel/map-reduce sub-queries run via a worker pool (max concurrency bumped to 4)
+  - Shadow prompt diagnostics run asynchronously so hybrid mode doesn't block responses
+  - Model tiering uses GPT-5-mini for sub-queries and REPL sub_lm calls when GPT-5.2 is selected
 
 - **Core Features:**
   - Agent export embeds a full JSON payload (processing metadata, prompts, metrics, chat history, artifacts, attachments) with a stable agent ID
@@ -358,7 +362,7 @@ flowchart TB
         subgraph Execute["2️⃣ Sub-Executor"]
             E1[Load Agent Context<br/>from ContextStore]
             E2[Execute Sub-Queries<br/>in Parallel]
-            E3[Concurrency Control<br/>max 3 concurrent]
+            E3[Concurrency Control<br/>max 4 concurrent]
             E4[Retry with Backoff]
         end
 
@@ -463,7 +467,7 @@ flowchart TB
 ```javascript
 const RLM_CONFIG = {
     maxSubQueries: 5,        // Max sub-queries per decomposition
-    maxConcurrent: 3,        // Parallel execution limit
+    maxConcurrent: 4,        // Parallel execution limit
     maxDepth: 3,             // Max recursion depth for sub_lm calls
     tokensPerSubQuery: 800,  // Token budget per sub-query
     enableLLMSynthesis: true,// Use LLM to synthesize results
@@ -606,14 +610,17 @@ else:
 
 Completed optimizations:
 - ✅ Query caching with TTL and similarity matching (`query-cache.js`)
+- ✅ Retrieval/prompt/context caching for RLM prompt assembly
 - ✅ Token budgeting and prompt guardrails
 - ✅ Progress indicators during query processing (train of thought display)
 - ✅ Intent-based routing with data preference classification
 - ✅ Early-stop heuristics for low-slice retrievals
+- ✅ Parallel sub-query worker pool (max concurrency 4)
+- ✅ Async shadow prompt diagnostics to avoid blocking hybrid responses
+- ✅ Model tiering for sub-queries and REPL sub_lm (GPT-5-mini with GPT-5.2)
 
 Remaining items:
 - Eval harness rubric scoring and regression reports
-- Model tiering (smaller models for decomposer/subtasks)
 - A/B testing framework for RLM vs Direct mode
 
 ## Data Flow: Agent Export/Import

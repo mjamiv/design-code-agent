@@ -5,7 +5,7 @@
  * IMPORTANT: Increment CACHE_VERSION when deploying new changes!
  */
 
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const CACHE_NAME = `northstar-lm-v${CACHE_VERSION}`;
 
 /**
@@ -53,13 +53,22 @@ self.addEventListener('install', (event) => {
     console.log(`[SW] Installing version ${CACHE_VERSION}`);
     
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
+        caches.open(CACHE_NAME).then(async (cache) => {
             console.log('[SW] Caching core assets');
-            return cache.addAll(CORE_FILES.map(url => {
-                return new Request(url, { cache: 'reload' });
-            })).catch(err => {
-                console.warn('[SW] Failed to cache some assets:', err);
-            });
+            const requests = CORE_FILES.map(url => new Request(url, { cache: 'reload' }));
+            const failures = [];
+
+            await Promise.allSettled(requests.map(async (request) => {
+                try {
+                    await cache.add(request);
+                } catch (err) {
+                    failures.push({ url: request.url, error: err });
+                }
+            }));
+
+            if (failures.length > 0) {
+                console.warn('[SW] Failed to cache some assets:', failures);
+            }
         })
     );
     

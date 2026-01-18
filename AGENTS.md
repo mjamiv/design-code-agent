@@ -8,6 +8,10 @@ There is no build step; serve the repo as static files:
 ```bash
 npx http-server -p 3000
 ```
+If `npx` is blocked, you can use:
+```bash
+python -m http.server 3000
+```
 Open `http://localhost:3000` to run the UI. If you change service worker behavior, update `CACHE_VERSION` in `sw.js` so clients refresh correctly.
 
 ## Coding Style & Naming Conventions
@@ -17,6 +21,7 @@ Use 4-space indentation in HTML/CSS/JS and keep semicolons in JavaScript. Prefer
 No automated test framework is configured. Validate changes manually:
 - Load the UI, upload agents, and run a few prompts.
 - For RLM changes, check the metrics panel and memory debug output.
+- For latency work, verify hybrid mode responds before diagnostics and confirm model tiering in metrics.
 - For UI changes, verify both `index.html` and `orchestrator.html` layouts.
 
 ## Commit & Pull Request Guidelines
