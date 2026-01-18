@@ -55,6 +55,7 @@ export function buildEvalReport({ query, response, scores = {}, notes = '' } = {
         response,
         scores,
         scoring,
+        qualityScore: scoring.percentage,
         notes,
         createdAt: new Date().toISOString()
     };

@@ -10,6 +10,7 @@
 
 import { getRLMPipeline, RLM_CONFIG } from './rlm/index.js';
 import { generateCodePrompt } from './rlm/code-generator.js';
+import { EVAL_RUBRIC, buildEvalReport } from './rlm/eval-harness.js';
 
 // ============================================
 // RLM Pipeline Instance
@@ -224,6 +225,91 @@ function generatePromptLogId() {
     return `prompt-${++promptLogIdCounter}-${Date.now()}`;
 }
 
+const EVAL_KEYS = Object.keys(EVAL_RUBRIC);
+
+function resolvePromptLog(identifier) {
+    if (identifier === null || identifier === undefined) return null;
+    if (typeof identifier === 'string') {
+        return currentMetrics.promptLogs.find(log => log && log.id === identifier) || null;
+    }
+    if (Number.isInteger(identifier)) {
+        const index = Math.max(0, identifier - 1);
+        return currentMetrics.promptLogs[index] || null;
+    }
+    return null;
+}
+
+function getTestResultByLogId(logId) {
+    if (!logId || !testPromptState?.run?.results) return null;
+    return testPromptState.run.results.find(result => result?.log?.id === logId) || null;
+}
+
+function formatEvalSummary(evaluation) {
+    if (!evaluation?.scores) return 'N/A';
+    return EVAL_KEYS.map(key => {
+        const rubric = EVAL_RUBRIC[key];
+        const value = Number.isFinite(evaluation.scores[key]) ? evaluation.scores[key] : 0;
+        return `${rubric.label}: ${value}/${rubric.maxScore}`;
+    }).join(' | ');
+}
+
+function applyEvaluationToPromptLog(identifier, scores = {}, notes = '', evaluator = 'manual') {
+    const log = resolvePromptLog(identifier);
+    if (!log) return null;
+
+    const testResult = getTestResultByLogId(log.id);
+    const query = testResult?.prompt || log.prompt || log.promptPreview || log.name || '';
+    const response = testResult?.response || log.response || '';
+
+    const report = buildEvalReport({ query, response, scores, notes });
+    log.evaluation = {
+        ...report,
+        evaluator
+    };
+    log.qualityScore = Number.isFinite(report.qualityScore)
+        ? report.qualityScore
+        : (report.scoring?.percentage ?? null);
+
+    updateMetricsDisplay();
+    return log.evaluation;
+}
+
+function buildEvalScoresFromContainer(container) {
+    const scores = {};
+    if (!container) return scores;
+
+    container.querySelectorAll('[data-eval-key]').forEach(input => {
+        const key = input.dataset.evalKey;
+        if (!key) return;
+        const value = Number(input.value);
+        if (Number.isFinite(value)) {
+            scores[key] = value;
+        }
+    });
+
+    return scores;
+}
+
+function handleTestEvalSave(event) {
+    const button = event.target.closest('.eval-save-btn');
+    if (!button) return;
+
+    const container = button.closest('.test-eval');
+    const logId = container?.dataset?.logId || button.dataset.logId;
+    if (!logId) return;
+
+    const scores = buildEvalScoresFromContainer(container);
+    const notesInput = container.querySelector('[data-eval-notes]');
+    const notes = notesInput ? notesInput.value : '';
+
+    applyEvaluationToPromptLog(logId, scores, notes);
+    renderTestAnalytics();
+}
+
+window.applyRubricScores = (identifier, scores = {}, notes = '') => {
+    return applyEvaluationToPromptLog(identifier, scores, notes);
+};
+
 function formatModelName(model) {
     return MODEL_DISPLAY_NAMES[model] || model || 'unknown';
 }
@@ -284,6 +370,7 @@ function startPromptGroup(queryName, usesRLM = false, mode = 'direct') {
         id: generatePromptLogId(),
         timestamp: new Date().toISOString(),
         name: queryName,
+        prompt: '',
         usesRLM: usesRLM,
         mode: mode,  // 'direct', 'rlm', or 'repl'
         model: state.settings.model,
@@ -1176,6 +1263,9 @@ function setupEventListeners() {
     }
     if (elements.exportTestHtmlBtn) {
         elements.exportTestHtmlBtn.addEventListener('click', exportTestReportHtml);
+    }
+    if (elements.testAnalyticsList) {
+        elements.testAnalyticsList.addEventListener('click', handleTestEvalSave);
     }
     if (elements.testAnalyticsModal) {
         elements.testAnalyticsModal.addEventListener('click', (e) => {
@@ -2376,6 +2466,10 @@ async function runPromptWithMetrics(promptText, labelPrefix = 'Test', streamHand
     const { useREPL, useRLM, processingMode } = getPromptProcessingMode(promptText);
 
     startPromptGroup(`${labelPrefix}: ${queryPreview}`, useRLM || useREPL, processingMode);
+    if (activePromptGroup) {
+        activePromptGroup.prompt = promptText;
+        activePromptGroup.promptPreview = queryPreview;
+    }
 
     try {
         const response = await chatWithAgents(promptText, null, streamHandlers);
@@ -2513,6 +2607,25 @@ function renderTestAnalytics() {
             const model = log?.model ? formatModelName(log.model) : state.settings.model;
             const responseTime = log?.responseTime || 0;
             const status = result.error ? 'Error' : 'Complete';
+            const evaluation = log?.evaluation || null;
+            const qualityScore = Number.isFinite(evaluation?.qualityScore)
+                ? evaluation.qualityScore
+                : (Number.isFinite(evaluation?.scoring?.percentage) ? evaluation.scoring.percentage : null);
+            const qualityDisplay = Number.isFinite(qualityScore) ? `${qualityScore}%` : 'N/A';
+            const evalScores = evaluation?.scores || {};
+            const evalNotes = evaluation?.notes || '';
+            const evalFields = EVAL_KEYS.map(key => {
+                const rubric = EVAL_RUBRIC[key];
+                const value = Number.isFinite(evalScores[key]) ? evalScores[key] : '';
+                const label = escapeHtml(rubric.label);
+                const description = escapeHtml(rubric.description);
+                return `
+                    <label class="test-eval-field">
+                        <span title="${description}">${label}</span>
+                        <input class="test-eval-input" type="number" min="0" max="${rubric.maxScore}" step="1" data-eval-key="${key}" value="${value}">
+                    </label>
+                `;
+            }).join('');
             return `
                 <div class="test-analytics-item">
                     <h5>Prompt ${index + 1}: ${escapeHtml(result.prompt)}</h5>
@@ -2522,7 +2635,21 @@ function renderTestAnalytics() {
                         <span>Tokens: ${formatTokens(tokens.input + tokens.output)}</span>
                         <span>Cost: ${formatCost(cost.total)}</span>
                         <span>Time: ${formatTime(responseTime)}</span>
+                        <span>Quality: ${qualityDisplay}</span>
                     </div>
+                    ${log?.id ? `
+                        <div class="test-eval" data-log-id="${log.id}">
+                            <div class="test-eval-header">
+                                <span class="test-eval-title">Rubric Scores</span>
+                                <span class="test-eval-score">Quality: ${qualityDisplay}</span>
+                                <button class="btn-secondary btn-sm eval-save-btn" data-log-id="${log.id}">Save</button>
+                            </div>
+                            <div class="test-eval-grid">
+                                ${evalFields}
+                            </div>
+                            <textarea class="test-eval-notes" data-eval-notes placeholder="Notes (optional)">${escapeHtml(evalNotes)}</textarea>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }).join('');
@@ -3592,6 +3719,10 @@ async function sendChatMessage() {
         // Start a prompt group to aggregate all API calls for this user query
         const queryPreview = message.substring(0, 50) + (message.length > 50 ? '...' : '');
         startPromptGroup(`Chat: ${queryPreview}`, useRLM || useREPL, processingMode);
+        if (activePromptGroup) {
+            activePromptGroup.prompt = message;
+            activePromptGroup.promptPreview = queryPreview;
+        }
 
         // Update title based on mode
         if (useREPL) {
@@ -5431,6 +5562,12 @@ function buildPromptLogsHtml(promptLogs) {
                     <span class="log-value prompt-text">${focusSummary || '(No summary)'}</span>
                 </div>`;
         }).join('');
+        const evaluation = log.evaluation || null;
+        const qualityScore = Number.isFinite(evaluation?.qualityScore)
+            ? `${evaluation.qualityScore}%`
+            : (Number.isFinite(evaluation?.scoring?.percentage) ? `${evaluation.scoring.percentage}%` : 'N/A');
+        const evalSummary = evaluation ? escapeHtml(formatEvalSummary(evaluation)) : '';
+        const evalNotes = evaluation?.notes ? escapeHtml(evaluation.notes) : '';
         
         return `
         <details class="prompt-log-entry ${log.usesRLM ? 'uses-rlm' : ''}" id="${log.id || 'unknown'}">
@@ -5524,6 +5661,20 @@ function buildPromptLogsHtml(promptLogs) {
                     </span>
                 </div>` : ''}
                 ${confidenceHtml}
+                ${evaluation ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">✅ Quality:</span>
+                    <span class="log-value">${qualityScore}</span>
+                </div>
+                <div class="prompt-log-row">
+                    <span class="log-label">📋 Rubric:</span>
+                    <span class="log-value">${evalSummary}</span>
+                </div>
+                ${evaluation.notes ? `
+                <div class="prompt-log-row">
+                    <span class="log-label">📝 Notes:</span>
+                    <span class="log-value">${evalNotes}</span>
+                </div>` : ''}` : ''}
                 ${focusHtml}
                 ${shadowPrompt ? `
                 <div class="prompt-log-row">
@@ -5758,6 +5909,12 @@ function downloadMetricsCSV() {
         'Response Time (ms)',
         'Confidence Available',
         'Avg Logprob',
+        'Quality Score (%)',
+        'Coverage Score',
+        'Correctness Score',
+        'Format Compliance Score',
+        'Attribution Score',
+        'Eval Notes',
         'Reasoning Tokens',
         'Finish Reason',
         'Truncated',
@@ -5811,6 +5968,14 @@ function downloadMetricsCSV() {
             escapeCSV(log.responseTime || 0),
             escapeCSV(log.confidence?.available ? 'Yes' : 'No'),
             escapeCSV(log.confidence?.avgLogprob != null ? (log.confidence.avgLogprob * 100).toFixed(2) + '%' : ''),
+            escapeCSV(Number.isFinite(log.evaluation?.qualityScore)
+                ? log.evaluation.qualityScore
+                : (Number.isFinite(log.evaluation?.scoring?.percentage) ? log.evaluation.scoring.percentage : '')),
+            escapeCSV(log.evaluation?.scores?.coverage ?? ''),
+            escapeCSV(log.evaluation?.scores?.correctness ?? ''),
+            escapeCSV(log.evaluation?.scores?.formatCompliance ?? ''),
+            escapeCSV(log.evaluation?.scores?.attribution ?? ''),
+            escapeCSV(log.evaluation?.notes || ''),
             escapeCSV(log.confidence?.reasoningTokens || ''),
             escapeCSV(log.confidence?.finishReason || log.finishReason || ''),
             escapeCSV(log.confidence?.truncated ? 'Yes' : 'No'),
