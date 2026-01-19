@@ -181,6 +181,15 @@
                         </select>
                         <p class="setting-help">Choose how the Orchestrator builds context and diagnostics for responses.</p>
                     </div>
+                    <div class="setting-group" id="optimization-mode-group">
+                        <label for="optimization-mode-select">Optimization</label>
+                        <select id="optimization-mode-select">
+                            <option value="balanced">Balanced (default)</option>
+                            <option value="speed">Prefer Speed</option>
+                            <option value="cost">Prefer Cost Efficiency</option>
+                        </select>
+                        <p class="setting-help">Trade-off between response time and cost optimization (Method 3 only).</p>
+                    </div>
                     <div class="setting-section">
                         <span class="setting-section-title">Core Orchestration (Managed by Processing Mode)</span>
                         <p class="setting-section-help">These core toggles follow the mode above and stay on in the recommended hybrid setting.</p>

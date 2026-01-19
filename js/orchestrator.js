@@ -47,6 +47,7 @@ const state = {
         model: GPT_52_MODEL,      // 'gpt-5.2-2025-12-11', 'gpt-5-mini', or 'gpt-5-nano'
         effort: 'none',        // 'none', 'low', 'medium', 'high' (only for GPT-5.2) - default 'none' for compatibility
         processingMode: 'rlm-hybrid', // 'direct', 'rlm-swm', 'rlm-hybrid'
+        optimizationMode: 'balanced', // 'balanced', 'speed', 'cost' (Recommendation D)
         useRLM: true,          // Enable/disable RLM processing
         rlmAuto: false,        // Auto-route RLM only for ambiguous prompts
         enableShadowPrompt: true,
@@ -932,6 +933,8 @@ function initElements() {
         effortGroup: document.getElementById('effort-group'),
         effortSelect: document.getElementById('effort-select'),
         processingModeSelect: document.getElementById('processing-mode-select'),
+        optimizationModeSelect: document.getElementById('optimization-mode-select'),
+        optimizationModeGroup: document.getElementById('optimization-mode-group'),
         rlmToggle: document.getElementById('rlm-toggle'),
         rlmAutoToggle: document.getElementById('rlm-auto-toggle'),
         shadowPromptToggle: document.getElementById('shadow-prompt-toggle'),
@@ -1187,6 +1190,9 @@ function updateSettingsUI() {
     if (elements.processingModeSelect) {
         elements.processingModeSelect.value = state.settings.processingMode;
     }
+    if (elements.optimizationModeSelect) {
+        elements.optimizationModeSelect.value = state.settings.optimizationMode || 'balanced';
+    }
     if (elements.rlmToggle) {
         elements.rlmToggle.checked = state.settings.useRLM;
     }
@@ -1214,6 +1220,8 @@ function updateSettingsUI() {
     updateModeControlState();
     // Show/hide effort dropdown based on model
     updateEffortVisibility();
+    // Show/hide optimization mode based on processing mode (Recommendation D)
+    updateOptimizationModeVisibility();
     updateMemoryDebugPanel();
 }
 
@@ -1254,6 +1262,8 @@ function applyRlmFeatureFlags() {
         enablePromptBudgeting: state.settings.enablePromptBudgeting,
         ...tiering
     });
+    // Apply optimization mode overrides (Recommendation D)
+    applyOptimizationMode();
 }
 
 function buildModelTieringConfig() {
@@ -1535,6 +1545,9 @@ function setupEventListeners() {
     if (elements.processingModeSelect) {
         elements.processingModeSelect.addEventListener('change', handleProcessingModeChange);
     }
+    if (elements.optimizationModeSelect) {
+        elements.optimizationModeSelect.addEventListener('change', handleOptimizationModeChange);
+    }
     if (elements.rlmToggle) {
         elements.rlmToggle.addEventListener('change', handleRLMToggle);
     }
@@ -1592,8 +1605,63 @@ function handleEffortChange(e) {
 function handleProcessingModeChange(e) {
     const nextMode = e.target.value;
     applyProcessingMode(nextMode);
+    updateOptimizationModeVisibility();
     updateContextGauge();
     console.log('[Settings] Processing mode changed to:', nextMode);
+}
+
+/**
+ * Handle Optimization Mode change (Recommendation D)
+ */
+function handleOptimizationModeChange(e) {
+    state.settings.optimizationMode = e.target.value;
+    applyOptimizationMode();
+    saveSettings();
+    console.log('[Settings] Optimization mode changed to:', state.settings.optimizationMode);
+}
+
+/**
+ * Apply optimization mode settings to RLM pipeline (Recommendation D)
+ * Adjusts shadow prompt and sub-query behavior based on speed vs cost preference
+ */
+function applyOptimizationMode() {
+    if (!rlmPipeline?.updateConfig) return;
+
+    const mode = state.settings.optimizationMode;
+    const configs = {
+        balanced: {
+            shadowSkipSimpleQueries: true,
+            shadowPromptAsyncTimeoutMs: 2000,
+            maxSubQueries: 5,
+            enableShadowPrompt: state.settings.enableShadowPrompt
+        },
+        speed: {
+            shadowSkipSimpleQueries: true,
+            shadowPromptAsyncTimeoutMs: 1000,  // Shorter timeout
+            maxSubQueries: 3,                   // Fewer sub-queries
+            enableShadowPrompt: false           // Skip shadow entirely for speed
+        },
+        cost: {
+            shadowSkipSimpleQueries: false,    // Always run shadow for quality
+            shadowPromptAsyncTimeoutMs: 3000,  // Longer timeout for full analysis
+            maxSubQueries: 5,
+            enableShadowPrompt: true           // Always enable shadow
+        }
+    };
+
+    rlmPipeline.updateConfig(configs[mode] || configs.balanced);
+    console.log('[Settings] Applied optimization mode config:', mode, configs[mode]);
+}
+
+/**
+ * Update optimization mode dropdown visibility based on processing mode
+ * Only show for rlm-hybrid (Method 3) since that's where it has effect
+ */
+function updateOptimizationModeVisibility() {
+    if (!elements.optimizationModeGroup) return;
+
+    const isMethod3 = state.settings.processingMode === 'rlm-hybrid';
+    elements.optimizationModeGroup.style.display = isMethod3 ? 'block' : 'none';
 }
 
 /**
@@ -2981,6 +3049,11 @@ async function runTestSequenceMultiConfig(prompts, configurations) {
         isMultiConfig: true
     };
 
+    // Recommendation B: Enable batch mode to reset focus between prompts
+    if (rlmPipeline?.updateConfig) {
+        rlmPipeline.updateConfig({ focusBatchMode: true });
+    }
+
     let overallPromptIndex = 0;
 
     for (let configIndex = 0; configIndex < totalConfigs; configIndex++) {
@@ -3049,6 +3122,11 @@ async function runTestSequenceMultiConfig(prompts, configurations) {
     updateTestProgressMultiConfig(totalConfigs, totalConfigs, totalPrompts, totalPrompts, 'Test suite complete');
     addTestStatusLine('All configurations complete. Generating analytics...', 'Complete');
 
+    // Recommendation B: Disable batch mode after test completes
+    if (rlmPipeline?.updateConfig) {
+        rlmPipeline.updateConfig({ focusBatchMode: false });
+    }
+
     // Restore original settings
     applyTestSettings(previousSettings);
     state.isProcessing = false;
@@ -3112,6 +3190,11 @@ async function runTestSequence(prompts, testSettings) {
         results: []
     };
 
+    // Recommendation B: Enable batch mode to reset focus between prompts
+    if (rlmPipeline?.updateConfig) {
+        rlmPipeline.updateConfig({ focusBatchMode: true });
+    }
+
     for (let i = 0; i < prompts.length; i += 1) {
         const prompt = prompts[i];
         const promptLabel = `Prompt ${i + 1}`;
@@ -3151,6 +3234,11 @@ async function runTestSequence(prompts, testSettings) {
 
     updateTestProgress(prompts.length, prompts.length, 'Test complete');
     addTestStatusLine('All prompts complete. Generating analytics...', 'Complete');
+
+    // Recommendation B: Disable batch mode after test completes
+    if (rlmPipeline?.updateConfig) {
+        rlmPipeline.updateConfig({ focusBatchMode: false });
+    }
 
     applyTestSettings(previousSettings);
     state.isProcessing = false;
@@ -6247,6 +6335,13 @@ function buildMemoryDebugHtml() {
         return entries.map(([type, count]) => `${type}: ${count}`).join(', ');
     };
 
+    // Recommendation C: Helper for cache hit rate styling
+    const getCacheHitRateClass = (hitRate) => {
+        if (hitRate >= 60) return 'good';
+        if (hitRate >= 30) return 'moderate';
+        return 'low';
+    };
+
     const stateItems = [
         { label: 'Decisions', items: stateBlock?.decisions || [] },
         { label: 'Actions', items: stateBlock?.actions || [] },
@@ -6330,7 +6425,7 @@ function buildMemoryDebugHtml() {
                 <div class="debug-row"><span>Enabled</span><span>${stats?.config?.enableRetrievalPrompt ? 'Yes' : 'No'}</span></div>
                 <div class="debug-row"><span>Retrieved</span><span>${liveRetrievalStats ? `${liveRetrievalStats.selectedCount ?? 0} / ${liveRetrievalStats.requestedK ?? 0}` : 'N/A'}</span></div>
                 <div class="debug-row"><span>Trim</span><span>${liveRetrievalReduction ? `${liveRetrievalReduction.dropped} dropped` : 'None'}</span></div>
-                <div class="debug-row"><span>Cache Hits</span><span>${retrievalCache ? `${retrievalCache.hits} (${retrievalCache.hitRate ?? 0}%)` : 'N/A'}</span></div>
+                <div class="debug-row"><span>Cache Hits</span><span>${retrievalCache ? `${retrievalCache.hits} <span class="cache-hit-rate ${getCacheHitRateClass(retrievalCache.hitRate ?? 0)}">(${retrievalCache.hitRate ?? 0}%)</span>` : 'N/A'}</span></div>
             </div>
         </div>
 

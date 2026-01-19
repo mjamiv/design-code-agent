@@ -93,6 +93,14 @@ export const RLM_CONFIG = {
     shadowPromptRecencyWindowDays: 30,
     shadowPromptCompareConfig: false,
 
+    // Shadow skip for simple queries (Recommendation A)
+    shadowSkipSimpleQueries: true,      // Skip shadow for SIMPLE/FACTUAL queries
+    shadowSkipAgentThreshold: 2,        // Skip shadow if ≤N agents involved
+
+    // Focus batch mode (Recommendation B)
+    focusBatchMode: false,              // Reset focus between prompts (for test suites)
+    focusMaxTurnsBeforeReset: 5,        // Auto-reset after N turns without completion
+
     // Milestone 2.5: Retrieval prompt builder (live SWM context)
     enableRetrievalPrompt: true,
 
@@ -449,6 +457,11 @@ If the information is not available in the provided context, say so briefly.`;
         const startTime = Date.now();
         const timingStart = this._nowMs();
         const timings = this._initTimings();
+
+        // Recommendation B: Reset focus state when batch mode is enabled
+        if (this.config.focusBatchMode) {
+            this.resetFocusState();
+        }
 
         if (!this.config.enableRLM) {
             console.log('[RLM] RLM disabled, using legacy processing');
@@ -1706,6 +1719,24 @@ Be concise and focus only on information relevant to the question.`;
             return;
         }
 
+        // Recommendation A: Skip for simple queries with few agents
+        if (this.config.shadowSkipSimpleQueries && routingPlan) {
+            const complexity = routingPlan.complexity || 'simple';
+            const agentCount = this.contextStore.getActiveAgents().length;
+
+            if (complexity === 'simple' && agentCount <= this.config.shadowSkipAgentThreshold) {
+                console.debug('[RLM:ShadowPrompt] Skipped - simple query with ≤%d agents', agentCount);
+                this._emitProgress?.('Shadow prompt skipped (simple query)', 'shadow', {
+                    skipped: true,
+                    reason: 'simple_query',
+                    complexity,
+                    agentCount,
+                    threshold: this.config.shadowSkipAgentThreshold
+                });
+                return;
+            }
+        }
+
         const build = () => {
             try {
                 const startedAt = (typeof performance !== 'undefined' && performance.now)
@@ -2047,6 +2078,34 @@ Be concise and focus only on information relevant to the question.`;
 
     _isFocusEnabled() {
         return Boolean(this.config.enableFocusShadow || this.config.enableFocusEpisodes);
+    }
+
+    /**
+     * Reset focus state for batch mode (Recommendation B).
+     * Used to prevent focus accumulation across unrelated prompts in test suites.
+     * @public
+     */
+    resetFocusState() {
+        if (!this.memoryStore) {
+            return;
+        }
+
+        // Complete any pending focus without persisting
+        if (this.memoryStore.focus?.current) {
+            this.memoryStore.completeFocus({ reason: 'batch_reset', persist: false });
+        }
+
+        // Reset tracker
+        this.focusTracker = {
+            toolCalls: 0,
+            subLmCalls: 0,
+            turns: 0,
+            pendingReason: null,
+            lastTokenEstimate: 0,
+            lastResponseExcerpt: null
+        };
+
+        console.debug('[RLM:Focus] State reset for batch mode');
     }
 
     // ==========================================
