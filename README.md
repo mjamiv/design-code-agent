@@ -50,6 +50,12 @@ northstar.LM consists of two main applications:
   - Hybrid focus + shadow prompting adds structured diagnostics: a compact focus window drives live reasoning while a parallel shadow prompt logs retrieval slices and guardrail telemetry without affecting user-facing outputs
   - Orchestrator modes now let you choose between Direct chat, RLM with signal-weighted memory, or RLM with hybrid focus + shadow diagnostics
 
+- **Test Builder Multi-Configuration:**
+  - Run the same test prompts against multiple settings configurations for A/B comparison
+  - Add configurations with different models (GPT-5.2, GPT-5-mini, GPT-5-nano), effort levels, and RLM settings
+  - Comparative analytics show side-by-side metrics with delta percentages
+  - Export HTML reports with comparison tables and per-config details
+
 ## Application Workflow
 
 ```mermaid
@@ -784,6 +790,7 @@ At-a-glance metrics displayed at the top of every analysis:
 - **Model Tiering** - Uses GPT-5-mini for sub-queries and REPL sub_lm calls when GPT-5.2 is selected
 - **Reasoning Effort Control** - Configure reasoning depth for GPT-5.2 (none/low/medium/high/xhigh)
 - **RLM Toggle** - Enable/disable RLM processing for A/B testing
+- **Multi-Config Test Runs** - Run same prompts against multiple configurations (Direct vs RLM, different models) with comparative analytics
 - **Enhanced Metrics** - Detailed per-prompt logging with response storage and CSV export
 - **GitHub Pages Compatible** - COI Service Worker enables full features on static hosts
 - **Custom Branding** - Distinctive robot mascot logo representing the orchestrator's dual nature

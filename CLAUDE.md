@@ -42,6 +42,14 @@ Features include multi-meeting orchestration, agent export/import, image OCR wit
   - Agent import prefers the embedded payload for restoring session metadata; the Orchestrator builds `extendedContext` from a sanitized payload (base64 stripped) for richer search/context/REPL usage
   - GitHub Pages deployment now copies optional asset folders (`images/`, `flowcharts/`, `static/`) when present to avoid build failures
 
+- **Test Builder Multi-Configuration:**
+  - Run the same test prompts against multiple settings configurations in sequence for A/B comparison
+  - Add/remove/edit configurations with inline editor (model, effort, RLM toggles)
+  - Progress displays "Config X/Y | Prompt A/B" during multi-config runs
+  - Comparative analytics show side-by-side token/cost/time/error metrics with delta percentages
+  - Per-prompt comparison view shows results from each configuration
+  - HTML export includes comparison table and per-config detail tables
+
 ## Architecture
 
 ```
@@ -630,7 +638,9 @@ Completed optimizations:
 
 Remaining items:
 - Eval harness rubric scoring and regression reports
-- A/B testing framework for RLM vs Direct mode
+
+Recently completed:
+- ✅ A/B testing framework via multi-configuration test runs (run same prompts against Direct vs RLM configs)
 
 ## Data Flow: Agent Export/Import
 
