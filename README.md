@@ -2,7 +2,7 @@
 
 > Transform your meetings into actionable insights with AI
 
-**Live Demo:**
+**Live Demo:** https://mjamiv.github.io/design-code-agent/
 
 ## Overview
 
