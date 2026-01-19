@@ -1,7 +1,7 @@
 {
-  "name": "northstar.LM - Meeting Intelligence Platform",
+  "name": "northstar.LM - Design Code Analyst",
   "short_name": "northstar.LM",
-  "description": "Transform meeting recordings, PDFs, and text into actionable insights with AI",
+  "description": "Transform engineering design codes and specifications into structured insights with AI",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0a0e17",

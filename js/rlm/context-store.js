@@ -45,13 +45,25 @@ export class ContextStore {
      * @private
      */
     _buildSearchIndex(agent) {
+        const requirementsText = (agent.requirements || [])
+            .map(req => `${req.id || ''} ${req.text || ''}`)
+            .join(' ');
+        const parametersText = (agent.designParameters || [])
+            .map(param => `${param.name || ''} ${param.value || ''}`)
+            .join(' ');
+        const crossRefsText = (agent.crossReferences || [])
+            .map(ref => `${ref.source || ''} ${ref.target || ''}`)
+            .join(' ');
+        const complianceText = (agent.complianceNotes || []).join(' ');
+
         const text = [
             agent.displayName || agent.title || '',
-            agent.summary || '',
-            agent.keyPoints || '',
-            agent.actionItems || '',
-            agent.sentiment || '',
-            agent.transcript || '',  // Include transcript in search index
+            agent.codeOverview || '',
+            requirementsText,
+            parametersText,
+            crossRefsText,
+            complianceText,
+            agent.sourceText || '',
             agent.extendedContext || ''
         ].join(' ').toLowerCase();
 
@@ -135,34 +147,21 @@ export class ContextStore {
      */
     _calculateRelevanceScore(agent, queryKeywords, queryText) {
         let score = 0;
-        const searchIndex = agent._searchIndex;
 
-        // Keyword matching with field weights
         queryKeywords.forEach(keyword => {
-            // Title/name match (highest weight)
-            if ((agent.displayName || agent.title || '').toLowerCase().includes(keyword)) {
-                score += 10;
-            }
-            // Summary match
-            if ((agent.summary || '').toLowerCase().includes(keyword)) {
-                score += 5;
-            }
-            // Key points match
-            if ((agent.keyPoints || '').toLowerCase().includes(keyword)) {
-                score += 3;
-            }
-            // Action items match
-            if ((agent.actionItems || '').toLowerCase().includes(keyword)) {
-                score += 3;
-            }
-            // Transcript match (lower weight but still valuable)
-            if ((agent.transcript || '').toLowerCase().includes(keyword)) {
-                score += 2;
-            }
-            // General text match (catches anything in search index)
-            if (searchIndex.text.includes(keyword)) {
-                score += 1;
-            }
+            if ((agent.displayName || agent.title || '').toLowerCase().includes(keyword)) score += 15;
+            if ((agent.codeOverview || '').toLowerCase().includes(keyword)) score += 6;
+
+            const reqText = (agent.requirements || []).map(r => `${r.text || ''} ${r.id || ''}`).join(' ');
+            if (reqText.toLowerCase().includes(keyword)) score += 8;
+
+            const paramText = (agent.designParameters || []).map(p => `${p.name || ''} ${p.value || ''}`).join(' ');
+            if (paramText.toLowerCase().includes(keyword)) score += 7;
+
+            const xrefText = (agent.crossReferences || []).map(x => x.target || '').join(' ');
+            if (xrefText.toLowerCase().includes(keyword)) score += 4;
+
+            if ((agent.sourceText || '').toLowerCase().includes(keyword)) score += 2;
         });
 
         // Recency boost (agents from recent dates score higher)
@@ -191,25 +190,28 @@ export class ContextStore {
         const agent = this.agents.get(agentId);
         if (!agent) return '';
 
-        const header = `Meeting: ${agent.displayName || agent.title} (${agent.date || 'No date'})`;
+        const header = `Code: ${agent.displayName || agent.title} (${agent.date || 'No date'})`;
 
         switch (level) {
             case 'summary':
-                return `${header}\nSummary: ${agent.summary || 'N/A'}`;
+                return `${header}\nCode Overview: ${agent.codeOverview || 'N/A'}`;
 
             case 'standard':
                 return `${header}
-Summary: ${agent.summary || 'N/A'}
-Key Points: ${agent.keyPoints || 'N/A'}
-Action Items: ${agent.actionItems || 'N/A'}`;
+Code Overview: ${agent.codeOverview || 'N/A'}
+Requirements: ${JSON.stringify(agent.requirements || [], null, 2)}
+Design Parameters: ${JSON.stringify(agent.designParameters || [], null, 2)}
+Cross References: ${JSON.stringify(agent.crossReferences || [], null, 2)}
+Compliance Notes: ${(agent.complianceNotes || []).join(' | ') || 'N/A'}`;
 
             case 'full':
                 return `${header}
-Summary: ${agent.summary || 'N/A'}
-Key Points: ${agent.keyPoints || 'N/A'}
-Action Items: ${agent.actionItems || 'N/A'}
-Sentiment: ${agent.sentiment || 'N/A'}
-${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedContext ? `\nExtended Context:\n${agent.extendedContext}` : ''}`;
+Code Overview: ${agent.codeOverview || 'N/A'}
+Requirements: ${JSON.stringify(agent.requirements || [], null, 2)}
+Design Parameters: ${JSON.stringify(agent.designParameters || [], null, 2)}
+Cross References: ${JSON.stringify(agent.crossReferences || [], null, 2)}
+Compliance Notes: ${(agent.complianceNotes || []).join(' | ') || 'N/A'}
+${agent.sourceText ? `Source Text: ${agent.sourceText}` : ''}${agent.extendedContext ? `\nExtended Context:\n${agent.extendedContext}` : ''}`;
 
             default:
                 return this.getContextSlice(agentId, 'standard');
@@ -328,9 +330,11 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
         const {
             activeOnly = true,
             maxSummaryLength = 500,
-            includeSentiment = false
+            includeSentiment = false,
+            includeComplianceNotes = undefined
         } = options;
 
+        const shouldIncludeCompliance = includeComplianceNotes ?? includeSentiment ?? false;
         const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
 
         return {
@@ -338,15 +342,16 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
                 id: agent.id,
                 name: agent.displayName || agent.title || 'Untitled',
                 date: agent.date || null,
-                summary: this._truncateText(agent.summary || '', maxSummaryLength),
-                sentiment: includeSentiment ? (agent.sentiment || '') : undefined,
-                keyPointsCount: this._countBulletPoints(agent.keyPoints || ''),
-                actionItemsCount: this._countBulletPoints(agent.actionItems || ''),
-                hasTranscript: !!agent.transcript && agent.transcript.length > 100
+                codeOverview: this._truncateText(agent.codeOverview || '', maxSummaryLength),
+                requirementsCount: (agent.requirements || []).length,
+                parametersCount: (agent.designParameters || []).length,
+                crossRefsCount: (agent.crossReferences || []).length,
+                complianceNotes: shouldIncludeCompliance ? (agent.complianceNotes || []) : undefined,
+                hasSourceText: !!agent.sourceText && agent.sourceText.length > 100
             })),
             stats: {
                 total: agents.length,
-                withTranscripts: agents.filter(a => a.transcript && a.transcript.length > 100).length
+                withSourceText: agents.filter(a => a.sourceText && a.sourceText.length > 100).length
             }
         };
     }
@@ -379,9 +384,20 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
                 name: agent.displayName || agent.title || 'Untitled',
                 date: agent.date || null,
                 relevanceScore: agent._relevanceScore,
-                summary: this._truncateText(agent.summary || '', maxSummaryLength),
-                keyPoints: this._truncateText(agent.keyPoints || '', 600),
-                actionItems: this._truncateText(agent.actionItems || '', 400)
+                codeOverview: this._truncateText(agent.codeOverview || '', maxSummaryLength),
+                requirements: this._truncateText(
+                    (agent.requirements || []).map(req => `${req.id || ''} ${req.text || ''}`.trim()).join('\n'),
+                    900
+                ),
+                designParameters: this._truncateText(
+                    (agent.designParameters || []).map(param => `${param.name || ''} ${param.value || ''}`.trim()).join('\n'),
+                    700
+                ),
+                crossReferences: this._truncateText(
+                    (agent.crossReferences || []).map(ref => `${ref.source || ''} ${ref.target || ''}`.trim()).join('\n'),
+                    500
+                ),
+                complianceNotes: this._truncateText((agent.complianceNotes || []).join('\n'), 400)
             })),
             stats: {
                 returned: relevantAgents.length,
@@ -393,18 +409,20 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
 
     /**
      * Get token-optimized REPL context
-     * Limits transcript size and removes empty fields
+     * Limits source text size and removes empty fields
      * 
      * @param {Object} options - Options for optimized context
      * @returns {Object} Token-optimized context for REPL
      */
     getOptimizedREPLContext(options = {}) {
         const {
-            maxTranscriptLength = 3000,  // Reduced from default 10000
+            maxTranscriptLength = 3000,  // Backward-compatible option name
+            maxSourceTextLength = undefined,
             includeEmptyFields = false,
             activeOnly = true
         } = options;
 
+        const sourceTextLimit = maxSourceTextLength ?? maxTranscriptLength;
         const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
 
         return {
@@ -416,26 +434,29 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
                 };
 
                 // Only include non-empty fields
-                if (agent.summary || includeEmptyFields) {
-                    optimized.summary = agent.summary || '';
+                if (agent.codeOverview || includeEmptyFields) {
+                    optimized.codeOverview = agent.codeOverview || '';
                 }
-                if (agent.keyPoints || includeEmptyFields) {
-                    optimized.keyPoints = agent.keyPoints || '';
+                if ((agent.requirements && agent.requirements.length) || includeEmptyFields) {
+                    optimized.requirements = agent.requirements || [];
                 }
-                if (agent.actionItems || includeEmptyFields) {
-                    optimized.actionItems = agent.actionItems || '';
+                if ((agent.designParameters && agent.designParameters.length) || includeEmptyFields) {
+                    optimized.designParameters = agent.designParameters || [];
                 }
-                if (agent.sentiment || includeEmptyFields) {
-                    optimized.sentiment = agent.sentiment || '';
+                if ((agent.crossReferences && agent.crossReferences.length) || includeEmptyFields) {
+                    optimized.crossReferences = agent.crossReferences || [];
+                }
+                if ((agent.complianceNotes && agent.complianceNotes.length) || includeEmptyFields) {
+                    optimized.complianceNotes = agent.complianceNotes || [];
                 }
 
-                // Truncated transcript
-                if (agent.transcript && agent.transcript.length > 0) {
-                    optimized.transcript = agent.transcript.length > maxTranscriptLength
-                        ? agent.transcript.substring(0, maxTranscriptLength) + '...[truncated]'
-                        : agent.transcript;
-                    optimized.transcriptTruncated = agent.transcript.length > maxTranscriptLength;
-                    optimized.originalTranscriptLength = agent.transcript.length;
+                // Truncated source text
+                if (agent.sourceText && agent.sourceText.length > 0) {
+                    optimized.sourceText = agent.sourceText.length > sourceTextLimit
+                        ? agent.sourceText.substring(0, sourceTextLimit) + '...[truncated]'
+                        : agent.sourceText;
+                    optimized.sourceTextTruncated = agent.sourceText.length > sourceTextLimit;
+                    optimized.originalSourceTextLength = agent.sourceText.length;
                 }
 
                 if (agent.extendedContext || includeEmptyFields) {
@@ -584,9 +605,13 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
         const {
             activeOnly = true,
             includeTranscript = true,
-            maxTranscriptLength = 10000
+            includeSourceText = undefined,
+            maxTranscriptLength = 10000,
+            maxSourceTextLength = undefined
         } = options;
 
+        const allowSourceText = includeSourceText ?? includeTranscript ?? true;
+        const sourceTextLimit = maxSourceTextLength ?? maxTranscriptLength;
         const agents = activeOnly ? this.getActiveAgents() : Array.from(this.agents.values());
 
         return {
@@ -598,19 +623,20 @@ ${agent.transcript ? `Transcript: ${agent.transcript}` : ''}${agent.extendedCont
                     date: agent.date || null,
                     sourceType: agent.sourceType || 'unknown',
                     enabled: agent.enabled !== false,
-                    summary: agent.summary || '',
-                    keyPoints: agent.keyPoints || '',
-                    actionItems: agent.actionItems || '',
-                    sentiment: agent.sentiment || ''
+                    codeOverview: agent.codeOverview || '',
+                    requirements: agent.requirements || [],
+                    designParameters: agent.designParameters || [],
+                    crossReferences: agent.crossReferences || [],
+                    complianceNotes: agent.complianceNotes || []
                 };
 
-                // Include transcript with optional truncation
-                if (includeTranscript && agent.transcript) {
-                    pythonAgent.transcript = agent.transcript.length > maxTranscriptLength
-                        ? agent.transcript.substring(0, maxTranscriptLength) + '...[truncated]'
-                        : agent.transcript;
+                // Include source text with optional truncation
+                if (allowSourceText && agent.sourceText) {
+                    pythonAgent.sourceText = agent.sourceText.length > sourceTextLimit
+                        ? agent.sourceText.substring(0, sourceTextLimit) + '...[truncated]'
+                        : agent.sourceText;
                 } else {
-                    pythonAgent.transcript = '';
+                    pythonAgent.sourceText = '';
                 }
 
                 if (agent.extendedContext) {

@@ -1,6 +1,6 @@
 /**
  * northstar.LM - Client-Side Application
- * Transforms meeting audio/text/PDF into actionable insights using OpenAI
+ * Transforms design code audio/text/PDF into actionable insights using OpenAI
  */
 
 // ============================================
@@ -116,42 +116,72 @@ const PRICING = {
 };
 
 const PROMPTS = {
-    analysisBatchSystem: `You are an expert meeting analyst. Analyze the following meeting transcript and provide a comprehensive analysis in JSON format with these fields:
+    analysisBatchSystem: `You are an expert structural engineering code analyst with deep knowledge of ASCE, AASHTO, ACI, AISC, and other design standards.
+
+Analyze the following engineering design code document and extract structured information in JSON format:
 
 {
-"summary": "A concise abstract paragraph summarizing the meeting. Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text.",
-"keyPoints": "List of main points discussed, separated by newlines. Start each point with a dash (-). These should be the most important ideas, findings, or topics that are crucial to the essence of the discussion.",
-"actionItems": "List of specific tasks or action items that were assigned or discussed, separated by newlines. Start each item with a dash (-). If no action items are found, respond with 'No specific action items identified.'",
-"sentiment": "Overall sentiment of the meeting. Respond with exactly one word: 'Positive', 'Negative', or 'Neutral'."
+    "codeOverview": "Brief description of what this code/standard covers, including scope and primary application areas",
+
+    "requirements": [
+        {
+            "id": "Section/clause identifier (e.g., 'ASCE-BTH 3.2.1')",
+            "text": "Full requirement statement",
+            "section": "Parent section name",
+            "type": "mandatory|advisory|reference",
+            "keywords": ["key", "terms"]
+        }
+    ],
+
+    "designParameters": [
+        {
+            "id": "Parameter identifier",
+            "name": "Human-readable name (e.g., 'Load Factor for Dead Load')",
+            "value": "Numerical value or formula",
+            "unit": "Unit of measure",
+            "section": "Source section reference",
+            "applicability": "When/where this parameter applies"
+        }
+    ],
+
+    "crossReferences": [
+        {
+            "source": "Current section reference",
+            "target": "Referenced code/section",
+            "relationship": "requires|supersedes|related|exception",
+            "note": "Context for the reference"
+        }
+    ],
+
+    "complianceNotes": [
+        "Critical compliance items, exceptions, or warnings"
+    ]
 }
 
-Ensure your response is valid JSON only, no additional text.`,
-    summarySystem: `You are a highly skilled AI trained in language comprehension and summarization.
-Read the following text and summarize it into a concise abstract paragraph.
-Retain the most important points, providing a coherent and readable summary that helps someone understand the main points without reading the entire text.
-Avoid unnecessary details or tangential points.`,
-    keyPointsSystem: `You are a proficient AI with a specialty in distilling information into key points. 
-Based on the following text, identify and list the main points that were discussed or brought up. 
-These should be the most important ideas, findings, or topics that are crucial to the essence of the discussion. 
-Format each point on its own line starting with a dash (-).`,
-    actionItemsSystem: `You are a highly skilled AI trained in identifying action items. 
-Review the following text and identify any specific tasks or action items that were assigned or discussed. 
-Format each action item on its own line starting with a dash (-).
-If no action items are found, respond with "No specific action items identified."`,
-    sentimentSystem: `You are an AI trained in sentiment analysis. 
-Analyze the overall sentiment of the following text. 
-Respond with exactly one word: "Positive", "Negative", or "Neutral".`,
-    visionOcrSystem: `You are an expert at analyzing images of documents, meeting notes, whiteboards, diagrams, and other visual content.
+Focus on:
+1. Extracting specific, actionable requirements with exact section references
+2. Capturing all load factors, safety factors, and design formulas
+3. Mapping dependencies between code sections and to other standards
+4. Noting exceptions, limitations, or special conditions
 
-Your task is to extract and transcribe ALL text content visible in the image, and describe any relevant visual elements (diagrams, charts, drawings, etc.) that provide context.
+Ensure your response is valid JSON only.`,
 
-Format your response as follows:
-1. First, provide a complete transcription of all visible text, preserving the original structure as much as possible
-2. Then describe any diagrams, charts, or visual elements
-3. Finally, summarize what this image appears to be about
+    summarySystem: `You are an expert engineering code analyst.
+Provide a concise overview of the following design standard or code section.
+Include: scope of applicability, key design requirements, and relationship to other standards.`,
 
-Be thorough and capture every piece of text visible in the image.`,
-    audioBriefingSystem: 'You create professional executive audio briefings.'
+    visionOcrSystem: `You are an expert at analyzing images of engineering drawings, specification tables, and technical documents.
+
+Extract ALL text content visible, including:
+1. Table data (preserve as markdown tables)
+2. Figure references and captions
+3. Equations and formulas (use LaTeX notation)
+4. Dimensional data and units
+5. Notes and annotations
+
+For tables, use markdown format. Note any design values, load factors, or key parameters.`,
+
+    audioBriefingSystem: 'You create professional engineering code briefings for design teams.'
 };
 
 // Metrics tracking for current run
@@ -246,9 +276,12 @@ async function init() {
         // Results
         resultsSection: document.getElementById('results-section'),
         resultsNav: document.getElementById('results-nav'),
-        resultSummary: document.getElementById('result-summary'),
-        resultKeypoints: document.getElementById('result-keypoints'),
-        resultActions: document.getElementById('result-actions'),
+        resultOverview: document.getElementById('result-overview'),
+        resultRequirements: document.getElementById('result-requirements'),
+        resultParameters: document.getElementById('result-parameters'),
+        resultCrossrefs: document.getElementById('result-crossrefs'),
+        resultCompliance: document.getElementById('result-compliance'),
+        resultSourceText: document.getElementById('result-source-text'),
         
         // Error
         errorSection: document.getElementById('error-section'),
@@ -1036,7 +1069,7 @@ async function analyzeImageWithVision(base64Image) {
                     content: [
                         {
                             type: 'text',
-                            text: 'Please analyze this image and extract all text content and relevant visual information. This appears to be meeting-related content that needs to be analyzed.'
+                            text: 'Please analyze this image and extract all text content and relevant visual information. This appears to be engineering or design code content that needs to be analyzed.'
                         },
                         {
                             type: 'image_url',
@@ -1191,7 +1224,7 @@ async function startAnalysis() {
             transcriptionText = elements.textInput.value.trim();
         }
 
-        updateProgress(30, 'Analyzing meeting content...');
+        updateProgress(30, 'Analyzing design code content...');
         const analysis = await analyzeMeetingBatch(transcriptionText);
         const analysisMeta = analysis._meta || {};
         state.exportMeta.processing.analysis = {
@@ -1201,11 +1234,6 @@ async function startAnalysis() {
             completedAt: new Date().toISOString(),
             durationMs: Math.round(performance.now() - analysisStartMs)
         };
-        
-        const summary = analysis.summary;
-        const keyPoints = analysis.keyPoints;
-        const actionItems = analysis.actionItems;
-        const sentiment = analysis.sentiment;
 
         updateProgress(100, 'Complete!');
         
@@ -1213,11 +1241,12 @@ async function startAnalysis() {
         const metrics = calculateMetrics();
         
         state.results = {
-            transcription: transcriptionText,
-            summary,
-            keyPoints,
-            actionItems,
-            sentiment
+            sourceText: analysis.sourceText || transcriptionText,
+            codeOverview: analysis.codeOverview,
+            requirements: analysis.requirements,
+            designParameters: analysis.designParameters,
+            crossReferences: analysis.crossReferences,
+            complianceNotes: analysis.complianceNotes
         };
         state.metrics = metrics;
         
@@ -1413,6 +1442,10 @@ async function callChatAPI(systemPrompt, userContent, callName = 'API Call', use
     return result;
 }
 
+function normalizeArray(value) {
+    return Array.isArray(value) ? value : [];
+}
+
 async function analyzeMeetingBatch(text) {
     const meta = {
         mode: 'batch-json',
@@ -1421,16 +1454,18 @@ async function analyzeMeetingBatch(text) {
     };
     const systemPrompt = PROMPTS.analysisBatchSystem;
 
-    const response = await callChatAPI(systemPrompt, text, 'Meeting Analysis');
+    const response = await callChatAPI(systemPrompt, text, 'Code Analysis');
 
     try {
         // Try to parse the JSON response
         const parsed = JSON.parse(response);
         return {
-            summary: parsed.summary || '',
-            keyPoints: parsed.keyPoints || '',
-            actionItems: parsed.actionItems || '',
-            sentiment: parsed.sentiment || 'Neutral',
+            codeOverview: parsed.codeOverview || '',
+            requirements: normalizeArray(parsed.requirements),
+            designParameters: normalizeArray(parsed.designParameters),
+            crossReferences: normalizeArray(parsed.crossReferences),
+            complianceNotes: normalizeArray(parsed.complianceNotes),
+            sourceText: parsed.sourceText || text,
             _meta: meta
         };
     } catch (error) {
@@ -1442,62 +1477,51 @@ async function analyzeMeetingBatch(text) {
                 meta.jsonRecovered = true;
                 meta.mode = 'batch-json-extracted';
                 return {
-                    summary: parsed.summary || '',
-                    keyPoints: parsed.keyPoints || '',
-                    actionItems: parsed.actionItems || '',
-                    sentiment: parsed.sentiment || 'Neutral',
+                    codeOverview: parsed.codeOverview || '',
+                    requirements: normalizeArray(parsed.requirements),
+                    designParameters: normalizeArray(parsed.designParameters),
+                    crossReferences: normalizeArray(parsed.crossReferences),
+                    complianceNotes: normalizeArray(parsed.complianceNotes),
+                    sourceText: parsed.sourceText || text,
                     _meta: meta
                 };
             } catch (e) {
-                // If still fails, use individual functions as fallback
-                console.warn('Batch analysis failed, falling back to individual calls');
+                console.warn('Batch analysis failed, falling back to overview-only extraction');
                 meta.usedFallback = true;
-                meta.mode = 'fallback-individual';
-                const [summary, keyPoints, actionItems, sentiment] = await Promise.all([
-                    extractSummary(text),
-                    extractKeyPoints(text),
-                    extractActionItems(text),
-                    analyzeSentiment(text)
-                ]);
-                return { summary, keyPoints, actionItems, sentiment, _meta: meta };
+                meta.mode = 'fallback-overview';
+                const codeOverview = await extractCodeOverview(text);
+                return {
+                    codeOverview,
+                    requirements: [],
+                    designParameters: [],
+                    crossReferences: [],
+                    complianceNotes: [],
+                    sourceText: text,
+                    _meta: meta
+                };
             }
         }
         // Final fallback
-        console.warn('JSON extraction failed, falling back to individual calls');
+        console.warn('JSON extraction failed, falling back to overview-only extraction');
         meta.usedFallback = true;
-        meta.mode = 'fallback-individual';
-        const [summary, keyPoints, actionItems, sentiment] = await Promise.all([
-            extractSummary(text),
-            extractKeyPoints(text),
-            extractActionItems(text),
-            analyzeSentiment(text)
-        ]);
-        return { summary, keyPoints, actionItems, sentiment, _meta: meta };
+        meta.mode = 'fallback-overview';
+        const codeOverview = await extractCodeOverview(text);
+        return {
+            codeOverview,
+            requirements: [],
+            designParameters: [],
+            crossReferences: [],
+            complianceNotes: [],
+            sourceText: text,
+            _meta: meta
+        };
     }
 }
 
-async function extractSummary(text) {
+async function extractCodeOverview(text) {
     const systemPrompt = PROMPTS.summarySystem;
 
-    return await callChatAPI(systemPrompt, text, 'Summary');
-}
-
-async function extractKeyPoints(text) {
-    const systemPrompt = PROMPTS.keyPointsSystem;
-    
-    return await callChatAPI(systemPrompt, text, 'Key Points');
-}
-
-async function extractActionItems(text) {
-    const systemPrompt = PROMPTS.actionItemsSystem;
-    
-    return await callChatAPI(systemPrompt, text, 'Action Items');
-}
-
-async function analyzeSentiment(text) {
-    const systemPrompt = PROMPTS.sentimentSystem;
-    
-    return await callChatAPI(systemPrompt, text, 'Sentiment');
+    return await callChatAPI(systemPrompt, text, 'Code Overview');
 }
 
 // ============================================
@@ -1568,14 +1592,35 @@ function displayResults() {
     // ========== KPI DASHBOARD ==========
     updateKPIDashboard();
     
-    // Summary
-    elements.resultSummary.innerHTML = `<p>${escapeHtml(state.results.summary)}</p>`;
-    
-    // Key Points
-    elements.resultKeypoints.innerHTML = formatListContent(state.results.keyPoints);
-    
-    // Action Items
-    elements.resultActions.innerHTML = formatListContent(state.results.actionItems);
+    // Code Overview
+    if (elements.resultOverview) {
+        elements.resultOverview.innerHTML = `<p>${escapeHtml(state.results.codeOverview || '')}</p>`;
+    }
+
+    // Requirements
+    if (elements.resultRequirements) {
+        elements.resultRequirements.innerHTML = formatRequirements(state.results.requirements);
+    }
+
+    // Design Parameters
+    if (elements.resultParameters) {
+        elements.resultParameters.innerHTML = formatDesignParameters(state.results.designParameters);
+    }
+
+    // Cross-References
+    if (elements.resultCrossrefs) {
+        elements.resultCrossrefs.innerHTML = formatCrossReferences(state.results.crossReferences);
+    }
+
+    // Compliance Notes
+    if (elements.resultCompliance) {
+        elements.resultCompliance.innerHTML = formatComplianceNotes(state.results.complianceNotes);
+    }
+
+    // Source Text
+    if (elements.resultSourceText) {
+        elements.resultSourceText.innerHTML = formatSourceText(state.results.sourceText);
+    }
     
     // Display metrics
     displayMetrics();
@@ -1589,64 +1634,62 @@ function displayResults() {
 // ============================================
 function updateKPIDashboard() {
     if (!state.results) return;
-    
-    // Sentiment KPI
-    const kpiSentiment = document.getElementById('kpi-sentiment');
-    if (kpiSentiment) {
-        const sentimentText = state.results.sentiment.trim();
-        const sentimentLower = sentimentText.toLowerCase();
-        
-        // Determine sentiment class
-        let sentimentClass = 'neutral';
-        if (sentimentLower.includes('positive') || sentimentLower.includes('optimistic') || sentimentLower.includes('constructive')) {
-            sentimentClass = 'positive';
-        } else if (sentimentLower.includes('negative') || sentimentLower.includes('concern') || sentimentLower.includes('frustrated')) {
-            sentimentClass = 'negative';
-        }
-        
-        // Extract short sentiment (first word or two)
-        const shortSentiment = sentimentText.split(/[,.:;]/)[0].trim().substring(0, 20);
-        kpiSentiment.textContent = shortSentiment || 'Neutral';
-        kpiSentiment.className = `kpi-value ${sentimentClass}`;
+
+    const kpiCodeType = document.getElementById('kpi-code-type');
+    if (kpiCodeType) {
+        kpiCodeType.textContent = deriveCodeType(state.results);
     }
-    
-    // Words Analyzed KPI
-    const kpiWords = document.getElementById('kpi-words');
-    if (kpiWords && state.results.transcription) {
-        const wordCount = state.results.transcription.split(/\s+/).filter(w => w.length > 0).length;
-        kpiWords.textContent = formatNumber(wordCount);
+
+    const kpiRequirements = document.getElementById('kpi-requirements');
+    if (kpiRequirements) {
+        kpiRequirements.textContent = (state.results.requirements || []).length.toString();
     }
-    
-    // Key Points Count KPI
-    const kpiKeypoints = document.getElementById('kpi-keypoints');
-    if (kpiKeypoints && state.results.keyPoints) {
-        const keyPointsCount = state.results.keyPoints.split('\n').filter(line => line.trim().length > 0).length;
-        kpiKeypoints.textContent = keyPointsCount.toString();
+
+    const kpiParameters = document.getElementById('kpi-parameters');
+    if (kpiParameters) {
+        kpiParameters.textContent = (state.results.designParameters || []).length.toString();
     }
-    
-    // Action Items Count KPI
-    const kpiActions = document.getElementById('kpi-actions');
-    if (kpiActions && state.results.actionItems) {
-        const actionsCount = state.results.actionItems.split('\n').filter(line => line.trim().length > 0).length;
-        kpiActions.textContent = actionsCount.toString();
+
+    const kpiCrossrefs = document.getElementById('kpi-crossrefs');
+    if (kpiCrossrefs) {
+        kpiCrossrefs.textContent = (state.results.crossReferences || []).length.toString();
     }
-    
-    // Read Time KPI (average 200 words per minute)
-    const kpiReadtime = document.getElementById('kpi-readtime');
-    if (kpiReadtime && state.results.transcription) {
-        const wordCount = state.results.transcription.split(/\s+/).filter(w => w.length > 0).length;
-        const readTimeMinutes = Math.ceil(wordCount / 200);
-        kpiReadtime.textContent = readTimeMinutes <= 1 ? '< 1 min' : `${readTimeMinutes} min`;
+
+    const kpiCompliance = document.getElementById('kpi-compliance');
+    if (kpiCompliance) {
+        kpiCompliance.textContent = (state.results.complianceNotes || []).length.toString();
     }
-    
-    // Topics KPI - extract main topics from key points
-    const kpiTopics = document.getElementById('kpi-topics');
-    if (kpiTopics && state.results.keyPoints) {
-        // Count key points as proxy for topics, or could do more sophisticated extraction
-        const keyPointsLines = state.results.keyPoints.split('\n').filter(line => line.trim().length > 0);
-        const topicCount = Math.min(keyPointsLines.length, 10); // Cap at 10 topics
-        kpiTopics.textContent = topicCount.toString();
+
+    const kpiSections = document.getElementById('kpi-sections');
+    if (kpiSections) {
+        kpiSections.textContent = deriveSectionCount(state.results).toString();
     }
+}
+
+function deriveCodeType(results) {
+    const candidates = [
+        results.codeOverview || '',
+        results.sourceText || '',
+        ...(results.requirements || []).map(req => req.id || ''),
+        ...(results.requirements || []).map(req => req.section || '')
+    ].join(' ');
+    const match = candidates.match(/\b(ASCE|AASHTO|ACI|AISC|IBC|ASME|IEEE|NFPA)\b/i);
+    return match ? match[0].toUpperCase() : 'Unknown';
+}
+
+function deriveSectionCount(results) {
+    const sections = new Set();
+    (results.requirements || []).forEach(req => {
+        if (req.section) sections.add(req.section);
+    });
+    (results.designParameters || []).forEach(param => {
+        if (param.section) sections.add(param.section);
+    });
+    (results.crossReferences || []).forEach(ref => {
+        if (ref.source) sections.add(ref.source);
+        if (ref.target) sections.add(ref.target);
+    });
+    return sections.size;
 }
 
 // Format number with commas
@@ -1775,6 +1818,79 @@ function formatListContent(text) {
     return `<ul>${listItems}</ul>`;
 }
 
+function formatListFromArray(items) {
+    if (!Array.isArray(items) || items.length === 0) {
+        return '<p class="muted">No items available.</p>';
+    }
+    const listItems = items.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    return `<ul>${listItems}</ul>`;
+}
+
+function formatRequirements(requirements) {
+    if (!Array.isArray(requirements) || requirements.length === 0) {
+        return '<p class="muted">No requirements extracted.</p>';
+    }
+    const listItems = requirements.map(req => {
+        const id = req.id ? `<strong>${escapeHtml(req.id)}</strong> ` : '';
+        const text = req.text ? escapeHtml(req.text) : '';
+        const metaParts = [];
+        if (req.section) metaParts.push(`Section: ${escapeHtml(req.section)}`);
+        if (req.type) metaParts.push(`Type: ${escapeHtml(req.type)}`);
+        if (Array.isArray(req.keywords) && req.keywords.length > 0) {
+            metaParts.push(`Keywords: ${escapeHtml(req.keywords.join(', '))}`);
+        }
+        const meta = metaParts.length > 0 ? `<br><span class="muted">${metaParts.join(' • ')}</span>` : '';
+        return `<li>${id}${text}${meta}</li>`;
+    }).join('');
+    return `<ul>${listItems}</ul>`;
+}
+
+function formatDesignParameters(parameters) {
+    if (!Array.isArray(parameters) || parameters.length === 0) {
+        return '<p class="muted">No design parameters extracted.</p>';
+    }
+    const listItems = parameters.map(param => {
+        const name = param.name ? `<strong>${escapeHtml(param.name)}</strong>` : '<strong>Parameter</strong>';
+        const value = param.value ? `: ${escapeHtml(param.value)}` : '';
+        const unit = param.unit ? ` ${escapeHtml(param.unit)}` : '';
+        const metaParts = [];
+        if (param.id) metaParts.push(`ID: ${escapeHtml(param.id)}`);
+        if (param.section) metaParts.push(`Section: ${escapeHtml(param.section)}`);
+        if (param.applicability) metaParts.push(`Applies: ${escapeHtml(param.applicability)}`);
+        const meta = metaParts.length > 0 ? `<br><span class="muted">${metaParts.join(' • ')}</span>` : '';
+        return `<li>${name}${value}${unit}${meta}</li>`;
+    }).join('');
+    return `<ul>${listItems}</ul>`;
+}
+
+function formatCrossReferences(crossReferences) {
+    if (!Array.isArray(crossReferences) || crossReferences.length === 0) {
+        return '<p class="muted">No cross-references extracted.</p>';
+    }
+    const listItems = crossReferences.map(ref => {
+        const source = ref.source ? escapeHtml(ref.source) : 'Source';
+        const target = ref.target ? escapeHtml(ref.target) : 'Target';
+        const relationship = ref.relationship ? ` (${escapeHtml(ref.relationship)})` : '';
+        const note = ref.note ? `<br><span class="muted">${escapeHtml(ref.note)}</span>` : '';
+        return `<li><strong>${source}</strong> → ${target}${relationship}${note}</li>`;
+    }).join('');
+    return `<ul>${listItems}</ul>`;
+}
+
+function formatComplianceNotes(notes) {
+    if (!Array.isArray(notes) || notes.length === 0) {
+        return '<p class="muted">No compliance notes extracted.</p>';
+    }
+    return formatListFromArray(notes);
+}
+
+function formatSourceText(text) {
+    if (!text) {
+        return '<p class="muted">No source text available.</p>';
+    }
+    return `<pre>${escapeHtml(text)}</pre>`;
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1813,6 +1929,8 @@ async function downloadDocx() {
     const shortDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
     });
+    const codeType = deriveCodeType(state.results);
+    const codeTitle = codeType === 'Unknown' ? 'Design Code Analysis' : `${codeType} Standard`;
     
     // ========== COLOR PALETTE ==========
     const colors = {
@@ -1988,7 +2106,7 @@ async function downloadDocx() {
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: "MEETING INSIGHTS",
+                text: "DESIGN CODE",
                 bold: true,
                 size: 72,
                 color: colors.primary,
@@ -2002,7 +2120,7 @@ async function downloadDocx() {
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: "REPORT",
+                text: "INSIGHTS REPORT",
                 bold: true,
                 size: 72,
                 color: colors.accent,
@@ -2040,11 +2158,11 @@ async function downloadDocx() {
         spacing: { after: 200 }
     }));
     
-    // ========== MEETING DETAILS BOX ==========
+    // ========== CODE DETAILS BOX ==========
     children.push(new Paragraph({ spacing: { before: 600 } }));
     
-    // Meeting details table
-    const meetingDetailsTable = new Table({
+    // Code details table
+    const codeDetailsTable = new Table({
         width: { size: 60, type: WidthType.PERCENTAGE },
         alignment: AlignmentType.CENTER,
         rows: [
@@ -2052,17 +2170,17 @@ async function downloadDocx() {
                 children: [
                     new TableCell({
                         children: [new Paragraph({
-                            children: [new TextRun({ text: "Meeting Title:", bold: true, size: 22, font: "Calibri" })]
+                            children: [new TextRun({ text: "Code Standard:", bold: true, size: 22, font: "Calibri" })]
                         })],
                         width: { size: 30, type: WidthType.PERCENTAGE },
                         margins: { top: 100, bottom: 100, left: 200, right: 100 }
                     }),
                     new TableCell({
                         children: [new Paragraph({
-                            children: [new TextRun({ 
-                                text: state.meetingTitle || "Meeting Analysis", 
-                                size: 22, 
-                                font: "Calibri" 
+                            children: [new TextRun({
+                                text: codeTitle,
+                                size: 22,
+                                font: "Calibri"
                             })]
                         })],
                         margins: { top: 100, bottom: 100, left: 100, right: 200 }
@@ -2079,10 +2197,10 @@ async function downloadDocx() {
                     }),
                     new TableCell({
                         children: [new Paragraph({
-                            children: [new TextRun({ 
-                                text: state.meetingDate || shortDate, 
-                                size: 22, 
-                                font: "Calibri" 
+                            children: [new TextRun({
+                                text: shortDate,
+                                size: 22,
+                                font: "Calibri"
                             })]
                         })],
                         margins: { top: 100, bottom: 100, left: 100, right: 200 }
@@ -2121,7 +2239,7 @@ async function downloadDocx() {
             insideHorizontal: { style: BorderStyle.SINGLE, size: 1, color: colors.light }
         }
     });
-    children.push(meetingDetailsTable);
+    children.push(codeDetailsTable);
     
     // Branding at bottom of cover
     children.push(new Paragraph({ spacing: { before: 1200 } }));
@@ -2141,7 +2259,7 @@ async function downloadDocx() {
                 font: "Calibri"
             }),
             new TextRun({
-                text: " • AI-Powered Meeting Intelligence",
+                text: " • AI-Powered Design Code Analysis",
                 size: 20,
                 color: colors.muted,
                 font: "Calibri"
@@ -2188,17 +2306,17 @@ async function downloadDocx() {
     // Page break after TOC
     children.push(new Paragraph({ children: [new PageBreak()] }));
     
-    // ========== EXECUTIVE SUMMARY ==========
-    children.push(createSectionHeading("Executive Summary", "📋"));
-    children.push(createInfoBox(state.results.summary, "f0f9ff"));
+    // ========== CODE OVERVIEW ==========
+    children.push(createSectionHeading("Code Overview", "📋"));
+    children.push(createInfoBox(state.results.codeOverview || '', "f0f9ff"));
     children.push(new Paragraph({ spacing: { after: 300 } }));
     
-    // ========== KEY POINTS ==========
-    children.push(createSectionHeading("Key Points", "💡"));
+    // ========== REQUIREMENTS ==========
+    children.push(createSectionHeading("Requirements", "📌"));
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: "The following key insights were identified from the meeting:",
+                text: "The following requirements were identified from the code:",
                 size: 22,
                 color: colors.muted,
                 italics: true,
@@ -2208,82 +2326,53 @@ async function downloadDocx() {
         spacing: { after: 200 }
     }));
     
-    state.results.keyPoints.split('\n')
-        .filter(line => line.trim())
-        .forEach(point => {
-            children.push(createBulletItem(point));
+    if (Array.isArray(state.results.requirements) && state.results.requirements.length > 0) {
+        state.results.requirements.forEach(req => {
+            const line = `${req.id ? `${req.id}: ` : ''}${req.text || ''}`.trim();
+            if (line) {
+                children.push(createBulletItem(line));
+            }
         });
-    children.push(new Paragraph({ spacing: { after: 300 } }));
-    
-    // ========== ACTION ITEMS ==========
-    children.push(createSectionHeading("Action Items", "✅"));
-    children.push(new Paragraph({
-        children: [
-            new TextRun({
-                text: "The following action items require follow-up:",
-                size: 22,
-                color: colors.muted,
-                italics: true,
-                font: "Calibri"
-            })
-        ],
-        spacing: { after: 200 }
-    }));
-    
-    state.results.actionItems.split('\n')
-        .filter(line => line.trim())
-        .forEach((item, idx) => {
-            children.push(new Paragraph({
-                children: [
-                    new TextRun({
-                        text: "☐  ",
-                        size: 24,
-                        color: colors.accent
-                    }),
-                    new TextRun({
-                        text: item.replace(/^[-•*▸☐✓\d+.)]\s*/, '').trim(),
-                        size: 22,
-                        font: "Calibri"
-                    })
-                ],
-                spacing: { after: 120 },
-                indent: { left: 200 }
-            }));
-        });
-    children.push(new Paragraph({ spacing: { after: 300 } }));
-    
-    // ========== SENTIMENT ANALYSIS ==========
-    children.push(createSectionHeading("Sentiment Analysis", "📊"));
-    
-    // Determine sentiment color
-    const sentimentText = state.results.sentiment.toLowerCase();
-    let sentimentColor = colors.muted;
-    let sentimentBg = "f7fafc";
-    if (sentimentText.includes('positive') || sentimentText.includes('optimistic')) {
-        sentimentColor = colors.success;
-        sentimentBg = "f0fff4";
-    } else if (sentimentText.includes('negative') || sentimentText.includes('concern')) {
-        sentimentColor = "dc2626";
-        sentimentBg = "fef2f2";
+    } else {
+        children.push(createBulletItem("No requirements extracted."));
     }
+    children.push(new Paragraph({ spacing: { after: 300 } }));
     
+    // ========== DESIGN PARAMETERS ==========
+    children.push(createSectionHeading("Design Parameters", "🔢"));
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: state.results.sentiment,
-                size: 26,
-                bold: true,
-                color: sentimentColor,
+                text: "The following design parameters and formulas were extracted:",
+                size: 22,
+                color: colors.muted,
+                italics: true,
                 font: "Calibri"
             })
         ],
-        shading: { fill: sentimentBg, type: ShadingType.SOLID },
-        border: {
-            left: { color: sentimentColor, size: 24, style: BorderStyle.SINGLE }
-        },
-        spacing: { before: 100, after: 400 },
-        indent: { left: 200, right: 200 }
+        spacing: { after: 200 }
     }));
+    
+    if (Array.isArray(state.results.designParameters) && state.results.designParameters.length > 0) {
+        state.results.designParameters.forEach(param => {
+            const value = [param.value, param.unit].filter(Boolean).join(' ').trim();
+            const line = `${param.name || 'Parameter'}${value ? `: ${value}` : ''}${param.section ? ` (Section: ${param.section})` : ''}`;
+            children.push(createBulletItem(line));
+        });
+    } else {
+        children.push(createBulletItem("No design parameters extracted."));
+    }
+    children.push(new Paragraph({ spacing: { after: 300 } }));
+    
+    // ========== COMPLIANCE NOTES ==========
+    children.push(createSectionHeading("Compliance Notes", "⚠️"));
+    if (Array.isArray(state.results.complianceNotes) && state.results.complianceNotes.length > 0) {
+        state.results.complianceNotes.forEach(note => {
+            children.push(createBulletItem(note));
+        });
+    } else {
+        children.push(createBulletItem("No compliance notes extracted."));
+    }
     
     // ========== CHAT Q&A (if present) ==========
     const chatMessages = document.querySelectorAll('#chat-messages .chat-message');
@@ -2292,7 +2381,7 @@ async function downloadDocx() {
         children.push(new Paragraph({
             children: [
                 new TextRun({
-                    text: "The following questions were asked about the meeting content:",
+                    text: "The following questions were asked about the code content:",
                     size: 22,
                     color: colors.muted,
                     italics: true,
@@ -2349,7 +2438,7 @@ async function downloadDocx() {
         children.push(new Paragraph({
             children: [
                 new TextRun({
-                    text: "An executive audio summary (~2 minutes) has been generated for this meeting.",
+                    text: "An engineering audio briefing (~2 minutes) has been generated for this code analysis.",
                     size: 22,
                     font: "Calibri"
                 })
@@ -2365,7 +2454,7 @@ async function downloadDocx() {
                     font: "Calibri"
                 }),
                 new TextRun({
-                    text: `meeting-briefing-${new Date().toISOString().slice(0, 10)}.mp3`,
+                    text: `code-briefing-${new Date().toISOString().slice(0, 10)}.mp3`,
                     size: 22,
                     color: "2563eb",
                     font: "Calibri"
@@ -2397,7 +2486,7 @@ async function downloadDocx() {
             }
             const imageArrayBuffer = bytes.buffer;
             
-            children.push(createSectionHeading("Meeting Infographic", "🎨"));
+            children.push(createSectionHeading("Code Infographic", "🎨"));
             children.push(new Paragraph({
                 children: [
                     new ImageRun({
@@ -2415,7 +2504,7 @@ async function downloadDocx() {
             children.push(new Paragraph({
                 children: [
                     new TextRun({
-                        text: "AI-generated infographic visualizing key meeting insights",
+                        text: "AI-generated infographic visualizing key code insights",
                         italics: true,
                         size: 18,
                         color: colors.muted,
@@ -2526,7 +2615,7 @@ async function downloadDocx() {
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: "Full Meeting Transcript",
+                text: "Full Source Text",
                 size: 28,
                 color: colors.secondary,
                 font: "Calibri Light"
@@ -2540,7 +2629,7 @@ async function downloadDocx() {
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: "The following is the complete transcript of the meeting for reference.",
+                text: "The following is the complete source text for reference.",
                 italics: true,
                 size: 18,
                 color: colors.muted,
@@ -2556,11 +2645,11 @@ async function downloadDocx() {
         spacing: { after: 300 }
     }));
     
-    // Transcript content
+    // Source text content
     children.push(new Paragraph({
         children: [
             new TextRun({
-                text: state.results.transcription,
+                text: state.results.sourceText || '',
                 size: 20,
                 color: colors.secondary,
                 font: "Calibri"
@@ -2572,10 +2661,10 @@ async function downloadDocx() {
     // ========== CREATE DOCUMENT WITH ALL FEATURES ==========
     const doc = new Document({
         creator: "northstar.LM",
-        title: "Meeting Insights Report",
-        subject: "AI-Generated Meeting Analysis",
-        keywords: "meeting, analysis, insights, transcript, action items",
-        description: "Meeting insights report generated by northstar.LM AI Meeting Intelligence Platform",
+        title: "Design Code Insights Report",
+        subject: "AI-Generated Design Code Analysis",
+        keywords: "design code, analysis, requirements, parameters, compliance, source text",
+        description: "Design code insights report generated by northstar.LM",
         lastModifiedBy: "northstar.LM",
         styles: {
             default: {
@@ -2659,7 +2748,7 @@ async function downloadDocx() {
                         new Paragraph({
                             children: [
                                 new TextRun({
-                                    text: "Meeting Insights Report",
+                                    text: "Design Code Insights Report",
                                     size: 18,
                                     color: colors.muted,
                                     font: "Calibri"
@@ -2733,7 +2822,7 @@ async function downloadDocx() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `meeting-insights-${new Date().toISOString().slice(0, 10)}.docx`;
+    a.download = `code-insights-${new Date().toISOString().slice(0, 10)}.docx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2814,24 +2903,26 @@ function resetForNewAnalysis() {
     elements.urlPreviewContent.textContent = '';
     
     // Clear results content (not just hide)
-    if (elements.resultSummary) elements.resultSummary.innerHTML = '';
-    if (elements.resultKeypoints) elements.resultKeypoints.innerHTML = '';
-    if (elements.resultActions) elements.resultActions.innerHTML = '';
-    if (elements.resultTranscript) elements.resultTranscript.innerHTML = '';
+    if (elements.resultOverview) elements.resultOverview.innerHTML = '';
+    if (elements.resultRequirements) elements.resultRequirements.innerHTML = '';
+    if (elements.resultParameters) elements.resultParameters.innerHTML = '';
+    if (elements.resultCrossrefs) elements.resultCrossrefs.innerHTML = '';
+    if (elements.resultCompliance) elements.resultCompliance.innerHTML = '';
+    if (elements.resultSourceText) elements.resultSourceText.innerHTML = '';
     
     // Reset KPI dashboard values
-    const kpiSentiment = document.getElementById('kpi-sentiment');
-    const kpiWords = document.getElementById('kpi-words');
-    const kpiKeypoints = document.getElementById('kpi-keypoints');
-    const kpiActions = document.getElementById('kpi-actions');
-    const kpiReadtime = document.getElementById('kpi-readtime');
-    const kpiTopics = document.getElementById('kpi-topics');
-    if (kpiSentiment) { kpiSentiment.textContent = '-'; kpiSentiment.className = 'kpi-value'; }
-    if (kpiWords) kpiWords.textContent = '-';
-    if (kpiKeypoints) kpiKeypoints.textContent = '-';
-    if (kpiActions) kpiActions.textContent = '-';
-    if (kpiReadtime) kpiReadtime.textContent = '-';
-    if (kpiTopics) kpiTopics.textContent = '-';
+    const kpiCodeType = document.getElementById('kpi-code-type');
+    const kpiRequirements = document.getElementById('kpi-requirements');
+    const kpiParameters = document.getElementById('kpi-parameters');
+    const kpiCrossrefs = document.getElementById('kpi-crossrefs');
+    const kpiCompliance = document.getElementById('kpi-compliance');
+    const kpiSections = document.getElementById('kpi-sections');
+    if (kpiCodeType) kpiCodeType.textContent = '-';
+    if (kpiRequirements) kpiRequirements.textContent = '-';
+    if (kpiParameters) kpiParameters.textContent = '-';
+    if (kpiCrossrefs) kpiCrossrefs.textContent = '-';
+    if (kpiCompliance) kpiCompliance.textContent = '-';
+    if (kpiSections) kpiSections.textContent = '-';
     
     // Hide results section
     elements.resultsSection.classList.add('hidden');
@@ -2902,26 +2993,28 @@ async function generateAudioBriefing() {
             ? `\n\nIMPORTANT: Use this style/tone: "${customStyle}"`
             : '';
         
-        const scriptPrompt = `You are an expert at creating concise executive briefings. 
-Based on the following meeting analysis, create a 2-minute audio script (approximately 300 words) that:
-- Opens with a brief greeting and meeting context
-- Summarizes the key discussion points
-- Highlights the most important action items
-- Closes with the overall meeting sentiment and next steps
+        const scriptPrompt = `You are an expert at creating concise engineering code briefings.
+Based on the following design code analysis, create a 2-minute audio script (approximately 300 words) that:
+- Opens with a brief greeting and code context
+- Summarizes the code overview and scope
+- Highlights the most critical requirements and parameters
+- Notes any key compliance warnings or exceptions
+- Closes with recommended next steps for the design team
 
 Keep the tone professional but conversational, suitable for audio playback.
 Do not include any stage directions or speaker notes - just the spoken text.${styleInstruction}
 
-Meeting Summary:
-${state.results.summary}
+Code Overview:
+${state.results.codeOverview}
 
-Key Points:
-${state.results.keyPoints}
+Top Requirements:
+${(state.results.requirements || []).slice(0, 6).map(req => `- ${req.id ? `${req.id}: ` : ''}${req.text || ''}`).join('\n')}
 
-Action Items:
-${state.results.actionItems}
+Design Parameters:
+${(state.results.designParameters || []).slice(0, 6).map(param => `- ${param.name || 'Parameter'}: ${param.value || ''} ${param.unit || ''}`.trim()).join('\n')}
 
-Sentiment: ${state.results.sentiment}`;
+Compliance Notes:
+${(state.results.complianceNotes || []).join('\n')}`;
 
         const script = await callChatAPI(
             PROMPTS.audioBriefingSystem,
@@ -3004,7 +3097,7 @@ function downloadAudio() {
     
     const a = document.createElement('a');
     a.href = generatedAudioUrl;
-    a.download = `meeting-briefing-${new Date().toISOString().slice(0, 10)}.mp3`;
+    a.download = `code-briefing-${new Date().toISOString().slice(0, 10)}.mp3`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3029,19 +3122,20 @@ async function generateInfographic() {
 
     try {
         // Create a detailed prompt for DALL-E with safe margin instructions
-        const dallePrompt = `Create a professional meeting infographic with the following style: ${userStyle}.
+        const dallePrompt = `Create a professional engineering code infographic with the following style: ${userStyle}.
 
-The infographic should visualize these meeting insights:
+The infographic should visualize these code insights:
 
-SUMMARY: ${state.results.summary.substring(0, 200)}...
+CODE OVERVIEW: ${state.results.codeOverview.substring(0, 200)}...
 
-KEY POINTS (show as visual elements):
-${state.results.keyPoints.split('\n').slice(0, 4).join('\n')}
+REQUIREMENTS (show as visual elements):
+${(state.results.requirements || []).slice(0, 4).map(req => `- ${req.id ? `${req.id}: ` : ''}${req.text || ''}`).join('\n')}
 
-ACTION ITEMS (show as checklist or tasks):
-${state.results.actionItems.split('\n').slice(0, 3).join('\n')}
+DESIGN PARAMETERS (show as callouts):
+${(state.results.designParameters || []).slice(0, 4).map(param => `- ${param.name || 'Parameter'}: ${param.value || ''} ${param.unit || ''}`.trim()).join('\n')}
 
-SENTIMENT: ${state.results.sentiment}
+COMPLIANCE NOTES:
+${(state.results.complianceNotes || []).slice(0, 3).map(note => `- ${note}`).join('\n')}
 
 CRITICAL DESIGN REQUIREMENTS:
 - Keep ALL content well within the image boundaries with generous padding (at least 50px from all edges)
@@ -3049,7 +3143,7 @@ CRITICAL DESIGN REQUIREMENTS:
 - Center the composition with clear margins on all sides
 - Clean, professional layout with good whitespace
 - Use icons and visual hierarchy
-- Include a centered title "Meeting Insights" at the top
+- Include a centered title "Design Code Insights" at the top
 - Use a cohesive color scheme
 - Make text readable and fully visible
 - Horizontal/landscape layout`;
@@ -3145,7 +3239,7 @@ async function downloadInfographic() {
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = `meeting-infographic-${new Date().toISOString().slice(0, 10)}.png`;
+        a.download = `code-infographic-${new Date().toISOString().slice(0, 10)}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -3325,7 +3419,7 @@ async function sendChatMessage() {
         await sleep(300); // Brief pause for UX
         
         // Step 2: Building context
-        updateThinkingStatus(thinkingId, 'Searching meeting data...');
+        updateThinkingStatus(thinkingId, 'Searching code data...');
         const context = buildChatContext();
         await sleep(200);
         
@@ -3362,32 +3456,35 @@ async function sendChatMessage() {
 
 function buildChatContext() {
     const results = state.results;
-    return `You have access to the following meeting data. Use this information to answer the user's questions accurately and helpfully.
+    return `You have access to the following design code analysis data. Use this information to answer the user's questions accurately and helpfully.
 
-=== MEETING TRANSCRIPT ===
-${results.transcription}
+=== SOURCE TEXT ===
+${results.sourceText}
 
 === ANALYSIS RESULTS ===
 
-SUMMARY:
-${results.summary}
+CODE OVERVIEW:
+${results.codeOverview}
 
-KEY POINTS:
-${results.keyPoints}
+REQUIREMENTS (JSON):
+${JSON.stringify(results.requirements || [], null, 2)}
 
-ACTION ITEMS:
-${results.actionItems}
+DESIGN PARAMETERS (JSON):
+${JSON.stringify(results.designParameters || [], null, 2)}
 
-OVERALL SENTIMENT:
-${results.sentiment}
+CROSS REFERENCES (JSON):
+${JSON.stringify(results.crossReferences || [], null, 2)}
 
-=== END OF MEETING DATA ===
+COMPLIANCE NOTES:
+${(results.complianceNotes || []).join('\n')}
+
+=== END OF CODE DATA ===
 
 Instructions:
-- Answer questions based on the meeting data above
+- Answer questions based on the code data above
 - Be concise but thorough
-- If something isn't mentioned in the meeting data, say so
-- Use specific quotes or details from the transcript when relevant
+- If something isn't mentioned in the code data, say so
+- Include section references when citing requirements
 - Format responses clearly with bullet points when listing multiple items`;
 }
 
@@ -3539,8 +3636,8 @@ function resetChatHistory() {
             <div class="chat-welcome">
                 <div class="chat-welcome-icon">🤖</div>
                 <div class="chat-welcome-text">
-                    <strong>Meeting Assistant</strong>
-                    <p>I have access to your transcript and analysis. Ask me about decisions, action items, specific topics, or anything else from the meeting.</p>
+                    <strong>Design Code Assistant</strong>
+                    <p>I have access to the code text and extracted requirements. Ask about specific clauses, parameters, cross-references, or compliance notes.</p>
                 </div>
             </div>
         `;
@@ -3560,16 +3657,10 @@ function restoreChatHistoryUI() {
 // ============================================
 
 function generateSuggestedAgentName() {
-    if (!state.results) return 'Meeting Agent';
+    if (!state.results) return 'Code Agent';
     
-    // Try to extract a meaningful name from the summary
-    const summary = state.results.summary || '';
-    
-    // Get first sentence and clean it up
-    let title = summary.split('.')[0].trim();
-    
-    // Remove common prefixes
-    title = title.replace(/^(This meeting|The meeting|Meeting|This call|The call|In this meeting|During this meeting)/i, '').trim();
+    const overview = state.results.codeOverview || '';
+    let title = overview.split('.')[0].trim();
     
     // Capitalize first letter
     if (title.length > 0) {
@@ -3583,8 +3674,11 @@ function generateSuggestedAgentName() {
     
     // Fallback if title is too short or empty
     if (title.length < 5) {
+        const codeType = deriveCodeType(state.results);
         const now = new Date();
-        title = `Meeting ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        title = codeType === 'Unknown'
+            ? `Code ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+            : `${codeType} ${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     }
     
     return title;
@@ -3755,12 +3849,11 @@ function escapeYamlValue(value) {
 
 function buildExportPayload(agentName, now, readableDate) {
     const results = state.results || {};
-    const transcript = results.transcription || '';
-    const wordCount = getWordCount(transcript);
-    const keyPointsCount = (results.keyPoints || '').split('\n').filter(line => line.trim().length > 0).length;
-    const actionItemsCount = (results.actionItems || '').split('\n').filter(line => line.trim().length > 0).length;
-    const readTimeMinutes = wordCount ? Math.ceil(wordCount / 200) : 0;
-    const topicsCount = Math.min(keyPointsCount, 10);
+    const sourceText = results.sourceText || '';
+    const requirementsCount = (results.requirements || []).length;
+    const parametersCount = (results.designParameters || []).length;
+    const crossRefsCount = (results.crossReferences || []).length;
+    const complianceNotesCount = (results.complianceNotes || []).length;
 
     const imageInput = splitDataUrl(state.selectedImageBase64);
 
@@ -3813,19 +3906,19 @@ function buildExportPayload(agentName, now, readableDate) {
             pdf: state.exportMeta.processing.pdf
         },
         analysis: {
-            summary: results.summary || '',
-            keyPoints: results.keyPoints || '',
-            actionItems: results.actionItems || '',
-            sentiment: results.sentiment || '',
-            transcript,
+            codeOverview: results.codeOverview || '',
+            requirements: results.requirements || [],
+            designParameters: results.designParameters || [],
+            crossReferences: results.crossReferences || [],
+            complianceNotes: results.complianceNotes || [],
+            sourceText,
             model: GPT_52_MODEL
         },
         kpis: {
-            wordsAnalyzed: wordCount,
-            keyPointsCount,
-            actionItemsCount,
-            readTimeMinutes,
-            topicsCount
+            requirementsCount,
+            parametersCount,
+            crossRefsCount,
+            complianceNotesCount
         },
         metrics: state.metrics || null,
         currentMetrics: currentMetrics || null,
@@ -3834,9 +3927,6 @@ function buildExportPayload(agentName, now, readableDate) {
         prompts: {
             analysisBatchSystem: PROMPTS.analysisBatchSystem,
             summarySystem: PROMPTS.summarySystem,
-            keyPointsSystem: PROMPTS.keyPointsSystem,
-            actionItemsSystem: PROMPTS.actionItemsSystem,
-            sentimentSystem: PROMPTS.sentimentSystem,
             visionOcrSystem: PROMPTS.visionOcrSystem,
             audioBriefingSystem: PROMPTS.audioBriefingSystem,
             audioBriefingScriptPrompt: audioBriefingMeta?.scriptPrompt || null,
@@ -3863,22 +3953,24 @@ function exportAgentWithName(agentName) {
     const readableDate = now.toLocaleDateString('en-US', { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
     });
+    const codeStandard = deriveCodeType(state.results);
     const exportPayload = buildExportPayload(agentName, now, readableDate);
     const agentId = exportPayload.agent.id;
     const exportJson = JSON.stringify(exportPayload, null, 2);
     
     // Build the markdown content with YAML frontmatter
     const markdown = `---
-agent_type: northstar-meeting-agent
+agent_type: northstar-code-agent
 version: 2.0
 created: ${dateStr}
 source_type: ${state.inputMode}
 agent_name: "${escapeYamlValue(agentName)}"
+code_standard: "${escapeYamlValue(codeStandard)}"
 agent_id: "${agentId}"
 export_format: northstar-agent-md
 ---
 
-# Meeting Agent: ${agentName}
+# Code Agent: ${agentName}
 
 ## Metadata
 - **Created**: ${readableDate}
@@ -3923,34 +4015,40 @@ ${JSON.stringify(exportPayload.metrics, null, 2)}
 
 ---
 
-## Executive Summary
+## Code Overview
 
-${state.results.summary}
-
----
-
-## Key Points
-
-${formatAsMarkdownList(state.results.keyPoints)}
+${state.results.codeOverview || ''}
 
 ---
 
-## Action Items
+## Requirements
 
-${formatAsCheckboxList(state.results.actionItems)}
-
----
-
-## Sentiment Analysis
-
-**Overall Sentiment**: ${state.results.sentiment}
+${formatRequirementsMarkdown(state.results.requirements)}
 
 ---
 
-## Full Transcript
+## Design Parameters
+
+${formatDesignParametersMarkdown(state.results.designParameters)}
+
+---
+
+## Cross References
+
+${formatCrossReferencesMarkdown(state.results.crossReferences)}
+
+---
+
+## Compliance Notes
+
+${formatAsMarkdownList(state.results.complianceNotes || [])}
+
+---
+
+## Source Text
 
 \`\`\`
-${state.results.transcription}
+${state.results.sourceText || ''}
 \`\`\`
 
 ---
@@ -4034,12 +4132,19 @@ function getSourceTypeLabel(inputMode) {
     return labels[inputMode] || 'Unknown';
 }
 
-function formatAsMarkdownList(text) {
+function formatAsMarkdownList(input) {
+    if (Array.isArray(input)) {
+        return input
+            .map(item => String(item || '').trim())
+            .filter(line => line.length > 0)
+            .map(line => `- ${line}`)
+            .join('\n');
+    }
+    const text = input || '';
     return text.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .map(line => {
-            // Remove existing bullets/dashes and add markdown bullet
             const cleanLine = line.replace(/^[-•*▸]\s*/, '');
             return `- ${cleanLine}`;
         })
@@ -4054,6 +4159,47 @@ function formatAsCheckboxList(text) {
             // Remove existing bullets/dashes and add markdown checkbox
             const cleanLine = line.replace(/^[-•*▸☐]\s*/, '');
             return `- [ ] ${cleanLine}`;
+        })
+        .join('\n');
+}
+
+function formatRequirementsMarkdown(requirements) {
+    if (!Array.isArray(requirements) || requirements.length === 0) {
+        return '- No requirements extracted.';
+    }
+    return requirements
+        .map(req => {
+            const id = req.id ? `${req.id}: ` : '';
+            const text = req.text || '';
+            return `- ${id}${text}`.trim();
+        })
+        .join('\n');
+}
+
+function formatDesignParametersMarkdown(parameters) {
+    if (!Array.isArray(parameters) || parameters.length === 0) {
+        return '- No design parameters extracted.';
+    }
+    return parameters
+        .map(param => {
+            const value = [param.value, param.unit].filter(Boolean).join(' ').trim();
+            const name = param.name || 'Parameter';
+            const section = param.section ? ` (Section: ${param.section})` : '';
+            return `- ${name}${value ? `: ${value}` : ''}${section}`.trim();
+        })
+        .join('\n');
+}
+
+function formatCrossReferencesMarkdown(crossReferences) {
+    if (!Array.isArray(crossReferences) || crossReferences.length === 0) {
+        return '- No cross-references extracted.';
+    }
+    return crossReferences
+        .map(ref => {
+            const source = ref.source || 'Source';
+            const target = ref.target || 'Target';
+            const relationship = ref.relationship ? ` (${ref.relationship})` : '';
+            return `- ${source} -> ${target}${relationship}`.trim();
         })
         .join('\n');
 }
@@ -4108,25 +4254,52 @@ function parseAgentFile(content) {
     });
     
     // Validate it's a northstar agent
-    if (frontmatter.agent_type !== 'northstar-meeting-agent') {
+    const isCodeAgent = frontmatter.agent_type === 'northstar-code-agent';
+    const isMeetingAgent = frontmatter.agent_type === 'northstar-meeting-agent';
+    if (!isCodeAgent && !isMeetingAgent) {
         return null;
     }
     
     // Extract sections from markdown
     const bodyContent = content.substring(frontmatterMatch[0].length);
     
+    const payload = extractJsonSection(bodyContent, 'Export Payload (JSON)');
+    const payloadAnalysis = payload?.analysis || null;
+
+    if (isCodeAgent) {
+        const codeOverview = payloadAnalysis?.codeOverview || extractSection(bodyContent, 'Code Overview') || '';
+        const requirements = payloadAnalysis?.requirements || parseRequirementsFromMarkdown(extractSection(bodyContent, 'Requirements'));
+        const designParameters = payloadAnalysis?.designParameters || parseDesignParametersFromMarkdown(extractSection(bodyContent, 'Design Parameters'));
+        const crossReferences = payloadAnalysis?.crossReferences || parseCrossReferencesFromMarkdown(extractSection(bodyContent, 'Cross References'));
+        const complianceNotes = payloadAnalysis?.complianceNotes || parseMarkdownList(extractSection(bodyContent, 'Compliance Notes'));
+        const sourceText = payloadAnalysis?.sourceText || extractSourceText(bodyContent) || '';
+
+        if (!codeOverview && !sourceText && !payloadAnalysis?.codeOverview && !payloadAnalysis?.sourceText) {
+            return null;
+        }
+
+        return {
+            frontmatter,
+            codeOverview,
+            requirements,
+            designParameters,
+            crossReferences,
+            complianceNotes,
+            sourceText,
+            payload
+        };
+    }
+
     const summary = extractSection(bodyContent, 'Executive Summary');
     const keyPoints = extractSection(bodyContent, 'Key Points');
     const actionItems = extractSection(bodyContent, 'Action Items');
     const sentiment = extractSentimentFromSection(bodyContent);
     const transcription = extractTranscript(bodyContent);
-    const payload = extractJsonSection(bodyContent, 'Export Payload (JSON)');
-    const payloadAnalysis = payload?.analysis || null;
-    
+
     if (!summary && !transcription && !payloadAnalysis?.summary && !payloadAnalysis?.transcript) {
         return null;
     }
-    
+
     return {
         frontmatter,
         summary: summary || payloadAnalysis?.summary || '',
@@ -4141,20 +4314,40 @@ function parseAgentFile(content) {
 function parseLegacyAgentFile(content) {
     // Attempt to parse content that might not have proper frontmatter
     // Look for key sections
-    const summary = extractSection(content, 'Executive Summary') || 
+    const codeOverview = extractSection(content, 'Code Overview');
+    const requirements = parseRequirementsFromMarkdown(extractSection(content, 'Requirements'));
+    const designParameters = parseDesignParametersFromMarkdown(extractSection(content, 'Design Parameters'));
+    const crossReferences = parseCrossReferencesFromMarkdown(extractSection(content, 'Cross References'));
+    const complianceNotes = parseMarkdownList(extractSection(content, 'Compliance Notes'));
+    const sourceText = extractSourceText(content);
+
+    const summary = extractSection(content, 'Executive Summary') ||
                     extractSection(content, 'Summary');
     const keyPoints = extractSection(content, 'Key Points');
     const actionItems = extractSection(content, 'Action Items');
     const sentiment = extractSentimentFromSection(content);
-    const transcription = extractTranscript(content) || 
+    const transcription = extractTranscript(content) ||
                           extractSection(content, 'Transcript');
     const payload = extractJsonSection(content, 'Export Payload (JSON)');
     const payloadAnalysis = payload?.analysis || null;
-    
+
+    if (codeOverview || sourceText || payloadAnalysis?.codeOverview || payloadAnalysis?.sourceText) {
+        return {
+            frontmatter: { source_type: 'agent', agent_type: 'northstar-code-agent' },
+            codeOverview: codeOverview || payloadAnalysis?.codeOverview || '',
+            requirements: payloadAnalysis?.requirements || requirements,
+            designParameters: payloadAnalysis?.designParameters || designParameters,
+            crossReferences: payloadAnalysis?.crossReferences || crossReferences,
+            complianceNotes: payloadAnalysis?.complianceNotes || complianceNotes,
+            sourceText: sourceText || payloadAnalysis?.sourceText || '',
+            payload
+        };
+    }
+
     if (!summary && !transcription && !payloadAnalysis?.summary && !payloadAnalysis?.transcript) {
         return null;
     }
-    
+
     return {
         frontmatter: { source_type: 'agent' },
         summary: summary || payloadAnalysis?.summary || '',
@@ -4210,15 +4403,66 @@ function extractSentimentFromSection(content) {
 }
 
 function extractTranscript(content) {
-    // Look for transcript in code block
-    const codeBlockMatch = content.match(/## Full Transcript[\s\S]*?```[\s\S]*?\n([\s\S]*?)```/);
-    if (codeBlockMatch && codeBlockMatch[1]) {
-        return codeBlockMatch[1].trim();
+    const codeBlockMatch = content.match(/## (Full Transcript|Source Text)[\s\S]*?```[\s\S]*?\n([\s\S]*?)```/);
+    if (codeBlockMatch && codeBlockMatch[2]) {
+        return codeBlockMatch[2].trim();
     }
-    
-    // Fallback: look for section without code block
-    const section = extractSection(content, 'Full Transcript');
+
+    const section = extractSection(content, 'Full Transcript') || extractSection(content, 'Source Text');
     return section;
+}
+
+function extractSourceText(content) {
+    return extractSection(content, 'Source Text') || extractTranscript(content);
+}
+
+function parseMarkdownList(sectionText) {
+    if (!sectionText) return [];
+    return sectionText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => line.replace(/^[-•*▸]\s*/, '').trim())
+        .filter(line => line.length > 0);
+}
+
+function parseRequirementsFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const parts = line.split(':');
+        if (parts.length > 1) {
+            return { id: parts.shift().trim(), text: parts.join(':').trim() };
+        }
+        return { id: '', text: line };
+    });
+}
+
+function parseDesignParametersFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const match = line.match(/^(.+?):\s*(.+)$/);
+        const name = match ? match[1].trim() : line;
+        let value = match ? match[2].trim() : '';
+        let section = '';
+        const sectionMatch = value.match(/\(Section:\s*([^)]+)\)$/i);
+        if (sectionMatch) {
+            section = sectionMatch[1].trim();
+            value = value.replace(/\(Section:\s*([^)]+)\)$/i, '').trim();
+        }
+        return { name, value, section };
+    });
+}
+
+function parseCrossReferencesFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const match = line.match(/(.+?)\s*->\s*(.+?)(?:\s*\((.+)\))?$/);
+        if (match) {
+            return {
+                source: match[1].trim(),
+                target: match[2].trim(),
+                relationship: match[3]?.trim() || ''
+            };
+        }
+        return { source: line, target: '', relationship: '' };
+    });
 }
 
 function importAgentSession(agentData) {
@@ -4234,14 +4478,28 @@ function importAgentSession(agentData) {
     generatedImageUrl = null;
     generatedImageBase64 = null;
     
-    // Set the results from the imported agent
-    state.results = {
-        transcription: agentData.transcription,
-        summary: agentData.summary,
-        keyPoints: agentData.keyPoints,
-        actionItems: agentData.actionItems,
-        sentiment: agentData.sentiment
-    };
+    const hasCodeSchema = Boolean(agentData.codeOverview || agentData.sourceText || agentData.requirements);
+    if (hasCodeSchema) {
+        state.results = {
+            sourceText: agentData.sourceText || '',
+            codeOverview: agentData.codeOverview || '',
+            requirements: agentData.requirements || [],
+            designParameters: agentData.designParameters || [],
+            crossReferences: agentData.crossReferences || [],
+            complianceNotes: agentData.complianceNotes || []
+        };
+    } else {
+        const keyPointsList = parseMarkdownList(agentData.keyPoints || '');
+        const actionItemsList = parseMarkdownList(agentData.actionItems || '');
+        state.results = {
+            sourceText: agentData.transcription || '',
+            codeOverview: agentData.summary || '',
+            requirements: keyPointsList.map(text => ({ id: '', text })),
+            designParameters: actionItemsList.map(text => ({ name: text, value: '', unit: '', section: '', applicability: '' })),
+            crossReferences: [],
+            complianceNotes: agentData.sentiment ? [agentData.sentiment] : []
+        };
+    }
     
     // Set input mode to indicate this is from an agent
     state.inputMode = agentData.frontmatter?.source_type || 'agent';

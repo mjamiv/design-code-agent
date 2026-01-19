@@ -210,7 +210,7 @@ export class REPLEnvironment {
     }
 
     /**
-     * Set the context (meeting agents) in the Python environment
+     * Set the context (code agents) in the Python environment
      * @param {Array} agents - Array of agent objects
      */
     async setContext(agents) {
@@ -227,11 +227,13 @@ export class REPLEnvironment {
                 date: agent.date,
                 sourceType: agent.sourceType,
                 enabled: agent.enabled !== false,
-                summary: agent.summary || '',
-                keyPoints: agent.keyPoints || '',
-                actionItems: agent.actionItems || '',
-                sentiment: agent.sentiment || '',
-                transcript: agent.transcript || ''
+                codeOverview: agent.codeOverview || agent.summary || '',
+                requirements: agent.requirements || [],
+                designParameters: agent.designParameters || [],
+                crossReferences: agent.crossReferences || [],
+                complianceNotes: agent.complianceNotes || (agent.sentiment ? [agent.sentiment] : []),
+                sourceText: agent.sourceText || agent.transcript || '',
+                extendedContext: agent.extendedContext || ''
             })),
             metadata: {
                 totalAgents: agents.length,

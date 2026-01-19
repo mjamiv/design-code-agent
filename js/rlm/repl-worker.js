@@ -204,12 +204,31 @@ def search_agents(keyword, agents=None):
     keyword_lower = keyword.lower()
     results = []
     
+    def _stringify_list(items, fields):
+        lines = []
+        for item in items or []:
+            parts = []
+            for field in fields:
+                value = item.get(field)
+                if value:
+                    parts.append(str(value))
+            if parts:
+                lines.append(' '.join(parts))
+        return '\\n'.join(lines)
+    
     for agent in agents:
         matches = []
-        for field in ['summary', 'keyPoints', 'actionItems', 'transcript']:
-            content = agent.get(field, '')
+        field_map = {
+            'codeOverview': agent.get('codeOverview', ''),
+            'requirements': _stringify_list(agent.get('requirements', []), ['id', 'text', 'section', 'type']),
+            'designParameters': _stringify_list(agent.get('designParameters', []), ['id', 'name', 'value', 'unit', 'section']),
+            'crossReferences': _stringify_list(agent.get('crossReferences', []), ['source', 'target', 'relationship', 'note']),
+            'complianceNotes': '\\n'.join(agent.get('complianceNotes', []) or []),
+            'sourceText': agent.get('sourceText', '')
+        }
+        
+        for field, content in field_map.items():
             if content and keyword_lower in content.lower():
-                # Extract excerpt around the match
                 idx = content.lower().find(keyword_lower)
                 start = max(0, idx - 50)
                 end = min(len(content), idx + len(keyword) + 50)
@@ -243,22 +262,63 @@ def list_agents():
     return [{'id': a.get('id'), 'name': a.get('displayName', a.get('title', 'Unknown')), 
              'date': a.get('date'), 'enabled': a.get('enabled', True)} for a in agents]
 
-def get_all_action_items():
-    """Extract all action items from all agents."""
+def get_all_requirements():
+    """Get all requirements from all enabled agents."""
     agents = context.get('agents', [])
-    all_items = []
+    requirements = []
     for agent in agents:
         if agent.get('enabled', True):
-            items = agent.get('actionItems', '')
-            if items:
-                all_items.append({
+            for req in agent.get('requirements', []) or []:
+                requirements.append({
                     'agent': agent.get('displayName', agent.get('title', 'Unknown')),
-                    'items': items
+                    'id': req.get('id'),
+                    'text': req.get('text'),
+                    'section': req.get('section'),
+                    'type': req.get('type'),
+                    'keywords': req.get('keywords', [])
                 })
-    return all_items
+    return requirements
+
+def get_all_parameters():
+    """Get all design parameters from all enabled agents."""
+    agents = context.get('agents', [])
+    parameters = []
+    for agent in agents:
+        if agent.get('enabled', True):
+            for param in agent.get('designParameters', []) or []:
+                parameters.append({
+                    'agent': agent.get('displayName', agent.get('title', 'Unknown')),
+                    'id': param.get('id'),
+                    'name': param.get('name'),
+                    'value': param.get('value'),
+                    'unit': param.get('unit'),
+                    'section': param.get('section'),
+                    'applicability': param.get('applicability')
+                })
+    return parameters
+
+def get_all_crossrefs():
+    """Get all cross-references from all enabled agents."""
+    agents = context.get('agents', [])
+    crossrefs = []
+    for agent in agents:
+        if agent.get('enabled', True):
+            for ref in agent.get('crossReferences', []) or []:
+                crossrefs.append({
+                    'agent': agent.get('displayName', agent.get('title', 'Unknown')),
+                    'source': ref.get('source'),
+                    'target': ref.get('target'),
+                    'relationship': ref.get('relationship'),
+                    'note': ref.get('note')
+                })
+    return crossrefs
+
+def get_all_action_items():
+    """Legacy helper mapped to requirements for backward compatibility."""
+    return get_all_requirements()
 
 def get_all_summaries():
-    """Get summaries from all enabled agents."""
+    """Legacy helper mapped to code overviews for backward compatibility."""
     agents = context.get('agents', [])
     summaries = []
     for agent in agents:
@@ -266,7 +326,7 @@ def get_all_summaries():
             summaries.append({
                 'agent': agent.get('displayName', agent.get('title', 'Unknown')),
                 'date': agent.get('date'),
-                'summary': agent.get('summary', '')
+                'summary': agent.get('codeOverview', '')
             })
     return summaries
 

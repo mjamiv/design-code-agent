@@ -353,7 +353,7 @@ export class RLMPipeline {
         this.stats.subLmCalls++;
         
         try {
-            const systemPrompt = `You are analyzing meeting data to answer a specific question.
+            const systemPrompt = `You are analyzing design code data to answer a specific question.
 Be concise and focus only on information relevant to the question.
 If the information is not available in the provided context, say so briefly.`;
 
@@ -683,11 +683,11 @@ If the information is not available in the provided context, say so briefly.`;
 
     _buildSubQueryPrompts(subQuery, contextText) {
         const queryText = this._getSubQueryText(subQuery);
-        const systemPrompt = `You are analyzing meeting data to answer a specific question.
+        const systemPrompt = `You are analyzing design code data to answer a specific question.
 Be concise and focus only on information relevant to the question.
 If the information is not available in the provided context, say so briefly.`;
 
-        const userPrompt = `Context from meetings:
+        const userPrompt = `Context from codes:
 ${contextText}
 
 Question: ${queryText}
@@ -791,8 +791,8 @@ Provide a focused answer based only on the context above.`;
     }
 
     _buildLegacyPrompts(query, contextText) {
-        const systemPrompt = `You are a helpful meeting assistant with access to data from multiple meetings.
-Use the following meeting data to answer questions accurately and comprehensively.`;
+        const systemPrompt = `You are a helpful engineering design code assistant with access to data from multiple standards.
+Use the following code data to answer questions accurately and comprehensively.`;
 
         const userPrompt = `${contextText}\n\nQuestion: ${query}`.trim();
         return { systemPrompt, userPrompt };
@@ -1162,7 +1162,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
     /**
      * Process a query using REPL-based code execution
-     * The LLM generates Python code that runs against the meeting context
+     * The LLM generates Python code that runs against the code context
      * 
      * Phase 2.2: Now supports synchronous sub_lm() calls from within Python code
      * 
@@ -1387,7 +1387,7 @@ Use the following meeting data to answer questions accurately and comprehensivel
 
         for (const call of subLmCalls) {
             try {
-                const systemPrompt = `You are analyzing meeting data to answer a specific question.
+                const systemPrompt = `You are analyzing design code data to answer a specific question.
 Be concise and focus only on information relevant to the question.`;
 
                 const userPrompt = call.context

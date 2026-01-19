@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ## Project Overview
 
-**northstar.LM** is a client-side web application that transforms meeting recordings, videos, PDFs, images, or text into actionable insights using OpenAI's AI models. The entire application runs client-side with no backend server.
+**northstar.LM** is a client-side web application that transforms engineering design codes, specifications, PDFs, images, or text into structured insights using OpenAI's AI models. The entire application runs client-side with no backend server.
 
 The application consists of two main pages:
-- **Agent Builder** (`index.html`) - Analyzes individual meetings and exports them as agents
-- **Agent Orchestrator** (`orchestrator.html`) - Combines multiple agents for cross-meeting insights using the RLM pipeline
+- **Agent Builder** (`index.html`) - Analyzes individual code standards/sections and exports them as agents
+- **Agent Orchestrator** (`orchestrator.html`) - Combines multiple agents for cross-code insights using the RLM pipeline
 
-Features include multi-meeting orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
+Features include multi-code orchestration, agent export/import, image OCR with Vision AI, and professional document generation.
 
 ## Recent Updates
 
@@ -100,14 +100,15 @@ flowchart TB
         end
 
         subgraph Analysis["🧠 AI Analysis Pipeline"]
-            A1[GPT-5.2<br/>Generate Summary]
-            A2[GPT-5.2<br/>Extract Key Points]
-            A3[GPT-5.2<br/>Identify Actions]
-            A4[GPT-5.2<br/>Sentiment Analysis]
+            A1[GPT-5.2<br/>Generate Code Overview]
+            A2[GPT-5.2<br/>Extract Requirements]
+            A3[GPT-5.2<br/>Extract Design Parameters]
+            A4[GPT-5.2<br/>Map Cross References]
+            A5[GPT-5.2<br/>Compliance Notes]
         end
 
         subgraph State["💾 State Management"]
-            S1["state.results<br/>{summary, keyPoints, actions, sentiment}"]
+            S1["state.results<br/>{codeOverview, requirements, designParameters, crossReferences, complianceNotes, sourceText}"]
             S2["state.chatHistory[]"]
             S3["currentMetrics<br/>{tokens, costs, apiCalls}"]
         end
@@ -158,9 +159,9 @@ flowchart TB
 
     P1 & P2 & P3 & P4 --> Analysis
     
-    Analysis --> A1 & A2 & A3 & A4
-    A1 & A2 & A3 & A4 <--> API2
-    A1 & A2 & A3 & A4 --> S1
+    Analysis --> A1 & A2 & A3 & A4 & A5
+    A1 & A2 & A3 & A4 & A5 <--> API2
+    A1 & A2 & A3 & A4 & A5 --> S1
 
     S1 --> O1 & O2
     S2 --> O3
@@ -210,7 +211,7 @@ flowchart TB
         subgraph Parsing["⚙️ File Parsing"]
             PA1[Parse YAML Frontmatter<br/>version, created, source_type, agent_name]
             PA2[Extract Sections]
-            PA3["summary<br/>keyPoints<br/>actionItems<br/>sentiment<br/>transcript"]
+            PA3["codeOverview<br/>requirements<br/>designParameters<br/>crossReferences<br/>complianceNotes<br/>sourceText"]
         end
 
         subgraph KnowledgeBase["🧠 Knowledge Base Visual Chain"]
@@ -232,31 +233,31 @@ flowchart TB
 
         subgraph ChatUI["💬 Orchestrator Chat"]
             CH1[Welcome Message<br/>+ Quick Actions]
-            CH2[📋 Key action items]
-            CH3[🔗 Common themes]
-            CH4[✅ Main decisions]
+            CH2[📋 Key requirements]
+            CH3[🔗 Common dependencies]
+            CH4[✅ Critical compliance notes]
             CH5[User Query Input]
             CH6[Thinking Indicator<br/>with status updates]
             CH7[AI Response<br/>Markdown formatted]
         end
 
-        subgraph InsightsButton["📊 Generate Cross-Meeting Insights"]
+        subgraph InsightsButton["📊 Generate Cross-Code Insights"]
             IB1{2+ agents enabled<br/>+ API key?}
             IB2[Button Disabled]
             IB3[generateCrossInsights]
         end
 
-        subgraph InsightsGen["📊 Cross-Meeting Insights Panel"]
-            IG1[🔗 Common Themes]
-            IG2[📈 Trends & Patterns]
-            IG3[⚠️ Risks & Blockers]
+        subgraph InsightsGen["📊 Cross-Code Insights Panel"]
+            IG1[🔗 Common Requirements]
+            IG2[📈 Load Factor Comparison]
+            IG3[⚠️ Conflicts & Exceptions]
             IG4[💡 Recommendations]
-            IG5[✅ Consolidated Actions]
+            IG5[✅ Cross-Code Dependencies]
         end
 
         subgraph APICall["☁️ GPT-5.2 API"]
             API1[buildCombinedContext<br/>All enabled agents]
-            API2[System Prompt<br/>Business Analyst]
+            API2[System Prompt<br/>Engineering Code Analyst]
             API3[JSON Response<br/>Parse & Display]
         end
     end
@@ -390,7 +391,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph Query["📥 User Query"]
-        Q["What are all the action items<br/>blocking progress?"]
+        Q["What are the dead load factors<br/>across all codes?"]
     end
 
     subgraph Decompose["1️⃣ DECOMPOSE"]
@@ -398,15 +399,15 @@ flowchart TB
     end
 
     subgraph Map["2️⃣ MAP PHASE (Parallel)"]
-        M1["Agent: Q4 Planning<br/>─────────────<br/>Extract blocking items"]
-        M2["Agent: Sprint Review<br/>─────────────<br/>Extract blocking items"]
-        M3["Agent: Team Sync<br/>─────────────<br/>Extract blocking items"]
+        M1["Agent: ASCE 7<br/>─────────────<br/>Extract dead load factor"]
+        M2["Agent: AASHTO LRFD<br/>─────────────<br/>Extract dead load factor"]
+        M3["Agent: ACI 318<br/>─────────────<br/>Extract dead load factor"]
     end
 
     subgraph Results["SUB-RESULTS"]
-        R1["Budget approval pending"]
-        R2["Testing env not ready"]
-        R3["Hiring delayed"]
+        R1["ASCE 7: 1.2D"]
+        R2["AASHTO: 1.25D"]
+        R3["ACI 318: 1.2D"]
     end
 
     subgraph Reduce["3️⃣ REDUCE PHASE"]
@@ -414,7 +415,7 @@ flowchart TB
     end
 
     subgraph Output["📤 FINAL RESPONSE"]
-        O["Based on 3 meetings:<br/>• Budget approval (Q4 Planning)<br/>• Testing environment (Sprint)<br/>• Hiring decision (Team Sync)"]
+        O["Based on 3 codes:<br/>• ASCE 7 (1.2D)<br/>• AASHTO LRFD (1.25D)<br/>• ACI 318 (1.2D)"]
     end
 
     Q --> DC
@@ -484,18 +485,19 @@ The RLM includes a Python REPL environment powered by Pyodide:
 - Web Worker sandbox for isolated Python execution
 - Pyodide loaded lazily (~10MB, cached by browser)
 - Context stored as Python variable for programmatic access
-- LLM generates Python code to analyze meeting data
+- LLM generates Python code to analyze design code data
 
 **Available Python API:**
 ```python
-context        # Dict with all meeting data
+context        # Dict with all code data
 partition(text, chunk_size)  # Split text into chunks
 grep(pattern, text)          # Regex search with context
 search_agents(keyword)       # Search all agents
 get_agent(agent_id)          # Get specific agent
 list_agents()                # List all agents
-get_all_action_items()       # Extract all action items
-get_all_summaries()          # Get all summaries
+get_all_requirements()       # Extract all requirements
+get_all_parameters()         # Extract all design parameters
+get_all_crossrefs()          # Extract all cross-references
 sub_lm(query, context)       # Synchronous recursive LLM call
 FINAL(answer)                # Return final answer
 FINAL_VAR(var_name)          # Return variable as answer
@@ -583,8 +585,8 @@ flowchart TB
 ```javascript
 QueryType = {
     FACTUAL,      // Simple fact-finding
-    AGGREGATIVE,  // Gather across meetings
-    COMPARATIVE,  // Compare meetings
+    AGGREGATIVE,  // Gather across codes
+    COMPARATIVE,  // Compare codes
     SEARCH,       // Find specific content
     RECURSIVE     // Complex analysis requiring sub_lm
 };
@@ -593,11 +595,11 @@ QueryType = {
 **Example Recursive Code:**
 ```python
 # Python code generated by LLM
-summaries = get_all_summaries()
-analysis = sub_lm("What patterns emerge?", summaries)  # Blocks until LLM responds
-if "budget" in analysis.lower():
-    followup = sub_lm("Elaborate on budget", analysis)  # Can chain calls!
-    FINAL(f"Budget Analysis: {followup}")
+requirements = get_all_requirements()
+analysis = sub_lm("What common requirements appear?", requirements)  # Blocks until LLM responds
+if "load" in analysis.lower():
+    followup = sub_lm("Elaborate on load-related requirements", analysis)  # Can chain calls!
+    FINAL(f"Load Requirement Analysis: {followup}")
 else:
     FINAL(f"General Analysis: {analysis}")
 ```
@@ -641,13 +643,13 @@ sequenceDiagram
     User->>Orch: Upload .md files
     Orch->>File: Parse YAML frontmatter
     Orch->>Orch: Extract agent_name, created, source_type
-    Orch->>Orch: Parse sections (summary, keyPoints, etc)
+    Orch->>Orch: Parse sections (codeOverview, requirements, parameters, etc)
     Orch->>Orch: Add to state.agents[]
     Orch->>Orch: updateAgentsList()
     Orch->>User: Display agent nodes in chain
 ```
 
-Exported markdown now includes an **Export Payload (JSON)** section with processing metadata, prompts, metrics, chat history, and artifact metadata/attachments. On import, the single-meeting app and Orchestrator prefer this payload when present; the Orchestrator sanitizes base64 attachments and stores the remainder in `extendedContext` for search, context slices, and REPL analysis.
+Exported markdown now includes an **Export Payload (JSON)** section with processing metadata, prompts, metrics, chat history, and artifact metadata/attachments. On import, the single-code app and Orchestrator prefer this payload when present; the Orchestrator sanitizes base64 attachments and stores the remainder in `extendedContext` for search, context slices, and REPL analysis.
 
 ## Key Technical Decisions
 
@@ -660,7 +662,7 @@ Exported markdown now includes an **Export Payload (JSON)** section with process
 | Purpose | Model |
 |---------|-------|
 | Audio/Video Transcription | `whisper-1` |
-| Text Analysis (Summary, Key Points, Actions, Sentiment) | `gpt-5.2` |
+| Text Analysis (Overview, Requirements, Parameters, Cross-Refs, Compliance) | `gpt-5.2` |
 | Image/PDF Vision Analysis (OCR, content extraction) | `gpt-5.2` (vision) |
 | Chat with Data (Q&A) | `gpt-5.2` (with reasoning) |
 | Text-to-Speech | `gpt-4o-mini-tts` |
@@ -708,7 +710,7 @@ const state = {
     selectedVideoFile: null,
     inputMode: 'audio', // 'audio', 'pdf', 'image', 'video', 'text', or 'url'
     isProcessing: false,
-    results: null,        // Contains transcription, summary, keyPoints, actionItems, sentiment
+    results: null,        // Contains codeOverview, requirements, designParameters, crossReferences, complianceNotes, sourceText
     metrics: null,        // API usage metrics
     chatHistory: [],      // Chat Q&A history
     sourceUrl: null,
@@ -731,7 +733,7 @@ const state = {
 
 ### KPI Dashboard
 - `updateKPIDashboard()` - Populates the KPI cards at top of results
-- Extracts: sentiment, word count, key points count, action items count, read time, topics
+- Extracts: code type, requirements count, parameters count, cross-refs count, compliance notes count, section count
 
 ### Agent Export/Import
 - `buildExportPayload()` / `exportAgentWithName()` - Build markdown with YAML frontmatter and embedded Export Payload JSON (processing metadata, prompts, metrics, chat history, artifacts, attachments)
@@ -752,7 +754,7 @@ const state = {
 ### Orchestrator
 - `orchestrator.js` - Manages multiple loaded agents
 - **RLM-Lite powered**: Uses Recursive Language Model for intelligent query processing
-- Cross-meeting chat uses query decomposition and parallel execution
+- Cross-code chat uses query decomposition and parallel execution
 - Visual Knowledge Base with agent chain visualization
 - Each agent is a node with: editable name, enable/disable toggle, remove button
 - Only active (enabled) agents are used for chat and insights generation
@@ -771,7 +773,7 @@ const state = {
 
 ### Agent Export Modal
 - `showAgentNameModal()` - Opens naming dialog before export
-- `generateSuggestedAgentName()` - AI-derived name from meeting summary
+- `generateSuggestedAgentName()` - AI-derived name from code overview
 - `exportAgentWithName(name)` - Creates markdown with user's chosen name
 - Agent name stored in YAML frontmatter and used as filename
 

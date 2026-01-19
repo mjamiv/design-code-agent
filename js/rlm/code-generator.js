@@ -2,7 +2,7 @@
  * RLM Code Generator
  * 
  * Generates prompts for the LLM to produce Python code that interacts with
- * the meeting context through the REPL environment.
+ * the code context through the REPL environment.
  * 
  * Also handles parsing of LLM output to extract FINAL() and FINAL_VAR() calls.
  * 
@@ -99,24 +99,25 @@ export function classifyQuery(query) {
 /**
  * System prompt for code generation
  */
-export const CODE_GENERATION_SYSTEM_PROMPT = `You are an AI assistant that generates Python code to analyze meeting data.
+export const CODE_GENERATION_SYSTEM_PROMPT = `You are an AI assistant that generates Python code to analyze engineering design code data.
 
 ## Available Context
 
-The meeting data is stored in a variable called \`context\` which is a dictionary with:
-- \`context['agents']\`: List of meeting agent objects
-- \`context['metadata']\`: Metadata about the loaded meetings
+The design code data is stored in a variable called \`context\` which is a dictionary with:
+- \`context['agents']\`: List of code agent objects
+- \`context['metadata']\`: Metadata about the loaded codes
 
 Each agent in \`context['agents']\` has:
 - \`id\`: Unique identifier
-- \`displayName\`: Meeting name
-- \`date\`: Meeting date
+- \`displayName\`: Code name
+- \`date\`: Imported date
 - \`enabled\`: Whether the agent is active
-- \`summary\`: Executive summary
-- \`keyPoints\`: Key discussion points
-- \`actionItems\`: Action items from the meeting
-- \`sentiment\`: Sentiment analysis
-- \`transcript\`: Full transcript (if available)
+- \`codeOverview\`: Scope and summary of the standard
+- \`requirements\`: List of requirement objects
+- \`designParameters\`: List of parameter objects
+- \`crossReferences\`: List of cross-reference objects
+- \`complianceNotes\`: List of compliance notes
+- \`sourceText\`: Full source text (if available)
 
 ## Available Functions
 
@@ -129,8 +130,9 @@ grep(pattern, text)               # Regex search with context
 list_agents()                     # List all agents with IDs
 get_agent(agent_id)               # Get specific agent by ID
 search_agents(keyword)            # Search all agents for keyword
-get_all_action_items()            # Get all action items
-get_all_summaries()               # Get all summaries
+get_all_requirements()            # Get all requirements across codes
+get_all_parameters()              # Get all design parameters across codes
+get_all_crossrefs()               # Get all cross-references across codes
 
 # Recursive LLM calls (for complex queries)
 sub_lm(query, context_slice)      # Queue a sub-LLM call
@@ -149,57 +151,54 @@ Write Python code that:
 
 ## Examples
 
-### Example 1: List all action items
+### Example 1: List all requirements
 \`\`\`python
-items = get_all_action_items()
-result = "Action Items by Meeting:\\n"
-for meeting in items:
-    result += f"\\n## {meeting['agent']}\\n{meeting['items']}\\n"
+items = get_all_requirements()
+result = "Requirements by Code:\\n"
+for code in items:
+    result += f"\\n## {code['agent']}\\n"
+    for req in code['requirements']:
+        result += f"- {req.get('id', '')} {req.get('text', '')}\\n"
 FINAL(result)
 \`\`\`
 
 ### Example 2: Search for a topic
 \`\`\`python
-results = search_agents("budget")
+results = search_agents("load factor")
 if results:
-    answer = f"Found {len(results)} meetings mentioning 'budget':\\n"
+    answer = f"Found {len(results)} codes mentioning 'load factor':\\n"
     for r in results:
         answer += f"\\n- {r['agent_name']}: {r['matches'][0]['excerpt']}"
 else:
-    answer = "No meetings found mentioning 'budget'"
+    answer = "No codes found mentioning 'load factor'"
 FINAL(answer)
 \`\`\`
 
-### Example 3: Compare two meetings
+### Example 3: Compare two codes
 \`\`\`python
 agents = list_agents()
 if len(agents) >= 2:
     agent1 = get_agent(agents[0]['id'])
     agent2 = get_agent(agents[1]['id'])
     
-    comparison = f"""Comparing meetings:
+    comparison = f"""Comparing codes:
     
 ## {agent1['displayName']}
-{agent1['summary']}
+{agent1['codeOverview']}
 
 ## {agent2['displayName']}
-{agent2['summary']}
+{agent2['codeOverview']}
 """
     FINAL(comparison)
 else:
-    FINAL("Need at least 2 meetings to compare")
+    FINAL("Need at least 2 codes to compare")
 \`\`\`
 
 ### Example 4: Analyze patterns with sub-LLM
 \`\`\`python
-# Get summaries for sub-LLM analysis
-summaries = get_all_summaries()
-combined = "\\n---\\n".join([f"{s['agent']}: {s['summary']}" for s in summaries])
-
-# Queue sub-LLM call for pattern analysis
-sub_lm("What patterns or themes emerge across these meetings?", combined)
-
-# The main thread will execute the sub-LLM and return results
+requirements = get_all_requirements()
+combined = "\\n---\\n".join([f"{r['agent']}: {len(r['requirements'])} requirements" for r in requirements])
+sub_lm("What patterns or conflicts emerge across these codes?", combined)
 FINAL_VAR("combined")  # Fallback if sub-LLM not yet processed
 \`\`\`
 
@@ -216,39 +215,41 @@ FINAL_VAR("combined")  # Fallback if sub-LLM not yet processed
  * Few-shot examples for different query types
  */
 export const CODE_EXAMPLES = {
-    factual: `# Answer a factual question about the meetings
+    factual: `# Answer a factual question about the codes
 agents = [a for a in context['agents'] if a.get('enabled', True)]
 relevant = []
 for agent in agents:
-    if 'keyword' in agent.get('summary', '').lower():
+    if 'keyword' in agent.get('codeOverview', '').lower():
         relevant.append(agent)
 
 if relevant:
-    answer = f"Found in {len(relevant)} meetings: " + ", ".join([a['displayName'] for a in relevant])
+    answer = f"Found in {len(relevant)} codes: " + ", ".join([a['displayName'] for a in relevant])
 else:
-    answer = "Information not found in the meetings"
+    answer = "Information not found in the codes"
 FINAL(answer)`,
 
-    aggregative: `# Aggregate information across all meetings
-items = get_all_action_items()
+    aggregative: `# Aggregate requirements across all codes
+items = get_all_requirements()
 if not items:
-    FINAL("No action items found in any meetings.")
+    FINAL("No requirements found in any codes.")
 else:
-    result = f"## Action Items from {len(items)} meetings:\\n"
+    result = f"## Requirements from {len(items)} codes:\\n"
     for item in items:
-        result += f"\\n### {item['agent']}\\n{item['items']}\\n"
+        result += f"\\n### {item['agent']}\\n"
+        for req in item['requirements']:
+            result += f"- {req.get('id', '')} {req.get('text', '')}\\n"
     FINAL(result)`,
 
-    comparative: `# Compare information across meetings
+    comparative: `# Compare information across codes
 agents = [a for a in context['agents'] if a.get('enabled', True)]
 if len(agents) < 2:
-    FINAL("Need at least 2 meetings to compare")
+    FINAL("Need at least 2 codes to compare")
 else:
-    comparison = "# Meeting Comparison\\n"
+    comparison = "# Code Comparison\\n"
     for agent in agents[:3]:  # Limit to 3 for brevity
         comparison += f"\\n## {agent['displayName']}\\n"
-        comparison += f"**Summary:** {agent.get('summary', 'N/A')[:300]}...\\n"
-        comparison += f"**Key Points:** {agent.get('keyPoints', 'N/A')[:200]}...\\n"
+        comparison += f"**Overview:** {agent.get('codeOverview', 'N/A')[:300]}...\\n"
+        comparison += f"**Requirements:** {len(agent.get('requirements', []))} items\\n"
     FINAL(comparison)`,
 
     search: `# Search for specific content
@@ -256,25 +257,21 @@ keyword = "target_keyword"
 results = search_agents(keyword)
 
 if results:
-    answer = f"Found '{keyword}' in {len(results)} meetings:\\n"
+    answer = f"Found '{keyword}' in {len(results)} codes:\\n"
     for r in results:
         answer += f"\\n- **{r['agent_name']}**: {r['matches'][0]['excerpt']}"
     FINAL(answer)
 else:
-    FINAL(f"No mentions of '{keyword}' found in the meetings")`,
+    FINAL(f"No mentions of '{keyword}' found in the codes")`,
 
     recursive: `# Analyze patterns using recursive LLM calls
-summaries = get_all_summaries()
-if not summaries:
-    FINAL("No meeting summaries available for analysis.")
+requirements = get_all_requirements()
+if not requirements:
+    FINAL("No requirements available for analysis.")
 else:
-    # Combine summaries for analysis
-    combined = "\\n---\\n".join([f"**{s['agent']}** ({s['date']}): {s['summary']}" for s in summaries])
-    
-    # Use sub_lm for deeper analysis - this makes a recursive LLM call
-    analysis = sub_lm("Identify the key themes, patterns, and recurring topics across these meeting summaries. What insights emerge?", combined)
-    
-    result = f"# Pattern Analysis Across {len(summaries)} Meetings\\n\\n{analysis}"
+    combined = "\\n---\\n".join([f"**{r['agent']}**: {len(r['requirements'])} requirements" for r in requirements])
+    analysis = sub_lm("Identify conflicts or overlaps across these codes. What insights emerge?", combined)
+    result = f"# Pattern Analysis Across {len(requirements)} Codes\\n\\n{analysis}"
     FINAL(result)`
 };
 
@@ -293,7 +290,7 @@ export function generateCodePrompt(query, context = {}) {
     const exampleCode = CODE_EXAMPLES[classification.type] || CODE_EXAMPLES.factual;
     
     // Build context summary for the prompt
-    let contextSummary = `You have access to ${agentCount} meeting agents`;
+    let contextSummary = `You have access to ${agentCount} code agents`;
     if (agentNames.length > 0) {
         contextSummary += `: ${agentNames.slice(0, 5).join(', ')}`;
         if (agentNames.length > 5) {
@@ -305,10 +302,10 @@ export function generateCodePrompt(query, context = {}) {
     let strategyHint = '';
     switch (classification.type) {
         case QueryType.COMPARATIVE:
-            strategyHint = 'This is a comparative query - compare data across multiple meetings.';
+            strategyHint = 'This is a comparative query - compare data across multiple codes.';
             break;
         case QueryType.AGGREGATIVE:
-            strategyHint = 'This is an aggregative query - gather and combine information from all meetings.';
+            strategyHint = 'This is an aggregative query - gather and combine information from all codes.';
             break;
         case QueryType.SEARCH:
             strategyHint = 'This is a search query - use search_agents() to find relevant content.';

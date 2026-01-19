@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>northstar.LM | AI Meeting Assistant</title>
+    <title>northstar.LM | Design Code Analyst</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
                 </button>
                 <div class="about-dropdown hidden" id="about-dropdown">
                     <p class="about-intro">
-                        northstar.LM Agent Builder transforms recordings, videos, documents, images, and text into actionable insights using OpenAI's latest AI models.
+                        northstar.LM Agent Builder transforms design standards, specs, drawings, and technical documents into structured code insights using OpenAI's latest AI models.
                     </p>
                     <div class="about-models">
                         <span class="model-tag">🎤 Whisper</span>
@@ -43,7 +43,7 @@
                 </div>
             </div>
         </div>
-        <p class="tagline">Transform your meetings into actionable insights</p>
+        <p class="tagline">Transform design codes into actionable insights</p>
         <button id="help-btn" class="help-btn" title="How to use this app">?</button>
     </header>
 
@@ -176,14 +176,14 @@
                 </div>
 
                 <div id="text-tab" class="tab-pane">
-                    <textarea id="text-input" placeholder="Paste your meeting transcript or notes here..."></textarea>
+                    <textarea id="text-input" placeholder="Paste specification text or code sections..."></textarea>
                 </div>
 
                 <div id="url-tab" class="tab-pane">
                     <div class="url-input-container">
                         <div class="url-input-wrapper">
                             <span class="url-icon">🔗</span>
-                            <input type="url" id="url-input" placeholder="https://example.com/meeting-notes" />
+                            <input type="url" id="url-input" placeholder="https://example.com/design-code-section" />
                             <button id="fetch-url-btn" class="btn-fetch" type="button">
                                 <span class="btn-text">Fetch</span>
                                 <span class="btn-loader hidden">
@@ -207,13 +207,13 @@
                         <div class="wearable-icon">⌚</div>
                         <h3>AI Wearable Integration</h3>
                         <p class="wearable-status">Coming Soon</p>
-                        <p class="wearable-desc">Connect your AI wearable device to automatically import meeting recordings, conversations, and insights.</p>
+                        <p class="wearable-desc">Connect your AI wearable device to automatically import field notes, specifications, and design discussions.</p>
                     </div>
                 </div>
             </div>
 
-            <button id="analyze-btn" class="btn-primary btn-analyze" disabled title="Analyze your meeting recording, PDF, or text to extract insights">
-                <span class="btn-text">Analyze Meeting</span>
+            <button id="analyze-btn" class="btn-primary btn-analyze" disabled title="Analyze your design code, PDF, or text to extract requirements">
+                <span class="btn-text">Analyze Code</span>
                 <span class="btn-loader hidden">
                     <span class="spinner"></span>
                     Processing...
@@ -231,13 +231,13 @@
                             <span>📥</span> Import Agent
                         </button>
                         <input type="file" id="agent-file" accept=".md,text/markdown" hidden>
-                        <p class="agent-hint">Load a previously exported meeting agent</p>
+                        <p class="agent-hint">Load a previously exported code agent</p>
                     </div>
                     <div class="agent-tool">
                         <a href="orchestrator.html" class="btn-agent-orchestrator">
                             <span>🎭</span> Agent Orchestrator
                         </a>
-                        <p class="agent-hint">Combine multiple agents for cross-meeting insights</p>
+                        <p class="agent-hint">Combine multiple agents for cross-code insights</p>
                     </div>
                 </div>
             </div>
@@ -262,14 +262,23 @@
                 <a href="#kpi-section" class="nav-pill active" data-section="kpi-section">
                     <span>📊</span><span class="nav-label">Overview</span>
                 </a>
-                <a href="#summary-section" class="nav-pill" data-section="summary-section">
-                    <span>📄</span><span class="nav-label">Summary</span>
+                <a href="#overview-section" class="nav-pill" data-section="overview-section">
+                    <span>📄</span><span class="nav-label">Overview</span>
                 </a>
-                <a href="#keypoints-section" class="nav-pill" data-section="keypoints-section">
-                    <span>💡</span><span class="nav-label">Key Points</span>
+                <a href="#requirements-section" class="nav-pill" data-section="requirements-section">
+                    <span>📋</span><span class="nav-label">Requirements</span>
                 </a>
-                <a href="#actions-section" class="nav-pill" data-section="actions-section">
-                    <span>✅</span><span class="nav-label">Actions</span>
+                <a href="#parameters-section" class="nav-pill" data-section="parameters-section">
+                    <span>🔢</span><span class="nav-label">Parameters</span>
+                </a>
+                <a href="#crossrefs-section" class="nav-pill" data-section="crossrefs-section">
+                    <span>🔗</span><span class="nav-label">Cross-Refs</span>
+                </a>
+                <a href="#compliance-section" class="nav-pill" data-section="compliance-section">
+                    <span>⚠️</span><span class="nav-label">Compliance</span>
+                </a>
+                <a href="#source-section" class="nav-pill" data-section="source-section">
+                    <span>📑</span><span class="nav-label">Source</span>
                 </a>
                 <a href="#chat-section" class="nav-pill" data-section="chat-section">
                     <span>💬</span><span class="nav-label">Chat</span>
@@ -284,46 +293,46 @@
             
             <!-- KPI Dashboard -->
             <div class="kpi-dashboard" id="kpi-section">
-                <div class="kpi-item kpi-sentiment">
-                    <span class="kpi-icon">📊</span>
+                <div class="kpi-item">
+                    <span class="kpi-icon">📐</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Sentiment</span>
-                        <span class="kpi-value" id="kpi-sentiment">--</span>
+                        <span class="kpi-label">Code Type</span>
+                        <span class="kpi-value" id="kpi-code-type">--</span>
                     </div>
                 </div>
                 <div class="kpi-item">
-                    <span class="kpi-icon">📝</span>
+                    <span class="kpi-icon">📋</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Words Analyzed</span>
-                        <span class="kpi-value" id="kpi-words">--</span>
+                        <span class="kpi-label">Requirements</span>
+                        <span class="kpi-value" id="kpi-requirements">--</span>
                     </div>
                 </div>
                 <div class="kpi-item">
-                    <span class="kpi-icon">💡</span>
+                    <span class="kpi-icon">🔢</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Key Points</span>
-                        <span class="kpi-value" id="kpi-keypoints">--</span>
+                        <span class="kpi-label">Parameters</span>
+                        <span class="kpi-value" id="kpi-parameters">--</span>
                     </div>
                 </div>
                 <div class="kpi-item">
-                    <span class="kpi-icon">✅</span>
+                    <span class="kpi-icon">🔗</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Action Items</span>
-                        <span class="kpi-value" id="kpi-actions">--</span>
+                        <span class="kpi-label">Cross-Refs</span>
+                        <span class="kpi-value" id="kpi-crossrefs">--</span>
                     </div>
                 </div>
                 <div class="kpi-item">
-                    <span class="kpi-icon">⏱️</span>
+                    <span class="kpi-icon">⚠️</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Read Time</span>
-                        <span class="kpi-value" id="kpi-readtime">--</span>
+                        <span class="kpi-label">Compliance Notes</span>
+                        <span class="kpi-value" id="kpi-compliance">--</span>
                     </div>
                 </div>
                 <div class="kpi-item">
-                    <span class="kpi-icon">🎯</span>
+                    <span class="kpi-icon">📄</span>
                     <div class="kpi-content">
-                        <span class="kpi-label">Topics</span>
-                        <span class="kpi-value" id="kpi-topics">--</span>
+                        <span class="kpi-label">Sections</span>
+                        <span class="kpi-value" id="kpi-sections">--</span>
                     </div>
                 </div>
             </div>
@@ -343,36 +352,69 @@
             
             <!-- Results Cards - All Collapsible -->
             <div class="results-grid">
-                <details class="result-card" id="summary-section" open>
+                <details class="result-card" id="overview-section" open>
                     <summary class="card-header card-header-collapsible">
                         <span class="card-icon">&#128196;</span>
-                        <h3>Summary</h3>
+                        <h3>Code Overview</h3>
                         <span class="collapse-toggle">▼</span>
                     </summary>
-                    <div class="card-content" id="result-summary">
-                        <!-- Summary will be inserted here -->
+                    <div class="card-content" id="result-overview">
+                        <!-- Overview will be inserted here -->
                     </div>
                 </details>
 
-                <details class="result-card" id="keypoints-section">
+                <details class="result-card" id="requirements-section">
                     <summary class="card-header card-header-collapsible">
-                        <span class="card-icon">&#128161;</span>
-                        <h3>Key Points</h3>
+                        <span class="card-icon">📋</span>
+                        <h3>Requirements</h3>
                         <span class="collapse-toggle">▼</span>
                     </summary>
-                    <div class="card-content" id="result-keypoints">
-                        <!-- Key points will be inserted here -->
+                    <div class="card-content" id="result-requirements">
+                        <!-- Requirements will be inserted here -->
                     </div>
                 </details>
 
-                <details class="result-card" id="actions-section">
+                <details class="result-card" id="parameters-section">
                     <summary class="card-header card-header-collapsible">
-                        <span class="card-icon">&#9989;</span>
-                        <h3>Action Items</h3>
+                        <span class="card-icon">🔢</span>
+                        <h3>Design Parameters</h3>
                         <span class="collapse-toggle">▼</span>
                     </summary>
-                    <div class="card-content" id="result-actions">
-                        <!-- Action items will be inserted here -->
+                    <div class="card-content" id="result-parameters">
+                        <!-- Parameters will be inserted here -->
+                    </div>
+                </details>
+
+                <details class="result-card" id="crossrefs-section">
+                    <summary class="card-header card-header-collapsible">
+                        <span class="card-icon">🔗</span>
+                        <h3>Cross References</h3>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
+                    <div class="card-content" id="result-crossrefs">
+                        <!-- Cross references will be inserted here -->
+                    </div>
+                </details>
+
+                <details class="result-card" id="compliance-section">
+                    <summary class="card-header card-header-collapsible">
+                        <span class="card-icon">⚠️</span>
+                        <h3>Compliance Notes</h3>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
+                    <div class="card-content" id="result-compliance">
+                        <!-- Compliance notes will be inserted here -->
+                    </div>
+                </details>
+
+                <details class="result-card" id="source-section">
+                    <summary class="card-header card-header-collapsible">
+                        <span class="card-icon">📑</span>
+                        <h3>Source Text</h3>
+                        <span class="collapse-toggle">▼</span>
+                    </summary>
+                    <div class="card-content" id="result-source-text">
+                        <!-- Source text will be inserted here -->
                     </div>
                 </details>
 
@@ -392,7 +434,7 @@
             <div class="feature-section" id="chat-section">
                 <div class="feature-header">
                     <h3><span>💬</span> Ask Questions</h3>
-                    <p class="feature-desc">Chat with your meeting data using AI</p>
+                    <p class="feature-desc">Chat with your code data using AI</p>
                 </div>
                 
                 <div class="chat-container">
@@ -400,8 +442,8 @@
                         <div class="chat-welcome">
                             <div class="chat-welcome-icon">🤖</div>
                             <div class="chat-welcome-text">
-                                <strong>Meeting Assistant</strong>
-                                <p>I have access to your transcript and analysis. Ask me about decisions, action items, specific topics, or anything else from the meeting.</p>
+                                <strong>Design Code Assistant</strong>
+                                <p>I have access to the code text and extracted requirements. Ask about clauses, parameters, cross-references, or compliance notes.</p>
                             </div>
                         </div>
                     </div>
@@ -421,7 +463,7 @@
             <!-- Audio Briefing Section -->
             <div class="feature-section" id="audio-briefing-section">
                 <h3><span>&#127911;</span> Audio Briefing</h3>
-                <p class="feature-desc">Generate a 2-minute executive audio summary</p>
+                <p class="feature-desc">Generate a 2-minute engineering code briefing</p>
                 
                 <div class="feature-controls">
                     <div class="prompt-input-group">
@@ -441,7 +483,7 @@
                             <option value="shimmer">Shimmer (Soft Female)</option>
                         </select>
                     </div>
-                    <button id="generate-audio-btn" class="btn-secondary" title="Convert meeting summary to spoken audio briefing">
+                    <button id="generate-audio-btn" class="btn-secondary" title="Convert code overview to spoken audio briefing">
                         <span class="btn-text">&#127908; Generate Audio</span>
                         <span class="btn-loader hidden">
                             <span class="spinner"></span>
@@ -460,14 +502,14 @@
 
             <!-- Infographic Section -->
             <div class="feature-section" id="infographic-section">
-                <h3><span>&#127912;</span> Meeting Infographic</h3>
-                <p class="feature-desc">Create a visual infographic from your meeting insights</p>
+                <h3><span>&#127912;</span> Code Infographic</h3>
+                <p class="feature-desc">Create a visual infographic from your code insights</p>
                 
                 <div class="feature-controls">
                     <div class="prompt-input-group">
                         <input type="text" id="infographic-prompt" placeholder="Describe your preferred style (e.g., 'colorful corporate with icons')" />
                     </div>
-                    <button id="generate-infographic-btn" class="btn-secondary" title="Generate a visual infographic from meeting insights using AI">
+                    <button id="generate-infographic-btn" class="btn-secondary" title="Generate a visual infographic from code insights using AI">
                         <span class="btn-text">&#127912; Generate Infographic</span>
                         <span class="btn-loader hidden">
                             <span class="spinner"></span>
@@ -477,7 +519,7 @@
                 </div>
 
                 <div id="infographic-container" class="infographic-container hidden">
-                    <img id="infographic-image" alt="Meeting Infographic" />
+                    <img id="infographic-image" alt="Code Infographic" />
                     <button id="download-infographic-btn" class="btn-secondary" title="Download infographic as PNG image">
                         <span>&#128229;</span> Download Image
                     </button>
@@ -538,7 +580,7 @@
                         <div class="step-number">3</div>
                         <div class="step-content">
                             <h4>Analyze</h4>
-                            <p>Click <strong>"Analyze Meeting"</strong> and wait for the AI to process your content.</p>
+                            <p>Click <strong>"Analyze Code"</strong> and wait for the AI to process your content.</p>
                         </div>
                     </div>
                     <div class="help-step">
@@ -559,7 +601,7 @@
                 <div class="help-tips">
                     <h4>💡 Pro Tips</h4>
                     <ul>
-                        <li><strong>Agent Orchestrator:</strong> Export multiple meetings as agents, then use the Orchestrator to find patterns across them.</li>
+                        <li><strong>Agent Orchestrator:</strong> Export multiple codes as agents, then use the Orchestrator to find patterns across them.</li>
                         <li><strong>Custom Audio:</strong> Add a style prompt before generating audio briefings (e.g., "upbeat and motivational").</li>
                         <li><strong>Image PDFs:</strong> The app automatically detects scanned PDFs and uses Vision AI for OCR.</li>
                     </ul>
@@ -582,8 +624,8 @@
                 <p class="modal-description">Give your agent a memorable name. This will help you identify it in the Orchestrator.</p>
                 <div class="modal-input-group">
                     <label for="agent-name-input">Agent Name</label>
-                    <input type="text" id="agent-name-input" placeholder="e.g., Q4 Planning Meeting" maxlength="100" />
-                    <p class="modal-hint" id="agent-name-hint">AI-suggested name based on your meeting content</p>
+                    <input type="text" id="agent-name-input" placeholder="e.g., ASCE 7-22 Wind Loads" maxlength="100" />
+                    <p class="modal-hint" id="agent-name-hint">AI-suggested name based on your code content</p>
                 </div>
             </div>
             <div class="modal-footer">
@@ -618,7 +660,7 @@
                         <li>☁️ <strong>Cloud sync</strong> for seamless access across platforms</li>
                     </ul>
                     <p class="wearable-modal-note">
-                        Stay tuned for updates! We're working hard to bring you the future of meeting intelligence.
+                        Stay tuned for updates! We're working hard to bring you the future of design code intelligence.
                     </p>
                 </div>
             </div>
@@ -629,7 +671,7 @@
     </div>
 
     <footer>
-        <p>&copy; 2026 northstar.LM | Your meetings, distilled.</p>
+        <p>&copy; 2026 northstar.LM | Your codes, analyzed.</p>
         <p class="credits">
             Powered by
             <a href="https://openai.com" target="_blank">OpenAI Whisper, GPT-5.2, GPT-5.2 Vision, GPT-4o-mini-TTS & GPT-Image-1.5</a>

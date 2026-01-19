@@ -26,9 +26,11 @@ export const QueryComplexity = {
 export const QueryIntent = {
     FACTUAL: 'factual',           // "What was decided about X?"
     COMPARATIVE: 'comparative',   // "How does X differ from Y?"
-    AGGREGATIVE: 'aggregative',   // "What are all the action items?"
-    ANALYTICAL: 'analytical',     // "What patterns emerge across meetings?"
-    TEMPORAL: 'temporal'          // "How has X evolved over time?"
+    AGGREGATIVE: 'aggregative',   // "What are all the requirements?"
+    ANALYTICAL: 'analytical',     // "What patterns emerge across codes?"
+    TEMPORAL: 'temporal',         // "How has X evolved over time?"
+    COMPLIANCE: 'compliance',     // "Does this meet requirement X?"
+    LOOKUP: 'lookup'              // "What is the load factor for X?"
 };
 
 export class QueryDecomposer {
@@ -97,7 +99,11 @@ export class QueryDecomposer {
         // Detect intent
         let intent = QueryIntent.FACTUAL;
 
-        if (/compare|differ|versus|vs\.?|between/i.test(query)) {
+        if (/compl(y|iance)|meet(s)? requirement|satisfy|violat/i.test(query)) {
+            intent = QueryIntent.COMPLIANCE;
+        } else if (/load factor|safety factor|resistance factor|phi|gamma/i.test(query)) {
+            intent = QueryIntent.LOOKUP;
+        } else if (/compare|differ|versus|vs\.?|asce.*aashto|between/i.test(query)) {
             intent = QueryIntent.COMPARATIVE;
         } else if (/all|every|total|combined|across|overall/i.test(query)) {
             intent = QueryIntent.AGGREGATIVE;
@@ -118,8 +124,9 @@ export class QueryDecomposer {
             complexity = QueryComplexity.EXPLORATORY;
         }
 
-        // Detect if query targets specific meetings
-        const mentionsMeeting = /meeting|session|call|discussion|sync/i.test(query);
+        // Detect if query targets specific codes or sections
+        const mentionsCode = /asce|aashto|aci|aisc|ibc|code|standard|specification/i.test(query);
+        const mentionsSection = /section|clause|chapter|\d+\.\d+/i.test(query);
         const mentionsTimeframe = /last|recent|this week|yesterday|today/i.test(query);
         const formatConstraints = this._detectFormatConstraints(query);
         const dataPreference = this._inferDataPreference(query);
@@ -128,7 +135,8 @@ export class QueryDecomposer {
         return {
             intent,
             complexity,
-            mentionsMeeting,
+            mentionsCode,
+            mentionsSection,
             mentionsTimeframe,
             dataPreference,
             formatConstraints,
@@ -158,7 +166,7 @@ export class QueryDecomposer {
 
     _detectFormatConstraints(query) {
         const constraints = {};
-        const bulletMatch = query.match(/(\d+)\s+bullets?\s+(?:per|each)\s+(topic|section|meeting)/i);
+        const bulletMatch = query.match(/(\d+)\s+bullets?\s+(?:per|each)\s+(topic|section|code)/i);
         if (bulletMatch) {
             constraints.bulletsPerSection = Number.parseInt(bulletMatch[1], 10);
             constraints.sectionType = bulletMatch[2].toLowerCase();
@@ -179,24 +187,23 @@ export class QueryDecomposer {
         if (/\b(metrics?|kpis?|numbers?|percent|percentage|budget|revenue|cost|forecast|quota|pipeline)\b/i.test(query)) {
             return 'structured';
         }
-        if (/\b(transcript|verbatim|exact wording|who said|quote)\b/i.test(query)) {
-            return 'transcript';
+        if (/\b(source text|verbatim|exact wording|quote)\b/i.test(query)) {
+            return 'sourceText';
         }
-        if (/\b(summary|overview|highlights)\b/i.test(query)) {
-            return 'hybrid';
+        if (/\b(summary|overview|highlights|scope)\b/i.test(query)) {
+            return 'overview';
         }
         return 'hybrid';
     }
 
     _inferIntentTags(query) {
         const tags = [];
-        if (/\bdecision(s)?\b/i.test(query)) tags.push('decision');
-        if (/\baction(s| items?)\b/i.test(query)) tags.push('action');
-        if (/\brisk(s)?\b|\bblocker(s)?\b/i.test(query)) tags.push('risk');
-        if (/\bconstraint(s)?\b|\blimit(s)?\b/i.test(query)) tags.push('constraint');
-        if (/\bentity|stakeholder|partner|customer|vendor\b/i.test(query)) tags.push('entity');
-        if (/\bopen question(s)?\b|\bunknowns?\b/i.test(query)) tags.push('open_question');
-        if (/\bsummary|overview\b/i.test(query)) tags.push('episode');
+        if (/\brequirement(s)?\b|\bshall\b|\bmust\b/i.test(query)) tags.push('requirement');
+        if (/\bparameter(s)?\b|\bfactor(s)?\b|\bformula(s)?\b|\bload\b|\bphi\b|\bgamma\b/i.test(query)) tags.push('parameter');
+        if (/\bcross[- ]?ref(erence)?s?\b|\bsection\b|\bclause\b/i.test(query)) tags.push('crossref');
+        if (/\bcompliance|conformance|violation|noncompliance\b/i.test(query)) tags.push('compliance');
+        if (/\bexception(s)?\b|\bunless\b|\bnotwithstanding\b/i.test(query)) tags.push('exception');
+        if (/\bsummary|overview|scope\b/i.test(query)) tags.push('overview');
         return [...new Set(tags)];
     }
 
@@ -352,7 +359,7 @@ export class QueryDecomposer {
      */
     _createAgentSpecificQuery(originalQuery, agent) {
         // Maintain the original query but scope it to the agent
-        return `Regarding the "${agent.displayName || agent.title}" meeting: ${originalQuery}`;
+        return `Regarding the "${agent.displayName || agent.title}" code: ${originalQuery}`;
     }
 
     /**
@@ -361,11 +368,11 @@ export class QueryDecomposer {
      */
     _createMapQuery(originalQuery, intent) {
         const extractionPrompts = {
-            [QueryIntent.FACTUAL]: `Extract any relevant facts or decisions related to: ${originalQuery}`,
-            [QueryIntent.AGGREGATIVE]: `List all items related to: ${originalQuery}`,
-            [QueryIntent.ANALYTICAL]: `Identify patterns or themes related to: ${originalQuery}`,
+            [QueryIntent.FACTUAL]: `Extract any relevant requirements, parameters, or notes related to: ${originalQuery}`,
+            [QueryIntent.AGGREGATIVE]: `List all requirements, parameters, or references related to: ${originalQuery}`,
+            [QueryIntent.ANALYTICAL]: `Identify patterns, conflicts, or dependencies related to: ${originalQuery}`,
             [QueryIntent.TEMPORAL]: `Note any timeline or progression related to: ${originalQuery}`,
-            [QueryIntent.COMPARATIVE]: `Summarize the key points about: ${originalQuery}`
+            [QueryIntent.COMPARATIVE]: `Summarize the key requirements and parameters about: ${originalQuery}`
         };
 
         return extractionPrompts[intent] || `Find information about: ${originalQuery}`;
@@ -378,8 +385,8 @@ export class QueryDecomposer {
     _createReduceQuery(originalQuery, intent) {
         const synthesisPrompts = {
             [QueryIntent.FACTUAL]: `Based on the gathered information, answer: ${originalQuery}`,
-            [QueryIntent.AGGREGATIVE]: `Combine and organize all the gathered items for: ${originalQuery}`,
-            [QueryIntent.ANALYTICAL]: `Synthesize the patterns found across meetings for: ${originalQuery}`,
+            [QueryIntent.AGGREGATIVE]: `Combine and organize all gathered requirements/parameters for: ${originalQuery}`,
+            [QueryIntent.ANALYTICAL]: `Synthesize the patterns found across codes for: ${originalQuery}`,
             [QueryIntent.TEMPORAL]: `Create a timeline or progression summary for: ${originalQuery}`,
             [QueryIntent.COMPARATIVE]: `Compare and contrast the findings for: ${originalQuery}`
         };

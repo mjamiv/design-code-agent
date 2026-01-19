@@ -9,12 +9,12 @@
 export const EVAL_RUBRIC = {
     coverage: {
         label: 'Coverage',
-        description: 'Did the response address all requested topics or meetings?',
+        description: 'Did the response address all requested topics or codes?',
         maxScore: 5
     },
     correctness: {
         label: 'Correctness',
-        description: 'Are the facts accurate and aligned with the meeting sources?',
+        description: 'Are the facts accurate and aligned with the code sources?',
         maxScore: 5
     },
     formatCompliance: {
@@ -24,7 +24,7 @@ export const EVAL_RUBRIC = {
     },
     attribution: {
         label: 'Attribution',
-        description: 'Are sources or meeting references noted where applicable?',
+        description: 'Are sources or code references noted where applicable?',
         maxScore: 5
     }
 };

@@ -5,7 +5,7 @@
  * impacting live LLM calls (shadow mode).
  */
 
-const DEFAULT_SYSTEM_INSTRUCTIONS = `You are a helpful meeting assistant.
+const DEFAULT_SYSTEM_INSTRUCTIONS = `You are a helpful engineering design code assistant.
 Use the provided context slices to answer the user query accurately.`;
 
 function estimateTokens(text) {

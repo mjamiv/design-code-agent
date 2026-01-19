@@ -311,7 +311,7 @@ export class SubExecutor {
             // Generate followup query based on initial result
             const dynamicFollowupQuery = `Based on the initial finding: "${initialResult.substring(0, 200)}..."
 
-Please provide more details and check all meetings for related information.`;
+Please provide more details and check all codes for related information.`;
 
             const followupResult = await this._executeWithRetry(
                 () => llmCall(dynamicFollowupQuery, followupContext, context),
