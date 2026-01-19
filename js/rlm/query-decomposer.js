@@ -55,8 +55,8 @@ export class QueryDecomposer {
         // Classify the query
         const classification = this._classifyQuery(query);
 
-        // Get relevant agents
-        const maxResults = this._resolveMaxResults(classification);
+        // Get relevant agents - dynamic limit based on active agent count
+        const maxResults = this._resolveMaxResults(classification, stats.activeAgents);
         const relevantAgents = store.queryAgents(query, {
             maxResults,
             minScore: this.options.minRelevanceScore
@@ -171,11 +171,17 @@ export class QueryDecomposer {
         }
     }
 
-    _resolveMaxResults(classification) {
+    _resolveMaxResults(classification, activeAgentCount = 5) {
+        // Dynamic sub-query limit: scale with agent count, cap at 15 for performance
+        const dynamicMax = Math.min(activeAgentCount, 15);
+
         if (classification?.summaryScope === 'full') {
-            return Math.min(this.options.summaryMaxSubQueries, this.options.maxSubQueries);
+            // For full summaries, use slightly fewer to reduce latency
+            return Math.min(this.options.summaryMaxSubQueries, dynamicMax);
         }
-        return this.options.maxSubQueries;
+
+        // Use dynamic limit instead of fixed maxSubQueries
+        return dynamicMax;
     }
 
     _detectFormatConstraints(query) {
@@ -275,7 +281,7 @@ export class QueryDecomposer {
             type: 'parallel',
             reason: 'Default parallel strategy for efficiency',
             parallelization: true,
-            estimatedCalls: Math.min(agentCount, this.options.maxSubQueries)
+            estimatedCalls: agentCount // Already limited by _resolveMaxResults
         };
     }
 

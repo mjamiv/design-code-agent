@@ -5190,10 +5190,10 @@ async function chatWithRLM(userMessage, thinkingId = null) {
 async function chatWithAgentsLegacy(userMessage, streamHandlers = null) {
     const activeAgentCount = state.agents.filter(a => a.enabled).length;
 
-    // Build context with conservative options for large agent counts
-    // Direct mode works best with focused context
+    // Build context with all agents - buildChatContext handles dynamic sizing
+    // Extended context disabled for large agent counts to manage token budget
     const contextOptions = {
-        maxAgents: Math.min(activeAgentCount, 25), // Cap at 25 for direct mode
+        maxAgents: activeAgentCount, // Use all agents (dynamic limits in buildChatContext)
         includeExtendedContext: activeAgentCount <= 10 // Only include extended context with few agents
     };
 
