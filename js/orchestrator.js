@@ -5173,8 +5173,16 @@ async function chatWithRLM(userMessage, thinkingId = null) {
  * Legacy chat processing (non-RLM fallback)
  */
 async function chatWithAgentsLegacy(userMessage, streamHandlers = null) {
-    // Build context with smart agent selection
-    const context = buildChatContext(userMessage);
+    const activeAgentCount = state.agents.filter(a => a.enabled).length;
+
+    // Build context with conservative options for large agent counts
+    // Direct mode works best with focused context
+    const contextOptions = {
+        maxAgents: Math.min(activeAgentCount, 25), // Cap at 25 for direct mode
+        includeExtendedContext: activeAgentCount <= 10 // Only include extended context with few agents
+    };
+
+    const context = buildChatContext(userMessage, contextOptions);
     const systemPrompt = buildDirectSystemPrompt(context);
 
     // Build messages array with history
@@ -5182,24 +5190,45 @@ async function chatWithAgentsLegacy(userMessage, streamHandlers = null) {
         { role: 'system', content: systemPrompt }
     ];
 
-    // Add chat history for continuity
+    // Add chat history for continuity (limit history more aggressively with many agents)
     const recentHistory = getHistoryForPrompt(systemPrompt, userMessage);
-    messages.push(...recentHistory);
+    const historyLimit = activeAgentCount > 15 ? 4 : 10; // Fewer history messages with many agents
+    messages.push(...recentHistory.slice(-historyLimit));
 
     // Add current message
     messages.push({ role: 'user', content: userMessage });
 
-    const response = streamHandlers
-        ? await callGPTWithMessagesStream(messages, `Chat: ${userMessage.substring(0, 30)}...`, streamHandlers)
-        : await callGPTWithMessages(messages, `Chat: ${userMessage.substring(0, 30)}...`);
+    // Estimate context size and warn if potentially too large
+    const estimatedTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+    if (estimatedTokens > 100000) {
+        console.warn(`[Chat] Large context warning: ~${estimatedTokens} tokens with ${activeAgentCount} agents`);
+    }
 
-    // Store in history
-    state.chatHistory.push({ role: 'user', content: userMessage });
-    state.chatHistory.push({ role: 'assistant', content: response });
-    recordSignalMemory(userMessage, response);
-    updateContextGauge();
+    try {
+        const response = streamHandlers
+            ? await callGPTWithMessagesStream(messages, `Chat: ${userMessage.substring(0, 30)}...`, streamHandlers)
+            : await callGPTWithMessages(messages, `Chat: ${userMessage.substring(0, 30)}...`);
 
-    return response;
+        // Store in history
+        state.chatHistory.push({ role: 'user', content: userMessage });
+        state.chatHistory.push({ role: 'assistant', content: response });
+        recordSignalMemory(userMessage, response);
+        updateContextGauge();
+
+        return response;
+    } catch (error) {
+        // Handle context-too-large errors with helpful message
+        if (error.status === 400 && activeAgentCount > 10) {
+            const suggestRLM = !state.settings.enableRLM;
+            throw new Error(
+                `Context too large with ${activeAgentCount} agents. ` +
+                (suggestRLM
+                    ? 'Enable RLM in settings for better handling of many agents.'
+                    : 'Try disabling some agents or using more specific queries.')
+            );
+        }
+        throw error;
+    }
 }
 
 function extractKeywords(text) {
@@ -5274,20 +5303,28 @@ function getRelevantAgentsForChat(userQuery, maxAgents = 50) {
 
 function buildChatContext(userQuery = '', options = {}) {
     const {
-        maxAgents = 50, // Allow up to 50 agents (was 5)
+        maxAgents = 50, // Allow up to 50 agents
         useFullTranscripts = false,
-        transcriptLimitOverride = null
+        transcriptLimitOverride = null,
+        includeExtendedContext = true // Can disable extended context for tighter budget
     } = options;
 
     const relevantAgents = getRelevantAgentsForChat(userQuery, maxAgents);
+    const agentCount = Math.max(relevantAgents.length, 1);
 
-    // Dynamic transcript limit based on number of agents (more agents = less transcript per agent)
-    // Total context budget ~50k chars, reserve ~30k for transcripts across all agents
+    // Dynamic limits based on number of agents (more agents = less content per agent)
+    // Total context budget ~80k chars, split between transcripts and extended context
     const transcriptLimit = useFullTranscripts
         ? null
         : (Number.isFinite(transcriptLimitOverride)
             ? transcriptLimitOverride
-            : Math.floor(30000 / Math.max(relevantAgents.length, 1)));
+            : Math.floor(40000 / agentCount));
+
+    // Extended context limit - smaller than transcript since it's supplementary
+    // Disable entirely when many agents to prevent context overflow
+    const extendedLimit = includeExtendedContext
+        ? (agentCount > 15 ? 0 : Math.floor(20000 / agentCount))
+        : 0;
 
     return relevantAgents.map((agent, index) => {
         const transcriptText = agent.transcript || '';
@@ -5296,9 +5333,15 @@ function buildChatContext(userQuery = '', options = {}) {
                 ? `Transcript: ${transcriptText.substring(0, transcriptLimit)}...[truncated]`
                 : `Transcript: ${transcriptText}`)
             : '';
-        const extendedSection = agent.extendedContext
-            ? `Extended Context:\n${agent.extendedContext}`
-            : '';
+
+        // Limit extended context size to prevent context overflow
+        let extendedSection = '';
+        if (extendedLimit > 0 && agent.extendedContext) {
+            const extendedText = agent.extendedContext;
+            extendedSection = extendedText.length > extendedLimit
+                ? `Extended Context:\n${extendedText.substring(0, extendedLimit)}...[truncated]`
+                : `Extended Context:\n${extendedText}`;
+        }
 
         return `
 --- Meeting ${index + 1}: ${agent.displayName || agent.title} (${agent.date || 'No date'}) ---
