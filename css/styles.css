@@ -2162,6 +2162,300 @@ footer a:hover {
     resize: vertical;
 }
 
+/* Test Configurations */
+.test-configurations {
+    margin-top: var(--space-lg);
+    padding: var(--space-md);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.test-config-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.test-config-title {
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-grow: 1;
+}
+
+.test-config-count {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    padding: 2px 8px;
+    background: rgba(212, 168, 83, 0.15);
+    border-radius: var(--radius-sm);
+}
+
+.test-config-intro {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0 0 var(--space-sm) 0;
+}
+
+.test-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.test-config-card {
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    transition: all var(--transition-fast);
+}
+
+.test-config-card.enabled {
+    border-color: rgba(212, 168, 83, 0.4);
+}
+
+.test-config-card.disabled {
+    opacity: 0.6;
+}
+
+.test-config-card.expanded {
+    border-color: var(--accent-primary);
+}
+
+.test-config-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.test-config-checkbox {
+    flex-shrink: 0;
+}
+
+.test-config-name-container {
+    flex: 1;
+    min-width: 0;
+}
+
+.test-config-name {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 2px 0;
+    transition: border-color var(--transition-fast);
+}
+
+.test-config-name:hover,
+.test-config-name:focus {
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+    outline: none;
+}
+
+.test-config-summary {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.test-config-actions {
+    display: flex;
+    gap: var(--space-xs);
+    flex-shrink: 0;
+}
+
+.test-config-edit-btn {
+    font-size: 0.8rem;
+}
+
+.test-config-remove-btn {
+    font-size: 0.9rem;
+    color: var(--error);
+    opacity: 0.7;
+}
+
+.test-config-remove-btn:hover:not(:disabled) {
+    opacity: 1;
+}
+
+.test-config-remove-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Configuration Editor */
+.test-config-editor {
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.test-config-model-row {
+    display: flex;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.test-config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+
+.test-config-field label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.test-config-select {
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.test-config-toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-xs);
+}
+
+.test-config-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: var(--space-xs);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.test-config-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: var(--space-xs);
+}
+
+.test-config-note {
+    margin: var(--space-sm) 0 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Comparative Analytics */
+.test-comparison-table-wrapper {
+    overflow-x: auto;
+    margin-top: var(--space-sm);
+}
+
+.test-comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.test-comparison-table th,
+.test-comparison-table td {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.test-comparison-table th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.test-comparison-table td {
+    color: var(--text-primary);
+}
+
+.test-comparison-table .metric-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.test-comparison-table .delta-positive {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.test-comparison-table .delta-negative {
+    color: #22c55e;
+    font-weight: 600;
+}
+
+/* Per-prompt comparison view */
+.prompt-comparison .config-results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.config-result-card {
+    padding: var(--space-sm);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.config-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-xs);
+}
+
+.config-result-header .config-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.config-result-header .result-status {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+.config-result-header .status-ok {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.config-result-header .status-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.config-result-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .help-modal-body {
     max-height: 60vh;
     overflow-y: auto;

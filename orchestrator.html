@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=61">
+    <link rel="stylesheet" href="css/styles.css?v=62">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -506,7 +506,23 @@
                 <div class="test-prompt-list" id="test-prompt-list">
                     <!-- Prompt rows injected by JS -->
                 </div>
-                <div class="test-settings">
+
+                <!-- Test Configurations Section -->
+                <div class="test-configurations">
+                    <div class="test-config-header">
+                        <span class="test-config-title">Test Configurations</span>
+                        <span class="test-config-count" id="test-config-count">1 enabled</span>
+                        <button class="btn-secondary btn-sm" id="add-config-btn">+ Add Configuration</button>
+                    </div>
+                    <p class="test-config-intro">Run the same prompts against multiple settings configurations for A/B comparison.</p>
+                    <div class="test-config-list" id="test-config-list">
+                        <!-- Configuration cards injected by JS -->
+                    </div>
+                    <p class="test-config-note">Each configuration runs all selected prompts in sequence. Results show side-by-side comparison.</p>
+                </div>
+
+                <!-- Legacy test settings (hidden, kept for backwards compatibility) -->
+                <div class="test-settings hidden">
                     <div class="test-settings-header">
                         <span class="test-settings-title">Test Run Settings</span>
                         <button class="btn-text btn-sm" id="test-settings-reset-btn">Sync from Orchestrator</button>
@@ -591,7 +607,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary" id="test-prompting-cancel-btn">Cancel</button>
-                <button class="btn-primary" id="deploy-test-agent-btn">Deploy Test Agent</button>
+                <button class="btn-primary" id="deploy-test-agent-btn">Deploy Test Suite</button>
             </div>
         </div>
     </div>
@@ -725,7 +741,7 @@
             });
         })();
     </script>
-    <script src="js/orchestrator.js?v=35" type="module"></script>
+    <script src="js/orchestrator.js?v=36" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>

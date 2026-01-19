@@ -210,7 +210,12 @@ let metricsState = {
 let testPromptState = {
     prompts: [],
     selectedCount: 0,
+    // Multi-configuration support
+    configurations: [],
+    activeConfigIndex: 0,
+    // Updated run tracking for multi-config
     run: null,
+    // Legacy single settings (for backwards compatibility)
     settings: null
 };
 
@@ -222,6 +227,80 @@ function createTestPrompt(text, options = {}) {
         selected: options.selected || false,
         isCustom: options.isCustom || false
     };
+}
+
+let testConfigIdCounter = 0;
+function createTestConfiguration(name, settings = {}) {
+    const baseSettings = settings && Object.keys(settings).length > 0
+        ? settings
+        : getTestSettingsSnapshot();
+    return {
+        id: `config-${++testConfigIdCounter}`,
+        name: name || `Configuration ${testConfigIdCounter}`,
+        settings: normalizeTestSettings({
+            ...baseSettings,
+            model: settings.model || state.settings.model,
+            effort: settings.effort || state.settings.effort
+        }),
+        enabled: true,
+        expanded: false
+    };
+}
+
+function addTestConfiguration(name = '', settings = {}) {
+    const config = createTestConfiguration(name, settings);
+    testPromptState.configurations.push(config);
+    renderTestConfigurations();
+    return config;
+}
+
+function removeTestConfiguration(configId) {
+    testPromptState.configurations = testPromptState.configurations.filter(c => c.id !== configId);
+    renderTestConfigurations();
+}
+
+function updateTestConfiguration(configId, updates) {
+    const config = testPromptState.configurations.find(c => c.id === configId);
+    if (!config) return;
+    if (updates.name !== undefined) config.name = updates.name;
+    if (updates.settings !== undefined) {
+        config.settings = normalizeTestSettings({
+            ...config.settings,
+            ...updates.settings
+        });
+    }
+    if (updates.enabled !== undefined) config.enabled = updates.enabled;
+    if (updates.expanded !== undefined) config.expanded = updates.expanded;
+    renderTestConfigurations();
+}
+
+function toggleConfigurationEnabled(configId) {
+    const config = testPromptState.configurations.find(c => c.id === configId);
+    if (!config) return;
+    config.enabled = !config.enabled;
+    renderTestConfigurations();
+}
+
+function toggleConfigurationExpanded(configId) {
+    const config = testPromptState.configurations.find(c => c.id === configId);
+    if (!config) return;
+    config.expanded = !config.expanded;
+    renderTestConfigurations();
+}
+
+function getEnabledConfigurations() {
+    return testPromptState.configurations.filter(c => c.enabled);
+}
+
+function initializeTestConfigurations() {
+    if (testPromptState.configurations.length === 0) {
+        // Add a default configuration based on current settings
+        addTestConfiguration('Current Settings', {
+            ...getTestSettingsSnapshot(),
+            model: state.settings.model,
+            effort: state.settings.effort
+        });
+    }
 }
 
 // Generate unique ID for each prompt log
@@ -900,7 +979,12 @@ function initElements() {
         testAnalyticsDismissBtn: document.getElementById('test-analytics-dismiss-btn'),
         testAnalyticsSummary: document.getElementById('test-analytics-summary'),
         testAnalyticsList: document.getElementById('test-analytics-list'),
-        exportTestHtmlBtn: document.getElementById('export-test-html-btn')
+        exportTestHtmlBtn: document.getElementById('export-test-html-btn'),
+
+        // Test Configurations (multi-config support)
+        testConfigList: document.getElementById('test-config-list'),
+        testConfigCount: document.getElementById('test-config-count'),
+        addConfigBtn: document.getElementById('add-config-btn')
     };
 }
 
@@ -1302,6 +1386,11 @@ function setupEventListeners() {
     }
     if (elements.addCustomPromptBtn) {
         elements.addCustomPromptBtn.addEventListener('click', addCustomTestPrompt);
+    }
+    if (elements.addConfigBtn) {
+        elements.addConfigBtn.addEventListener('click', () => {
+            addTestConfiguration();
+        });
     }
     if (elements.deployTestAgentBtn) {
         elements.deployTestAgentBtn.addEventListener('click', deployTestAgent);
@@ -2265,7 +2354,14 @@ function updateTestSetting(key, value) {
 function formatTestSettingsSummary(settings) {
     if (!settings) return '';
     const status = (flag) => flag ? 'On' : 'Off';
-    return [
+    const parts = [];
+    if (settings.model) {
+        parts.push(`Model: ${formatModelName(settings.model)}`);
+    }
+    if (settings.effort) {
+        parts.push(`Effort: ${settings.effort}`);
+    }
+    parts.push(
         `RLM: ${status(settings.useRLM)}`,
         `RLM Auto: ${status(settings.rlmAuto)}`,
         `Shadow Prompt: ${status(settings.enableShadowPrompt)}`,
@@ -2274,7 +2370,234 @@ function formatTestSettingsSummary(settings) {
         `Focus Episodes: ${status(settings.enableFocusEpisodes)}`,
         `Prompt Guardrails: ${status(settings.enablePromptBudgeting)}`,
         `Memory Debug: ${status(settings.showMemoryDebug)}`
-    ].join(' • ');
+    );
+    return parts.join(' • ');
+}
+
+function formatConfigSettingsSummary(settings) {
+    if (!settings) return '';
+    const parts = [];
+    parts.push(formatModelName(settings.model || state.settings.model));
+    if (settings.useRLM) {
+        parts.push('RLM');
+        if (settings.enableShadowPrompt) parts.push('Shadow');
+    } else {
+        parts.push('Direct');
+    }
+    return parts.join(' | ');
+}
+
+function renderTestConfigurations() {
+    const container = elements.testConfigList;
+    if (!container) return;
+
+    container.innerHTML = '';
+    const enabledCount = getEnabledConfigurations().length;
+
+    testPromptState.configurations.forEach((config, index) => {
+        const card = document.createElement('div');
+        card.className = `test-config-card ${config.enabled ? 'enabled' : 'disabled'} ${config.expanded ? 'expanded' : ''}`;
+        card.dataset.configId = config.id;
+
+        const header = document.createElement('div');
+        header.className = 'test-config-header';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = config.enabled;
+        checkbox.className = 'test-config-checkbox';
+        checkbox.addEventListener('change', () => toggleConfigurationEnabled(config.id));
+
+        const nameContainer = document.createElement('div');
+        nameContainer.className = 'test-config-name-container';
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'test-config-name';
+        nameInput.value = config.name;
+        nameInput.placeholder = 'Configuration name...';
+        nameInput.addEventListener('change', (e) => {
+            updateTestConfiguration(config.id, { name: e.target.value });
+        });
+        nameInput.addEventListener('click', (e) => e.stopPropagation());
+
+        const summary = document.createElement('div');
+        summary.className = 'test-config-summary';
+        summary.textContent = formatConfigSettingsSummary(config.settings);
+
+        nameContainer.appendChild(nameInput);
+        nameContainer.appendChild(summary);
+
+        const actions = document.createElement('div');
+        actions.className = 'test-config-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn-text btn-sm test-config-edit-btn';
+        editBtn.textContent = config.expanded ? 'Collapse' : 'Edit';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleConfigurationExpanded(config.id);
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn-text btn-sm test-config-remove-btn';
+        removeBtn.textContent = '✕';
+        removeBtn.title = 'Remove configuration';
+        removeBtn.disabled = testPromptState.configurations.length <= 1;
+        removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (testPromptState.configurations.length > 1) {
+                removeTestConfiguration(config.id);
+            }
+        });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(removeBtn);
+
+        header.appendChild(checkbox);
+        header.appendChild(nameContainer);
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        // Inline editor (expanded state)
+        if (config.expanded) {
+            const editor = createConfigEditor(config);
+            card.appendChild(editor);
+        }
+
+        container.appendChild(card);
+    });
+
+    // Update enabled count display
+    if (elements.testConfigCount) {
+        elements.testConfigCount.textContent = `${enabledCount} enabled`;
+    }
+}
+
+function createConfigEditor(config) {
+    const editor = document.createElement('div');
+    editor.className = 'test-config-editor';
+
+    // Model and Effort row
+    const modelRow = document.createElement('div');
+    modelRow.className = 'test-config-model-row';
+
+    // Model select
+    const modelGroup = document.createElement('div');
+    modelGroup.className = 'test-config-field';
+    const modelLabel = document.createElement('label');
+    modelLabel.textContent = 'Model';
+    const modelSelect = document.createElement('select');
+    modelSelect.className = 'test-config-select';
+    const models = [
+        { value: GPT_52_MODEL, label: 'GPT-5.2' },
+        { value: 'gpt-5-mini', label: 'GPT-5-mini' },
+        { value: 'gpt-5-nano', label: 'GPT-5-nano' }
+    ];
+    models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.value;
+        opt.textContent = m.label;
+        opt.selected = config.settings.model === m.value;
+        modelSelect.appendChild(opt);
+    });
+    modelSelect.addEventListener('change', (e) => {
+        updateTestConfiguration(config.id, { settings: { model: e.target.value } });
+    });
+    modelGroup.appendChild(modelLabel);
+    modelGroup.appendChild(modelSelect);
+
+    // Effort select
+    const effortGroup = document.createElement('div');
+    effortGroup.className = 'test-config-field';
+    const effortLabel = document.createElement('label');
+    effortLabel.textContent = 'Effort';
+    const effortSelect = document.createElement('select');
+    effortSelect.className = 'test-config-select';
+    const efforts = [
+        { value: 'none', label: 'None (Fast)' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'X-High' }
+    ];
+    efforts.forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e.value;
+        opt.textContent = e.label;
+        opt.selected = config.settings.effort === e.value;
+        effortSelect.appendChild(opt);
+    });
+    effortSelect.addEventListener('change', (e) => {
+        updateTestConfiguration(config.id, { settings: { effort: e.target.value } });
+    });
+    effortGroup.appendChild(effortLabel);
+    effortGroup.appendChild(effortSelect);
+
+    modelRow.appendChild(modelGroup);
+    modelRow.appendChild(effortGroup);
+    editor.appendChild(modelRow);
+
+    // Toggle grid for settings
+    const toggleGrid = document.createElement('div');
+    toggleGrid.className = 'test-config-toggle-grid';
+
+    const toggles = [
+        { key: 'useRLM', label: 'RLM' },
+        { key: 'rlmAuto', label: 'RLM Auto', disabledIf: () => !config.settings.useRLM },
+        { key: 'enableShadowPrompt', label: 'Shadow Prompt' },
+        { key: 'enableRetrievalPrompt', label: 'Retrieval Prompt' },
+        { key: 'enableFocusShadow', label: 'Focus Shadow' },
+        { key: 'enableFocusEpisodes', label: 'Focus Episodes', disabledIf: () => !config.settings.enableFocusShadow },
+        { key: 'enablePromptBudgeting', label: 'Prompt Guardrails' },
+        { key: 'showMemoryDebug', label: 'Memory Debug' }
+    ];
+
+    toggles.forEach(t => {
+        const toggleItem = document.createElement('div');
+        toggleItem.className = 'test-config-toggle';
+
+        const toggleRow = document.createElement('div');
+        toggleRow.className = 'test-config-toggle-row';
+
+        const label = document.createElement('label');
+        label.textContent = t.label;
+
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'toggle-switch';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = !!config.settings[t.key];
+        input.disabled = t.disabledIf ? t.disabledIf() : false;
+        input.addEventListener('change', () => {
+            const updates = { [t.key]: input.checked };
+            // Handle dependent settings
+            if (t.key === 'useRLM' && !input.checked) {
+                updates.rlmAuto = false;
+            }
+            if (t.key === 'enableFocusShadow' && !input.checked) {
+                updates.enableFocusEpisodes = false;
+            }
+            updateTestConfiguration(config.id, { settings: updates });
+        });
+
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+
+        switchLabel.appendChild(input);
+        switchLabel.appendChild(slider);
+
+        toggleRow.appendChild(label);
+        toggleRow.appendChild(switchLabel);
+        toggleItem.appendChild(toggleRow);
+        toggleGrid.appendChild(toggleItem);
+    });
+
+    editor.appendChild(toggleGrid);
+    return editor;
 }
 
 function updateTestSelectedCount() {
@@ -2357,7 +2680,9 @@ function renderTestPromptList() {
 function openTestPromptingModal() {
     initializeTestPrompts();
     initializeTestSettings();
+    initializeTestConfigurations();
     renderTestPromptList();
+    renderTestConfigurations();
     setTestPromptError('');
     if (elements.testPromptingModal) {
         elements.testPromptingModal.classList.remove('hidden');
@@ -2428,6 +2753,13 @@ function applyTestSettings(settings) {
             state.settings[key] = normalized[key];
         }
     });
+    // Apply model and effort if present
+    if (settings.model) {
+        state.settings.model = settings.model;
+    }
+    if (settings.effort) {
+        state.settings.effort = settings.effort;
+    }
     state.settings.processingMode = deriveProcessingMode(state.settings);
     updateSettingsUI();
     applyRlmFeatureFlags();
@@ -2571,11 +2903,15 @@ function deployTestAgent() {
         return;
     }
 
+    // Multi-config validation
+    const enabledConfigs = getEnabledConfigurations();
+    if (enabledConfigs.length === 0) {
+        setTestPromptError('Enable at least one configuration to run tests.');
+        return;
+    }
+
     closeTestPromptingModal();
-    const testSettings = testPromptState.settings
-        ? { ...testPromptState.settings }
-        : getTestSettingsSnapshot();
-    runTestSequence(selectedPrompts, testSettings);
+    runTestSequenceMultiConfig(selectedPrompts, enabledConfigs);
 }
 
 function getPromptProcessingMode(promptText) {
@@ -2616,6 +2952,145 @@ async function runPromptWithMetrics(promptText, labelPrefix = 'Test', streamHand
     }
 }
 
+async function runTestSequenceMultiConfig(prompts, configurations) {
+    // Save original settings to restore after all configs are run
+    const previousSettings = {
+        ...getTestSettingsSnapshot(),
+        model: state.settings.model,
+        effort: state.settings.effort
+    };
+
+    state.isProcessing = true;
+    updateButtonStates();
+    showTestRunningScreen();
+
+    const totalPrompts = prompts.length;
+    const totalConfigs = configurations.length;
+    const totalRuns = totalPrompts * totalConfigs;
+
+    resetTestRunningScreenMultiConfig(totalConfigs, totalPrompts);
+    addTestStatusLine(`Starting test suite with ${totalConfigs} configuration(s) × ${totalPrompts} prompt(s)...`, 'Setup');
+
+    testPromptState.run = {
+        startedAt: new Date(),
+        prompts,
+        promptSet: resolvePromptSetMeta(prompts),
+        startIndex: currentMetrics.promptLogs.length,
+        configurations: [],
+        currentConfigIndex: 0,
+        isMultiConfig: true
+    };
+
+    let overallPromptIndex = 0;
+
+    for (let configIndex = 0; configIndex < totalConfigs; configIndex++) {
+        const config = configurations[configIndex];
+        testPromptState.run.currentConfigIndex = configIndex;
+
+        addTestStatusLine(`Starting configuration: ${config.name}`, `Config ${configIndex + 1}/${totalConfigs}`);
+
+        // Apply this configuration's settings
+        applyTestSettings(config.settings);
+
+        const configRunData = {
+            configId: config.id,
+            configName: config.name,
+            settings: { ...config.settings },
+            startIndex: currentMetrics.promptLogs.length,
+            results: []
+        };
+
+        for (let promptIndex = 0; promptIndex < totalPrompts; promptIndex++) {
+            const prompt = prompts[promptIndex];
+            overallPromptIndex++;
+
+            const progressLabel = `Config ${configIndex + 1}/${totalConfigs}: Prompt ${promptIndex + 1}/${totalPrompts}`;
+            updateTestProgressMultiConfig(configIndex + 1, totalConfigs, promptIndex + 1, totalPrompts, progressLabel);
+
+            const streamLine = addTestStreamingLine(prompt.text, progressLabel);
+            const streamHandlers = streamLine
+                ? {
+                    onStart: () => updateTestStreamStatus(streamLine, 'Streaming response...'),
+                    onToken: (chunk) => updateTestStreamingLine(streamLine, chunk),
+                    onComplete: () => finalizeTestStreamingLine(streamLine, { status: 'complete' })
+                }
+                : null;
+
+            try {
+                const response = await runPromptWithMetrics(prompt.text, `${config.name}`, streamHandlers);
+                const logEntry = currentMetrics.promptLogs[currentMetrics.promptLogs.length - 1] || null;
+                configRunData.results.push({
+                    prompt: prompt.text,
+                    promptId: prompt.id,
+                    response,
+                    log: logEntry
+                });
+                addTestStatusLine('Response received.', progressLabel);
+            } catch (error) {
+                const logEntry = currentMetrics.promptLogs[currentMetrics.promptLogs.length - 1] || null;
+                configRunData.results.push({
+                    prompt: prompt.text,
+                    promptId: prompt.id,
+                    response: '',
+                    error: error.message || 'Unknown error',
+                    log: logEntry
+                });
+                if (streamLine) {
+                    finalizeTestStreamingLine(streamLine, { status: 'error', message: error.message || 'Unknown error' });
+                }
+                addTestStatusLine(`Error: ${error.message || 'Unknown error'}`, progressLabel);
+            }
+        }
+
+        testPromptState.run.configurations.push(configRunData);
+        addTestStatusLine(`Completed configuration: ${config.name}`, `Config ${configIndex + 1}/${totalConfigs}`);
+    }
+
+    updateTestProgressMultiConfig(totalConfigs, totalConfigs, totalPrompts, totalPrompts, 'Test suite complete');
+    addTestStatusLine('All configurations complete. Generating analytics...', 'Complete');
+
+    // Restore original settings
+    applyTestSettings(previousSettings);
+    state.isProcessing = false;
+    updateButtonStates();
+    hideTestRunningScreen();
+
+    renderTestAnalytics();
+    showTestAnalyticsModal();
+}
+
+function resetTestRunningScreenMultiConfig(totalConfigs, totalPrompts) {
+    if (elements.testProgressFill) {
+        elements.testProgressFill.style.width = '0%';
+    }
+    if (elements.testProgressLabel) {
+        elements.testProgressLabel.textContent = `Preparing ${totalConfigs} config(s) × ${totalPrompts} prompt(s)...`;
+    }
+    if (elements.testProgressCount) {
+        elements.testProgressCount.textContent = `Config 0/${totalConfigs} | Prompt 0/${totalPrompts}`;
+    }
+    if (elements.testStatusStream) {
+        elements.testStatusStream.innerHTML = '';
+    }
+}
+
+function updateTestProgressMultiConfig(currentConfig, totalConfigs, currentPrompt, totalPrompts, label) {
+    const totalRuns = totalConfigs * totalPrompts;
+    const completedRuns = (currentConfig - 1) * totalPrompts + currentPrompt;
+    const percent = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
+
+    if (elements.testProgressFill) {
+        elements.testProgressFill.style.width = `${percent}%`;
+    }
+    if (elements.testProgressLabel) {
+        elements.testProgressLabel.textContent = label;
+    }
+    if (elements.testProgressCount) {
+        elements.testProgressCount.textContent = `Config ${currentConfig}/${totalConfigs} | Prompt ${currentPrompt}/${totalPrompts}`;
+    }
+}
+
+// Legacy single-config function (kept for backwards compatibility)
 async function runTestSequence(prompts, testSettings) {
     const previousSettings = getTestSettingsSnapshot();
 
@@ -2688,6 +3163,14 @@ async function runTestSequence(prompts, testSettings) {
 
 function renderTestAnalytics() {
     if (!testPromptState.run) return;
+
+    // Handle multi-config runs
+    if (testPromptState.run.isMultiConfig) {
+        renderTestAnalyticsMultiConfig();
+        return;
+    }
+
+    // Legacy single-config rendering
     const logs = currentMetrics.promptLogs.slice(testPromptState.run.startIndex);
 
     const totals = logs.reduce((acc, log) => {
@@ -2792,8 +3275,166 @@ function renderTestAnalytics() {
     }
 }
 
+function renderTestAnalyticsMultiConfig() {
+    const run = testPromptState.run;
+    const configs = run.configurations || [];
+    const prompts = run.prompts || [];
+    const promptSet = run.promptSet || null;
+    const promptSetLabel = promptSet?.isCanonical
+        ? `${promptSet.id} (v${promptSet.version})`
+        : (promptSet?.label || 'Custom selection');
+
+    // Calculate totals per configuration
+    const configStats = configs.map(configRun => {
+        const totals = configRun.results.reduce((acc, result) => {
+            const log = result.log;
+            acc.inputTokens += log?.tokens?.input || 0;
+            acc.outputTokens += log?.tokens?.output || 0;
+            acc.totalCost += log?.cost?.total || 0;
+            acc.totalTime += log?.responseTime || 0;
+            acc.errorCount += result.error ? 1 : 0;
+            return acc;
+        }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalTime: 0, errorCount: 0 });
+
+        const promptCount = configRun.results.length;
+        return {
+            ...configRun,
+            totals,
+            avgTime: promptCount > 0 ? Math.round(totals.totalTime / promptCount) : 0
+        };
+    });
+
+    // Overall totals
+    const overallTotals = configStats.reduce((acc, cs) => {
+        acc.inputTokens += cs.totals.inputTokens;
+        acc.outputTokens += cs.totals.outputTokens;
+        acc.totalCost += cs.totals.totalCost;
+        acc.totalTime += cs.totals.totalTime;
+        acc.promptCount += cs.results.length;
+        return acc;
+    }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalTime: 0, promptCount: 0 });
+
+    // Build comparative summary table
+    if (elements.testAnalyticsSummary) {
+        const configHeaders = configs.map(c => `<th>${escapeHtml(c.configName)}</th>`).join('');
+        const deltaHeader = configs.length === 2 ? '<th>Δ Change</th>' : '';
+
+        const buildRow = (label, valueGetter, formatFn = (v) => v) => {
+            const values = configStats.map(cs => valueGetter(cs));
+            const cells = values.map(v => `<td>${formatFn(v)}</td>`).join('');
+            let deltaCell = '';
+            if (configs.length === 2 && values[0] !== 0) {
+                const delta = ((values[1] - values[0]) / values[0]) * 100;
+                const sign = delta >= 0 ? '+' : '';
+                deltaCell = `<td class="${delta < 0 ? 'delta-negative' : 'delta-positive'}">${sign}${delta.toFixed(0)}%</td>`;
+            }
+            return `<tr><td class="metric-label">${label}</td>${cells}${deltaCell}</tr>`;
+        };
+
+        const comparisonTable = `
+            <div class="test-comparison-table-wrapper">
+                <table class="test-comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            ${configHeaders}
+                            ${deltaHeader}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${buildRow('Tokens', cs => cs.totals.inputTokens + cs.totals.outputTokens, formatTokens)}
+                        ${buildRow('Cost', cs => cs.totals.totalCost, formatCost)}
+                        ${buildRow('Avg Time', cs => cs.avgTime, formatTime)}
+                        ${buildRow('Errors', cs => cs.totals.errorCount)}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        elements.testAnalyticsSummary.innerHTML = `
+            <div class="test-summary-card">
+                <h4>Configurations</h4>
+                <p>${configs.length}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Prompts</h4>
+                <p>${prompts.length}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Total Runs</h4>
+                <p>${overallTotals.promptCount}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Total Tokens</h4>
+                <p>${formatTokens(overallTotals.inputTokens + overallTotals.outputTokens)}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Total Cost</h4>
+                <p>${formatCost(overallTotals.totalCost)}</p>
+            </div>
+            <div class="test-summary-card">
+                <h4>Prompt Set</h4>
+                <p>${escapeHtml(promptSetLabel)}</p>
+            </div>
+            <div class="test-summary-card test-summary-card-wide">
+                <h4>Configuration Comparison</h4>
+                ${comparisonTable}
+            </div>
+        `;
+    }
+
+    // Per-prompt comparison view
+    if (elements.testAnalyticsList) {
+        const promptComparisonHtml = prompts.map((prompt, promptIndex) => {
+            const configResults = configs.map((configRun, configIndex) => {
+                const result = configRun.results[promptIndex];
+                if (!result) return null;
+
+                const log = result.log;
+                const tokens = log?.tokens || { input: 0, output: 0 };
+                const cost = log?.cost || { total: 0 };
+                const responseTime = log?.responseTime || 0;
+                const status = result.error ? 'Error' : 'OK';
+                const statusClass = result.error ? 'status-error' : 'status-ok';
+
+                return `
+                    <div class="config-result-card">
+                        <div class="config-result-header">
+                            <span class="config-name">${escapeHtml(configRun.configName)}</span>
+                            <span class="result-status ${statusClass}">${status}</span>
+                        </div>
+                        <div class="config-result-metrics">
+                            <span>Tokens: ${formatTokens(tokens.input + tokens.output)}</span>
+                            <span>Cost: ${formatCost(cost.total)}</span>
+                            <span>Time: ${formatTime(responseTime)}</span>
+                        </div>
+                    </div>
+                `;
+            }).filter(Boolean).join('');
+
+            return `
+                <div class="test-analytics-item prompt-comparison">
+                    <h5>Prompt ${promptIndex + 1}: ${escapeHtml(prompt.text)}</h5>
+                    <div class="config-results-grid">
+                        ${configResults}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        elements.testAnalyticsList.innerHTML = promptComparisonHtml;
+    }
+}
+
 function buildTestReportHtml() {
     if (!testPromptState.run) return '';
+
+    // Handle multi-config runs
+    if (testPromptState.run.isMultiConfig) {
+        return buildTestReportHtmlMultiConfig();
+    }
+
+    // Legacy single-config report
     const logs = currentMetrics.promptLogs.slice(testPromptState.run.startIndex);
     const totals = logs.reduce((acc, log) => {
         acc.inputTokens += log?.tokens?.input || 0;
@@ -2899,6 +3540,180 @@ function buildTestReportHtml() {
                     ${promptRows}
                 </tbody>
             </table>
+        </body>
+        </html>
+    `;
+}
+
+function buildTestReportHtmlMultiConfig() {
+    const run = testPromptState.run;
+    const configs = run.configurations || [];
+    const prompts = run.prompts || [];
+    const timestamp = run.startedAt.toLocaleString();
+    const promptSet = run.promptSet || null;
+    const promptSetLabel = promptSet?.isCanonical
+        ? `${promptSet.id} (v${promptSet.version})`
+        : (promptSet?.label || 'Custom selection');
+
+    // Calculate stats per config
+    const configStats = configs.map(configRun => {
+        const totals = configRun.results.reduce((acc, result) => {
+            const log = result.log;
+            acc.inputTokens += log?.tokens?.input || 0;
+            acc.outputTokens += log?.tokens?.output || 0;
+            acc.totalCost += log?.cost?.total || 0;
+            acc.totalTime += log?.responseTime || 0;
+            acc.errorCount += result.error ? 1 : 0;
+            return acc;
+        }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalTime: 0, errorCount: 0 });
+        const promptCount = configRun.results.length;
+        return {
+            ...configRun,
+            totals,
+            avgTime: promptCount > 0 ? Math.round(totals.totalTime / promptCount) : 0
+        };
+    });
+
+    // Overall totals
+    const overallTotals = configStats.reduce((acc, cs) => {
+        acc.inputTokens += cs.totals.inputTokens;
+        acc.outputTokens += cs.totals.outputTokens;
+        acc.totalCost += cs.totals.totalCost;
+        acc.totalRuns += cs.results.length;
+        return acc;
+    }, { inputTokens: 0, outputTokens: 0, totalCost: 0, totalRuns: 0 });
+
+    // Build comparison table
+    const configHeaders = configs.map(c => `<th>${escapeHtml(c.configName)}</th>`).join('');
+    const deltaHeader = configs.length === 2 ? '<th>Δ Change</th>' : '';
+
+    const buildCompRow = (label, valueGetter, formatFn = (v) => v) => {
+        const values = configStats.map(cs => valueGetter(cs));
+        const cells = values.map(v => `<td>${formatFn(v)}</td>`).join('');
+        let deltaCell = '';
+        if (configs.length === 2 && values[0] !== 0) {
+            const delta = ((values[1] - values[0]) / values[0]) * 100;
+            const sign = delta >= 0 ? '+' : '';
+            const color = delta < 0 ? '#16a34a' : '#dc2626';
+            deltaCell = `<td style="color: ${color}; font-weight: 600;">${sign}${delta.toFixed(0)}%</td>`;
+        }
+        return `<tr><td><strong>${label}</strong></td>${cells}${deltaCell}</tr>`;
+    };
+
+    const comparisonTable = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    ${configHeaders}
+                    ${deltaHeader}
+                </tr>
+            </thead>
+            <tbody>
+                ${buildCompRow('Tokens', cs => cs.totals.inputTokens + cs.totals.outputTokens, formatTokens)}
+                ${buildCompRow('Cost', cs => cs.totals.totalCost, formatCost)}
+                ${buildCompRow('Avg Time', cs => cs.avgTime, formatTime)}
+                ${buildCompRow('Errors', cs => cs.totals.errorCount)}
+            </tbody>
+        </table>
+    `;
+
+    // Build per-config detail tables
+    const configDetails = configStats.map((cs, configIndex) => {
+        const settingsSummary = formatTestSettingsSummary(cs.settings);
+        const rows = cs.results.map((result, index) => {
+            const log = result.log;
+            const tokens = log?.tokens || { input: 0, output: 0 };
+            const cost = log?.cost || { total: 0 };
+            const responseTime = log?.responseTime || 0;
+            const status = result.error ? `Error: ${result.error}` : 'Complete';
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(result.prompt)}</td>
+                    <td>${formatTokens(tokens.input + tokens.output)}</td>
+                    <td>${formatCost(cost.total)}</td>
+                    <td>${formatTime(responseTime)}</td>
+                    <td>${escapeHtml(status)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <h2>Configuration ${configIndex + 1}: ${escapeHtml(cs.configName)}</h2>
+            <p><strong>Settings:</strong> ${escapeHtml(settingsSummary)}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Prompt</th>
+                        <th>Tokens</th>
+                        <th>Cost</th>
+                        <th>Time</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        `;
+    }).join('\n');
+
+    return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>northstar.LM Multi-Config Test Report</title>
+            <style>
+                body { font-family: 'Source Sans 3', Arial, sans-serif; margin: 32px; color: #0a0e17; }
+                h1 { color: #b17d1b; margin-bottom: 8px; }
+                h2 { margin-top: 32px; color: #0a0e17; border-bottom: 2px solid #d4a853; padding-bottom: 8px; }
+                .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin: 24px 0; }
+                .summary-card { padding: 16px; border-radius: 12px; border: 1px solid #e0d6c3; background: #f8f4ee; }
+                table { width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 32px; }
+                th, td { text-align: left; border-bottom: 1px solid #e0d6c3; padding: 12px; vertical-align: top; }
+                th { background: #f1e9dc; }
+                .comparison-section { background: #fef9f0; padding: 24px; border-radius: 12px; margin: 24px 0; border: 1px solid #d4a853; }
+            </style>
+        </head>
+        <body>
+            <h1>northstar.LM Multi-Configuration Test Report</h1>
+            <p>Generated ${escapeHtml(timestamp)}</p>
+            <p><strong>Prompt set:</strong> ${escapeHtml(promptSetLabel)}</p>
+            <p>This report compares ${configs.length} configuration(s) across ${prompts.length} prompt(s).</p>
+
+            <div class="summary">
+                <div class="summary-card">
+                    <strong>Configurations</strong>
+                    <div>${configs.length}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Prompts</strong>
+                    <div>${prompts.length}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Total Runs</strong>
+                    <div>${overallTotals.totalRuns}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Total Tokens</strong>
+                    <div>${formatTokens(overallTotals.inputTokens + overallTotals.outputTokens)}</div>
+                </div>
+                <div class="summary-card">
+                    <strong>Total Cost</strong>
+                    <div>${formatCost(overallTotals.totalCost)}</div>
+                </div>
+            </div>
+
+            <div class="comparison-section">
+                <h2 style="margin-top: 0; border: none;">Configuration Comparison</h2>
+                ${comparisonTable}
+            </div>
+
+            ${configDetails}
         </body>
         </html>
     `;
