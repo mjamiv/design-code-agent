@@ -38,7 +38,7 @@ import { EVAL_RUBRIC, scoreEvaluation, buildEvalReport } from './eval-harness.js
  */
 export const RLM_CONFIG = {
     // Decomposition settings
-    maxSubQueries: 5,
+    maxSubQueries: 25,  // Dynamic: capped by active agent count
     summaryMaxSubQueries: 4,
     minRelevanceScore: 2,
 

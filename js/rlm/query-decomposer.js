@@ -172,8 +172,8 @@ export class QueryDecomposer {
     }
 
     _resolveMaxResults(classification, activeAgentCount = 5) {
-        // Dynamic sub-query limit: scale with agent count, cap at 15 for performance
-        const dynamicMax = Math.min(activeAgentCount, 15);
+        // Dynamic sub-query limit: scale with agent count (max 25 agents allowed)
+        const dynamicMax = Math.min(activeAgentCount, 25);
 
         if (classification?.summaryScope === 'full') {
             // For full summaries, use slightly fewer to reduce latency

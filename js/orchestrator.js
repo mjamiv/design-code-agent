@@ -25,6 +25,7 @@ const rlmPipeline = getRLMPipeline();
 
 const GPT_52_MODEL = 'gpt-5.2-2025-12-11';
 const GPT_52_ALIASES = new Set(['gpt-5.2', GPT_52_MODEL]);
+const MAX_AGENTS = 25;
 
 const state = {
     apiKey: '',
@@ -1887,14 +1888,14 @@ async function processAgentFiles(files) {
         try {
             const content = await readFileContent(file);
             const agentData = parseAgentFile(content);
-            
+
             if (agentData) {
                 // Add filename and enabled state
                 agentData.filename = file.name;
                 agentData.displayName = agentData.title || file.name.replace('.md', '');
                 agentData.enabled = true;
                 agentData.id = 'agent-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                
+
                 // Check for duplicates by filename
                 const existingIndex = state.agents.findIndex(a => a.filename === file.name);
                 if (existingIndex >= 0) {
@@ -1902,6 +1903,11 @@ async function processAgentFiles(files) {
                     agentData.enabled = state.agents[existingIndex].enabled;
                     state.agents[existingIndex] = agentData;
                 } else {
+                    // Check agent limit before adding new agent
+                    if (state.agents.length >= MAX_AGENTS) {
+                        showError(`Agent limit reached (${MAX_AGENTS}). Remove an agent before adding more.`);
+                        break;
+                    }
                     state.agents.push(agentData);
                 }
             }
@@ -1910,7 +1916,7 @@ async function processAgentFiles(files) {
             showError(`Failed to parse ${file.name}: ${error.message}`);
         }
     }
-    
+
     updateUI();
 }
 
