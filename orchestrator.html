@@ -206,96 +206,106 @@
                         <select id="processing-mode-select">
                             <option value="direct">Direct Chat (LLM only)</option>
                             <option value="rlm-swm">RLM + Signal-Weighted Memory</option>
-                            <option value="rlm-hybrid">RLM + Hybrid Focus + Shadow</option>
+                            <option value="rlm-hybrid" selected>RLM + Hybrid Focus + Shadow</option>
                         </select>
                         <p class="setting-help">Choose how the Orchestrator builds context and diagnostics for responses.</p>
                     </div>
-                    <div class="setting-group" id="optimization-mode-group">
-                        <label for="optimization-mode-select">Optimization</label>
-                        <select id="optimization-mode-select">
-                            <option value="balanced">Balanced (default)</option>
-                            <option value="speed">Prefer Speed</option>
-                            <option value="cost">Prefer Cost Efficiency</option>
-                        </select>
-                        <p class="setting-help">Trade-off between response time and cost optimization (Method 3 only).</p>
-                    </div>
-                    <div class="setting-section">
-                        <span class="setting-section-title">Core Orchestration (Managed by Processing Mode)</span>
-                        <p class="setting-section-help">These core toggles follow the mode above and stay on in the recommended hybrid setting.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="rlm-toggle">RLM</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="rlm-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
+                    <!-- Advanced Settings (collapsed by default) -->
+                    <details class="advanced-settings-details" id="advanced-settings">
+                        <summary class="advanced-settings-summary">
+                            <span class="advanced-settings-icon">⚙️</span>
+                            <span>Advanced Settings</span>
+                            <span class="advanced-settings-toggle">▼</span>
+                        </summary>
+                        <div class="advanced-settings-content">
+                            <div class="setting-group" id="optimization-mode-group">
+                                <label for="optimization-mode-select">Optimization</label>
+                                <select id="optimization-mode-select">
+                                    <option value="balanced">Balanced (default)</option>
+                                    <option value="speed">Prefer Speed</option>
+                                    <option value="cost">Prefer Cost Efficiency</option>
+                                </select>
+                                <p class="setting-help">Trade-off between response time and cost optimization (Method 3 only).</p>
+                            </div>
+                            <div class="setting-section">
+                                <span class="setting-section-title">Core Orchestration (Managed by Processing Mode)</span>
+                                <p class="setting-section-help">These core toggles follow the mode above and stay on in the recommended hybrid setting.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="rlm-toggle">RLM</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="rlm-toggle" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="shadow-prompt-toggle">Shadow Prompt</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="shadow-prompt-toggle" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Builds a retrieval-aware prompt in the background for diagnostics only.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="retrieval-prompt-toggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Uses the retrieval prompt builder for live LLM calls instead of the legacy context window.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="focus-shadow-toggle">Focus Shadow</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="focus-shadow-toggle" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Tracks focus episodes and summaries without persisting them.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="prompt-budget-toggle">Prompt Guardrails</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="prompt-budget-toggle" checked>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Caps prompt size and trims context to stay within budget.</p>
+                            </div>
+                            <div class="setting-section">
+                                <span class="setting-section-title">User Controls</span>
+                                <p class="setting-section-help">Optional toggles you can change without affecting the mode presets.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="focus-episodes-toggle" title="Use Focus Episodes when you want finished focus sessions saved into memory slices for better long-term recall. Leave it off for quick, one-off questions to keep memory lean.">Focus Episodes</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="focus-episodes-toggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Persists completed focus episodes into memory slices.</p>
+                            </div>
+                            <div class="setting-group setting-toggle">
+                                <div class="setting-row">
+                                    <label for="memory-debug-toggle" title="Turn on Memory Debug when troubleshooting recall, retrieval, or focus behavior. It surfaces internal memory slices and diagnostics, which can be noisy for everyday use.">Memory Debug</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="memory-debug-toggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <p class="setting-help">Shows memory slices, focus stats, and shadow prompt diagnostics.</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="shadow-prompt-toggle">Shadow Prompt</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="shadow-prompt-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Builds a retrieval-aware prompt in the background for diagnostics only.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="retrieval-prompt-toggle">Retrieval Prompt (Live)</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="retrieval-prompt-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Uses the retrieval prompt builder for live LLM calls instead of the legacy context window.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="focus-shadow-toggle">Focus Shadow</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="focus-shadow-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Tracks focus episodes and summaries without persisting them.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="prompt-budget-toggle">Prompt Guardrails</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="prompt-budget-toggle" checked>
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Caps prompt size and trims context to stay within budget.</p>
-                    </div>
-                    <div class="setting-section">
-                        <span class="setting-section-title">User Controls</span>
-                        <p class="setting-section-help">Optional toggles you can change without affecting the mode presets.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="focus-episodes-toggle" title="Use Focus Episodes when you want finished focus sessions saved into memory slices for better long-term recall. Leave it off for quick, one-off questions to keep memory lean.">Focus Episodes</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="focus-episodes-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Persists completed focus episodes into memory slices.</p>
-                    </div>
-                    <div class="setting-group setting-toggle">
-                        <div class="setting-row">
-                            <label for="memory-debug-toggle" title="Turn on Memory Debug when troubleshooting recall, retrieval, or focus behavior. It surfaces internal memory slices and diagnostics, which can be noisy for everyday use.">Memory Debug</label>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="memory-debug-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                        <p class="setting-help">Shows memory slices, focus stats, and shadow prompt diagnostics.</p>
-                    </div>
+                    </details>
                 </div>
 
                 <!-- Context Window Gauge -->

@@ -4594,6 +4594,63 @@ details[open] .about-toggle {
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* Advanced Settings Collapsible */
+.advanced-settings-details {
+    grid-column: 1 / -1;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    background: rgba(0, 0, 0, 0.15);
+    margin-top: var(--space-xs);
+}
+
+.advanced-settings-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    list-style: none;
+    user-select: none;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.advanced-settings-summary::-webkit-details-marker {
+    display: none;
+}
+
+.advanced-settings-summary:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.advanced-settings-icon {
+    font-size: 0.9rem;
+}
+
+.advanced-settings-toggle {
+    margin-left: auto;
+    font-size: 0.65rem;
+    transition: transform 0.2s ease;
+}
+
+.advanced-settings-details[open] .advanced-settings-toggle {
+    transform: rotate(180deg);
+}
+
+.advanced-settings-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    align-items: start;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md) var(--space-md);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
 .setting-group {
     display: flex;
     flex-direction: column;

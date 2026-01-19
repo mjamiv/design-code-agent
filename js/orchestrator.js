@@ -3210,6 +3210,21 @@ async function runTestSequenceMultiConfig(prompts, configurations) {
 
         testPromptState.run.configurations.push(configRunData);
         addTestStatusLine(`Completed configuration: ${config.name}`, `Config ${configIndex + 1}/${totalConfigs}`);
+
+        // Clear chat window between configurations (but not after the last one)
+        if (configIndex < totalConfigs - 1) {
+            // Clear chat history and RLM cache for clean slate
+            rlmPipeline.clearCache();
+            state.chatHistory = [];
+            resetSignalMemory();
+
+            // Clear chat UI
+            if (elements.chatMessages) {
+                elements.chatMessages.innerHTML = '';
+            }
+
+            addTestStatusLine('Chat cleared for next configuration', `Config ${configIndex + 1}/${totalConfigs}`);
+        }
     }
 
     updateTestProgressMultiConfig(totalConfigs, totalConfigs, totalPrompts, totalPrompts, 'Test suite complete');
