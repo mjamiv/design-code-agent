@@ -11,6 +11,7 @@
 import { getRLMPipeline, RLM_CONFIG } from './rlm/index.js';
 import { generateCodePrompt } from './rlm/code-generator.js';
 import { EVAL_RUBRIC, buildEvalReport } from './rlm/eval-harness.js';
+import { KBCanvas } from './kb-canvas.js';
 
 // ============================================
 // RLM Pipeline Instance
@@ -862,6 +863,7 @@ function addAPICallToMetrics(callData) {
 // ============================================
 
 let elements = {};
+let kbCanvas = null;
 
 function initElements() {
     elements = {
@@ -887,6 +889,12 @@ function initElements() {
         orchestratorBrain: document.getElementById('orchestrator-brain'),
         brainStatus: document.getElementById('brain-status'),
         kbFlow: document.getElementById('kb-flow'),
+
+        // 3D Canvas
+        kb3dSpace: document.getElementById('kb-3d-space'),
+        kbConnectionsSvg: document.getElementById('kb-connections-svg'),
+        kbAutoLayoutBtn: document.getElementById('kb-auto-layout'),
+        kbToggleGridBtn: document.getElementById('kb-toggle-grid'),
 
         // Chat (now integrated into knowledge base section)
         chatContainer: document.getElementById('chat-interface-container'),
@@ -1335,11 +1343,47 @@ function init() {
         console.log('[Init] State restored from previous session');
     }
 
+    initKBCanvas();
     setupEventListeners();
     updateSettingsUI();
     applyRlmFeatureFlags();
     updateUI();
     window.__orchestratorInitialized = true;
+}
+
+/**
+ * Initialize the 3D Knowledge Base Canvas
+ */
+function initKBCanvas() {
+    if (!elements.kb3dSpace || !elements.kbConnectionsSvg) {
+        console.warn('[KBCanvas] Canvas elements not found, falling back to legacy mode');
+        return;
+    }
+
+    kbCanvas = new KBCanvas('knowledge-base-container');
+
+    // Set up canvas callbacks
+    kbCanvas.onPositionChange = (agentId, position) => {
+        const agent = state.agents.find(a => a.id === agentId);
+        if (agent) {
+            agent.position = position;
+            saveState();
+        }
+    };
+
+    kbCanvas.onToggle = (agentId, index) => {
+        toggleAgent(index);
+    };
+
+    kbCanvas.onRemove = (agentId, index) => {
+        removeAgent(index);
+    };
+
+    kbCanvas.onRename = (agentId, index, newName) => {
+        updateAgentName(index, newName);
+    };
+
+    console.log('[KBCanvas] Initialized successfully');
 }
 
 function setupEventListeners() {
@@ -2083,6 +2127,12 @@ function clearAllAgents() {
     resetMetrics();
     rlmPipeline.reset(); // Reset RLM pipeline state
     clearSavedState(); // Clear sessionStorage
+
+    // Clear the 3D canvas
+    if (kbCanvas) {
+        kbCanvas.clear();
+    }
+
     updateUI();
 }
 
@@ -2180,7 +2230,7 @@ function syncAgentsToRLM() {
 function updateAgentsList() {
     const totalCount = state.agents.length;
     const activeCount = state.agents.filter(a => a.enabled).length;
-    
+
     elements.agentsCount.textContent = totalCount;
     if (elements.activeAgentsCount) {
         elements.activeAgentsCount.textContent = activeCount;
@@ -2188,63 +2238,106 @@ function updateAgentsList() {
     if (elements.chatAgentCount) {
         elements.chatAgentCount.textContent = activeCount;
     }
-    
+
     // Update brain status
     updateBrainStatus();
-    
+
     // Show/hide empty state
     if (elements.chainEmptyState) {
         elements.chainEmptyState.style.display = totalCount === 0 ? 'flex' : 'none';
     }
-    
-    // Render agent nodes
+
+    // Use 3D Canvas if available
+    if (kbCanvas) {
+        updateAgentsListCanvas();
+        return;
+    }
+
+    // Fallback: Legacy render mode
+    updateAgentsListLegacy();
+}
+
+/**
+ * Update agents list using 3D Canvas
+ */
+function updateAgentsListCanvas() {
+    // Get current node IDs in canvas
+    const canvasIds = new Set(kbCanvas.nodes.keys());
+    const agentIds = new Set(state.agents.map(a => a.id));
+
+    // Remove nodes that no longer exist
+    canvasIds.forEach(id => {
+        if (!agentIds.has(id)) {
+            kbCanvas.removeNode(id);
+        }
+    });
+
+    // Add or update each agent
+    state.agents.forEach((agent, index) => {
+        agent.index = index;
+
+        if (kbCanvas.nodes.has(agent.id)) {
+            kbCanvas.updateNode(agent);
+        } else {
+            kbCanvas.addNode(agent, agent.position);
+        }
+    });
+
+    // Update connections after all nodes are positioned
+    kbCanvas.updateConnections();
+}
+
+/**
+ * Legacy render mode for browsers without canvas support
+ */
+function updateAgentsListLegacy() {
     const nodesHtml = state.agents.map((agent, index) => `
         <div class="agent-node ${agent.enabled ? '' : 'disabled'}" data-id="${agent.id}" data-index="${index}">
             <div class="agent-node-icon">${agent.enabled ? '📋' : '📋'}</div>
-            <input type="text" 
-                   class="agent-node-name" 
-                   value="${escapeHtml(agent.displayName)}" 
+            <input type="text"
+                   class="agent-node-name"
+                   value="${escapeHtml(agent.displayName)}"
                    data-index="${index}"
                    title="Click to edit name" />
             <div class="agent-node-meta">${agent.date || 'No date'}</div>
             <div class="agent-node-controls">
-                <button class="agent-control-btn toggle-btn ${agent.enabled ? 'active' : ''}" 
-                        data-index="${index}" 
+                <button class="agent-control-btn toggle-btn ${agent.enabled ? 'active' : ''}"
+                        data-index="${index}"
                         title="${agent.enabled ? 'Disable agent' : 'Enable agent'}">
                     ${agent.enabled ? '●' : '○'}
                 </button>
-                <button class="agent-control-btn remove-btn" 
-                        data-index="${index}" 
+                <button class="agent-control-btn remove-btn"
+                        data-index="${index}"
                         title="Remove agent permanently">
                     ✕
                 </button>
             </div>
         </div>
     `).join('');
-    
+
     // Keep the empty state element, append nodes
     if (elements.chainEmptyState) {
         elements.agentsList.innerHTML = '';
         elements.agentsList.appendChild(elements.chainEmptyState);
         elements.agentsList.insertAdjacentHTML('beforeend', nodesHtml);
-        elements.chainEmptyState.style.display = totalCount === 0 ? 'flex' : 'none';
+        elements.chainEmptyState.style.display = state.agents.length === 0 ? 'flex' : 'none';
     } else {
         elements.agentsList.innerHTML = nodesHtml;
     }
-    
+
     // Add event handlers
     elements.agentsList.querySelectorAll('.toggle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             toggleAgent(parseInt(btn.dataset.index));
         });
     });
-    
+
     elements.agentsList.querySelectorAll('.remove-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             removeAgent(parseInt(btn.dataset.index));
         });
     });
-    
+
     elements.agentsList.querySelectorAll('.agent-node-name').forEach(input => {
         input.addEventListener('change', (e) => {
             updateAgentName(parseInt(input.dataset.index), e.target.value);
@@ -4303,11 +4396,11 @@ function resolveContextGaugeMode(draftMessage) {
 }
 
 function estimateDirectContextUsage(draftMessage) {
-    const relevantAgents = getRelevantAgentsForChat(draftMessage, 5);
+    const relevantAgents = getRelevantAgentsForChat(draftMessage, 50);
     const transcriptLimit = Math.floor(30000 / Math.max(relevantAgents.length, 1));
 
-    const context = buildChatContext(draftMessage, { maxAgents: 5 });
-    const rawContext = buildChatContext(draftMessage, { maxAgents: 5, useFullTranscripts: true });
+    const context = buildChatContext(draftMessage, { maxAgents: 50 });
+    const rawContext = buildChatContext(draftMessage, { maxAgents: 50, useFullTranscripts: true });
     const history = getHistoryForPrompt(buildDirectSystemPrompt(context), draftMessage);
     const rawHistory = getHistoryForPrompt(buildDirectSystemPrompt(rawContext), draftMessage);
 
@@ -5121,7 +5214,7 @@ function extractKeywords(text) {
     return [...new Set(words)];
 }
 
-function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
+function selectRelevantAgents(userQuery, allAgents, maxAgents = 50) {
     if (allAgents.length <= maxAgents) {
         return allAgents; // Return all if we have fewer than max
     }
@@ -5172,7 +5265,7 @@ function buildDirectSystemPrompt(context) {
     return `${DIRECT_SYSTEM_PROMPT_PREFIX}\n\n${context}`;
 }
 
-function getRelevantAgentsForChat(userQuery, maxAgents = 5) {
+function getRelevantAgentsForChat(userQuery, maxAgents = 50) {
     const activeAgents = state.agents.filter(a => a.enabled);
     return userQuery
         ? selectRelevantAgents(userQuery, activeAgents, maxAgents)
@@ -5181,7 +5274,7 @@ function getRelevantAgentsForChat(userQuery, maxAgents = 5) {
 
 function buildChatContext(userQuery = '', options = {}) {
     const {
-        maxAgents = 5,
+        maxAgents = 50, // Allow up to 50 agents (was 5)
         useFullTranscripts = false,
         transcriptLimitOverride = null
     } = options;

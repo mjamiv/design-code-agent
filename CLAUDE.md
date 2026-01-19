@@ -50,6 +50,22 @@ Features include multi-meeting orchestration, agent export/import, image OCR wit
   - Per-prompt comparison view shows results from each configuration
   - HTML export includes comparison table and per-config detail tables
 
+- **Knowledge Base 3D Canvas:**
+  - Visual overhaul of the Knowledge Base pane with immersive canvas design
+  - Snake-pattern auto-layout: nodes flow left-to-right on odd rows, right-to-left on even rows
+  - SVG Bezier curve connections with animated gold particles between enabled agents
+  - Horizontal connectors within rows, vertical connectors between rows (no diagonal overlaps)
+  - Drag-and-drop node repositioning with automatic canvas resizing
+  - Auto-layout runs automatically when agents are added (150ms debounce for batch operations)
+  - Compact node design with icon, editable name, toggle, and remove controls
+  - Canvas dynamically expands to fit any number of agents
+  - New `js/kb-canvas.js` module handles all canvas rendering and interactions
+
+- **Agent Limit Increase:**
+  - Increased max agents for context building from 5 to 50
+  - All enabled agents now included in chat context (transcript per agent dynamically limited)
+  - Context gauge now accurately reflects usage with many agents
+
 ## Architecture
 
 ```
@@ -64,6 +80,7 @@ northstar.LM/
 ├── js/
 │   ├── app.js          # Main application logic (ES Module)
 │   ├── orchestrator.js # Orchestrator page logic (uses RLM)
+│   ├── kb-canvas.js    # Knowledge Base 3D canvas (drag-drop, SVG connections)
 │   └── rlm/            # RLM-Lite module (Recursive Language Model)
 │       ├── index.js        # Main entry point & RLMPipeline class
 │       ├── context-store.js    # Agent data as queryable variables

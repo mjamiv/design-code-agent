@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css?v=62">
+    <link rel="stylesheet" href="css/styles.css?v=66">
     <!-- Pyodide is loaded lazily in the REPL Web Worker for Python execution -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#d4a853">
@@ -103,16 +103,45 @@
                     </button>
                 </div>
 
-                <!-- Agent Chain Visualization -->
-                <div class="agent-chain" id="agents-list">
-                    <!-- Empty state -->
-                    <div class="agent-chain-empty" id="chain-empty-state">
-                        <div class="empty-icon">📋</div>
-                        <p>No agents loaded</p>
-                        <p class="hint">Upload .md agent files to build your knowledge base</p>
+                <!-- Agent Chain Visualization - 3D Canvas -->
+                <div class="kb-canvas-wrapper">
+                    <!-- Ambient background -->
+                    <div class="kb-canvas-ambient">
+                        <div class="ambient-grid"></div>
                     </div>
-                    <!-- Agent nodes will be inserted here by JS -->
+
+                    <!-- SVG connections layer -->
+                    <svg class="kb-connections-layer" id="kb-connections-svg">
+                        <defs>
+                            <linearGradient id="conn-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:#d4a853;stop-opacity:0.3" />
+                                <stop offset="50%" style="stop-color:#d4a853;stop-opacity:0.8" />
+                                <stop offset="100%" style="stop-color:#d4a853;stop-opacity:0.3" />
+                            </linearGradient>
+                            <filter id="conn-glow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                        </defs>
+                    </svg>
+
+                    <!-- 3D node container -->
+                    <div class="kb-3d-space" id="kb-3d-space">
+                        <div class="kb-empty-state" id="chain-empty-state">
+                            <div class="empty-icon">📋</div>
+                            <p>No agents loaded</p>
+                            <p class="hint">Upload .md agent files to build your knowledge base</p>
+                        </div>
+                    </div>
+
+                    <!-- Canvas controls -->
+                    <div class="kb-canvas-controls">
+                        <button class="kb-control-btn" id="kb-auto-layout" title="Auto-arrange nodes">⚡ Layout</button>
+                    </div>
                 </div>
+
+                <!-- Legacy agents-list container for compatibility -->
+                <div class="agent-chain hidden" id="agents-list" style="display:none;"></div>
 
             </div>
 
@@ -750,7 +779,7 @@
             });
         })();
     </script>
-    <script src="js/orchestrator.js?v=36" type="module"></script>
+    <script src="js/orchestrator.js?v=41" type="module"></script>
 
     <!-- Service Worker Registration with Deferred Update -->
     <script>
