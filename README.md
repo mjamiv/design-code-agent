@@ -2,7 +2,7 @@
 
 > Transform your meetings into actionable insights with AI
 
-**Live Demo:** https://mjamiv.github.io/vox2txt/
+**Live Demo:**
 
 ## Overview
 
