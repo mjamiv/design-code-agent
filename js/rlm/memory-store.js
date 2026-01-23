@@ -6,12 +6,13 @@
  */
 
 const MEMORY_TYPES = [
-    'decision',
-    'action',
-    'risk',
-    'entity',
-    'constraint',
-    'open_question',
+    'requirement',
+    'parameter',
+    'crossref',
+    'compliance',
+    'calculation',
+    'conflict',
+    'exception',
     'episode'
 ];
 
@@ -22,12 +23,13 @@ export class MemoryStore {
 
     reset() {
         this.stateBlock = {
-            decisions: [],
-            actions: [],
-            risks: [],
-            entities: [],
-            constraints: [],
-            openQuestions: []
+            requirements: [],
+            parameters: [],
+            crossReferences: [],
+            compliance: [],
+            calculations: [],
+            conflicts: [],
+            exceptions: []
         };
 
         this.workingWindow = {
@@ -178,12 +180,13 @@ export class MemoryStore {
             completedAt,
             episode_summary: summary,
             learned_facts: learnedFacts,
-            decisions: grouped.decisions,
-            actions: grouped.actions,
-            risks: grouped.risks,
-            entities: grouped.entities,
-            constraints: grouped.constraints,
-            open_questions: grouped.openQuestions,
+            requirements: grouped.requirements,
+            parameters: grouped.parameters,
+            cross_references: grouped.crossReferences,
+            compliance: grouped.compliance,
+            calculations: grouped.calculations,
+            conflicts: grouped.conflicts,
+            exceptions: grouped.exceptions,
             events: current.events
         };
 
@@ -399,33 +402,37 @@ export class MemoryStore {
 
     _groupSlicesByType(slices) {
         const grouped = {
-            decisions: [],
-            actions: [],
-            risks: [],
-            entities: [],
-            constraints: [],
-            openQuestions: []
+            requirements: [],
+            parameters: [],
+            crossReferences: [],
+            compliance: [],
+            calculations: [],
+            conflicts: [],
+            exceptions: []
         };
 
         slices.forEach(slice => {
             switch (slice.type) {
-                case 'decision':
-                    grouped.decisions.push(slice.text);
+                case 'requirement':
+                    grouped.requirements.push(slice.text);
                     break;
-                case 'action':
-                    grouped.actions.push(slice.text);
+                case 'parameter':
+                    grouped.parameters.push(slice.text);
                     break;
-                case 'risk':
-                    grouped.risks.push(slice.text);
+                case 'crossref':
+                    grouped.crossReferences.push(slice.text);
                     break;
-                case 'entity':
-                    grouped.entities.push(slice.text);
+                case 'compliance':
+                    grouped.compliance.push(slice.text);
                     break;
-                case 'constraint':
-                    grouped.constraints.push(slice.text);
+                case 'calculation':
+                    grouped.calculations.push(slice.text);
                     break;
-                case 'open_question':
-                    grouped.openQuestions.push(slice.text);
+                case 'conflict':
+                    grouped.conflicts.push(slice.text);
+                    break;
+                case 'exception':
+                    grouped.exceptions.push(slice.text);
                     break;
                 default:
                     break;
@@ -461,17 +468,18 @@ export class MemoryStore {
 
         const lines = response.split('\n').map(line => line.trim()).filter(Boolean);
         const buckets = {
-            decision: [],
-            action: [],
-            risk: [],
-            constraint: [],
-            entity: [],
-            open_question: []
+            requirement: [],
+            parameter: [],
+            crossref: [],
+            compliance: [],
+            calculation: [],
+            conflict: [],
+            exception: []
         };
 
         let activeType = null;
         lines.forEach(line => {
-            const headingMatch = line.match(/^(decisions?|actions?|risks?|constraints?|entities?|open questions?)[:\s-]*/i);
+            const headingMatch = line.match(/^(requirements?|parameters?|cross[-\s]?refs?|compliance|calculations?|conflicts?|exceptions?)[:\s-]*/i);
             if (headingMatch) {
                 activeType = this._normalizeType(headingMatch[1]);
                 const remainder = line.slice(headingMatch[0].length).trim();
@@ -525,23 +533,25 @@ export class MemoryStore {
 
     _normalizeType(label) {
         const normalized = label.toLowerCase();
-        if (normalized.startsWith('decision')) return 'decision';
-        if (normalized.startsWith('action')) return 'action';
-        if (normalized.startsWith('risk')) return 'risk';
-        if (normalized.startsWith('constraint')) return 'constraint';
-        if (normalized.startsWith('entity')) return 'entity';
-        if (normalized.startsWith('open')) return 'open_question';
+        if (normalized.startsWith('requirement')) return 'requirement';
+        if (normalized.startsWith('parameter')) return 'parameter';
+        if (normalized.startsWith('cross')) return 'crossref';
+        if (normalized.startsWith('compliance')) return 'compliance';
+        if (normalized.startsWith('calculation')) return 'calculation';
+        if (normalized.startsWith('conflict')) return 'conflict';
+        if (normalized.startsWith('exception')) return 'exception';
         return 'episode';
     }
 
     _mergeIntoStateBlock(entry) {
         const map = {
-            decision: 'decisions',
-            action: 'actions',
-            risk: 'risks',
-            constraint: 'constraints',
-            entity: 'entities',
-            open_question: 'openQuestions'
+            requirement: 'requirements',
+            parameter: 'parameters',
+            crossref: 'crossReferences',
+            compliance: 'compliance',
+            calculation: 'calculations',
+            conflict: 'conflicts',
+            exception: 'exceptions'
         };
         const key = map[entry.type];
         if (!key) return;
@@ -559,17 +569,17 @@ export class MemoryStore {
 
     _importanceForType(type) {
         switch (type) {
-            case 'decision':
+            case 'requirement':
                 return 0.9;
-            case 'risk':
+            case 'compliance':
                 return 0.8;
-            case 'action':
+            case 'parameter':
                 return 0.7;
-            case 'constraint':
+            case 'crossref':
                 return 0.6;
-            case 'entity':
+            case 'conflict':
                 return 0.5;
-            case 'open_question':
+            case 'exception':
                 return 0.4;
             default:
                 return 0.3;

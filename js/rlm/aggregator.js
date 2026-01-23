@@ -54,7 +54,7 @@ export class ResponseAggregator {
         if (successfulResults.length === 0) {
             return {
                 success: false,
-                response: 'No results could be gathered from the available meetings.',
+                response: 'No results could be gathered from the available codes.',
                 aggregationType: 'none',
                 metadata: this._buildMetadata(executionResult, decomposition)
             };
@@ -167,24 +167,13 @@ export class ResponseAggregator {
      * @private
      */
     _buildSynthesisPrompt(originalQuery, classification) {
-        const basePrompt = `You are synthesizing information from multiple meeting sources to answer: "${originalQuery}"
+        return `You are synthesizing information from multiple engineering design codes to answer: "${originalQuery}"
 
-Instructions:
-- Combine the information coherently
-- Resolve any conflicting information by noting the discrepancy
-- Be concise but comprehensive
-- Cite which meeting/source information came from when relevant
-- Use bullet points for lists`;
-
-        const intentSpecific = {
-            'factual': '\n- Focus on providing a clear, factual answer',
-            'comparative': '\n- Highlight similarities and differences between sources',
-            'aggregative': '\n- Compile a complete list without duplicates',
-            'analytical': '\n- Identify overarching patterns and themes',
-            'temporal': '\n- Present information in chronological order if possible'
-        };
-
-        return basePrompt + (intentSpecific[classification?.intent] || '');
+- Combine requirements from all codes coherently
+- Note conflicting requirements with specific section references
+- Indicate which code takes precedence if applicable
+- Include section references for all cited requirements
+- Use tables for comparing values across codes`;
     }
 
     /**
@@ -197,11 +186,11 @@ Instructions:
 
         // Format as structured response
         const formattedParts = deduped.map(r => {
-            const source = r.agentName || 'Meeting';
+            const source = r.agentName || 'Code';
             return `**From ${source}:**\n${r.response}`;
         });
 
-        const response = `Based on ${results.length} meetings:\n\n${formattedParts.join('\n\n---\n\n')}`;
+        const response = `Based on ${results.length} codes:\n\n${formattedParts.join('\n\n---\n\n')}`;
 
         return {
             success: true,

@@ -33,7 +33,7 @@
                     </button>
                     <div class="about-dropdown hidden" id="about-dropdown">
                         <p class="about-intro">
-                            northstar.LM Agent Orchestrator combines multiple meeting agents for cross-meeting insights using AI-powered analysis.
+                            northstar.LM Agent Orchestrator combines multiple code agents for cross-code analysis using AI-powered synthesis.
                         </p>
                         <div class="about-models">
                             <span class="model-tag">🧠 GPT-5.2</span>
@@ -46,7 +46,7 @@
                 <a href="index.html" class="back-link">← Back to Agent Builder</a>
             </div>
         </div>
-        <p class="tagline">Combine multiple meeting agents for cross-meeting insights</p>
+        <p class="tagline">Combine multiple code agents for cross-code analysis</p>
         <button id="help-btn" class="help-btn" title="How to use the Orchestrator">?</button>
     </header>
 
@@ -278,7 +278,7 @@
                             <span class="context-gauge-value" id="context-gauge-rom-value">0%</span>
                         </div>
                         <div class="context-gauge-row">
-                            <span class="context-gauge-label">Full transcripts (worst-case)</span>
+                            <span class="context-gauge-label">Full source text (worst-case)</span>
                             <div class="context-gauge-bar context-gauge-bar-raw">
                                 <div class="context-gauge-fill context-gauge-fill-raw" id="context-gauge-raw-fill"></div>
                             </div>
@@ -286,7 +286,7 @@
                         </div>
                     </div>
                     <div class="context-gauge-footnote" id="context-gauge-footnote">
-                        Estimate will appear after you add meetings and a prompt.
+                        Estimate will appear after you add code agents and a prompt.
                     </div>
                 </div>
                 
@@ -296,11 +296,13 @@
                         <div class="welcome-avatar">🤖</div>
                         <div class="welcome-content">
                             <p class="welcome-title">Hello! I'm your Orchestrator AI</p>
-                            <p class="welcome-text">I have access to your knowledge base. Ask me about decisions, action items, patterns, or insights from your meeting agents.</p>
+                            <p class="welcome-text">I have access to your knowledge base. Ask me about requirements, parameters, conflicts, or cross-references from your code agents.</p>
                             <div class="welcome-suggestions">
-                                <button class="suggestion-chip" data-query="What are the key action items across all meetings?">📋 Key action items</button>
-                                <button class="suggestion-chip" data-query="What common themes appear in these meetings?">🔗 Common themes</button>
-                                <button class="suggestion-chip" data-query="Summarize the main decisions made">✅ Main decisions</button>
+                                <button class="suggestion-chip" data-query="Compare load factors across all codes">📊 Load factors</button>
+                                <button class="suggestion-chip" data-query="What are the key requirements for steel design?">🔧 Steel requirements</button>
+                                <button class="suggestion-chip" data-query="Find cross-references to ASCE 7">🔗 ASCE 7 refs</button>
+                                <button class="suggestion-chip" data-query="What conflicts exist between codes?">⚠️ Code conflicts</button>
+                                <button class="suggestion-chip" data-query="Summarize critical compliance notes across all codes">✅ Compliance notes</button>
                             </div>
                         </div>
                     </div>
@@ -310,7 +312,7 @@
                 <div class="chatbot-input-area">
                     <div class="chatbot-input-wrapper">
                         <textarea id="chat-input" 
-                                  placeholder="Ask anything about your meeting agents..." 
+                                  placeholder="Ask anything about your code agents..." 
                                   rows="1"
                                   autocomplete="off"></textarea>
                         <button type="button" id="chat-send-btn" class="chatbot-send-btn" title="Send message">
@@ -331,71 +333,71 @@
             <!-- Actions below chat -->
             <div class="kb-actions">
                 <button id="generate-insights-btn" class="btn-primary btn-large" disabled>
-                    <span class="btn-text">📊 Generate Cross-Meeting Insights</span>
+                    <span class="btn-text">📊 Generate Cross-Code Analysis</span>
                     <span class="btn-loader hidden">
                         <span class="spinner"></span>
                         Analyzing...
                     </span>
                 </button>
-                <p class="insights-hint">Analyze patterns, trends, and action items across all active agents</p>
+                <p class="insights-hint">Analyze requirements, parameters, and conflicts across all active agents</p>
             </div>
         </section>
 
-        <!-- Cross-Meeting Insights Section -->
+        <!-- Cross-Code Insights Section -->
         <section id="insights-section" class="insights-section hidden">
             <div class="section-header">
-                <h2><span>📊</span> Cross-Meeting Insights</h2>
-                <p class="section-desc">Patterns and connections discovered across your meetings</p>
+                <h2><span>📊</span> Cross-Code Analysis</h2>
+                <p class="section-desc">Patterns and connections discovered across your design codes</p>
             </div>
 
             <div class="insights-grid">
                 <div class="insight-card">
                     <div class="card-header">
-                        <span class="card-icon">🔗</span>
-                        <h3>Common Themes</h3>
+                        <span class="card-icon">📋</span>
+                        <h3>Common Requirements</h3>
                     </div>
-                    <div class="card-content" id="insight-themes">
-                        <!-- Themes will be inserted here -->
-                    </div>
-                </div>
-
-                <div class="insight-card">
-                    <div class="card-header">
-                        <span class="card-icon">📈</span>
-                        <h3>Trends & Patterns</h3>
-                    </div>
-                    <div class="card-content" id="insight-trends">
-                        <!-- Trends will be inserted here -->
+                    <div class="card-content" id="insight-common-requirements">
+                        <!-- Common requirements will be inserted here -->
                     </div>
                 </div>
 
                 <div class="insight-card">
                     <div class="card-header">
                         <span class="card-icon">⚠️</span>
-                        <h3>Key Risks & Blockers</h3>
+                        <h3>Conflicting Requirements</h3>
                     </div>
-                    <div class="card-content" id="insight-risks">
-                        <!-- Risks will be inserted here -->
+                    <div class="card-content" id="insight-conflicts">
+                        <!-- Conflicts will be inserted here -->
                     </div>
                 </div>
 
                 <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">📊</span>
+                        <h3>Load Factor Comparison</h3>
+                    </div>
+                    <div class="card-content" id="insight-load-factors">
+                        <!-- Load factor comparison will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card">
+                    <div class="card-header">
+                        <span class="card-icon">🔗</span>
+                        <h3>Cross-Code Dependencies</h3>
+                    </div>
+                    <div class="card-content" id="insight-dependencies">
+                        <!-- Dependencies will be inserted here -->
+                    </div>
+                </div>
+
+                <div class="insight-card full-width">
                     <div class="card-header">
                         <span class="card-icon">💡</span>
                         <h3>Recommendations</h3>
                     </div>
                     <div class="card-content" id="insight-recommendations">
                         <!-- Recommendations will be inserted here -->
-                    </div>
-                </div>
-
-                <div class="insight-card full-width">
-                    <div class="card-header">
-                        <span class="card-icon">✅</span>
-                        <h3>Consolidated Action Items</h3>
-                    </div>
-                    <div class="card-content" id="insight-actions">
-                        <!-- Action items will be inserted here -->
                     </div>
                 </div>
             </div>
@@ -441,7 +443,7 @@
                         <div class="step-number">1</div>
                         <div class="step-content">
                             <h4>Export Agents from Main App</h4>
-                            <p>Analyze meetings in the <a href="index.html">main app</a>, then click <strong>"Export Agent"</strong> to save each meeting as a .md file.</p>
+                            <p>Analyze codes in the <a href="index.html">main app</a>, then click <strong>"Export Agent"</strong> to save each code as a .md file.</p>
                         </div>
                     </div>
                     <div class="help-step">
@@ -462,23 +464,23 @@
                         <div class="step-number">4</div>
                         <div class="step-content">
                             <h4>Chat Across Meetings</h4>
-                            <p>Ask questions in the chat to find patterns, decisions, and action items across all your meetings.</p>
+                            <p>Ask questions in the chat to find patterns, requirements, and conflicts across all your codes.</p>
                         </div>
                     </div>
                     <div class="help-step">
                         <div class="step-number">5</div>
                         <div class="step-content">
-                            <h4>Generate Cross-Meeting Insights</h4>
-                            <p>Click the button to get AI-generated insights: common themes, trends, risks, and recommendations.</p>
+                            <h4>Generate Cross-Code Analysis</h4>
+                            <p>Click the button to get AI-generated insights: common requirements, conflicts, load factor comparisons, and recommendations.</p>
                         </div>
                     </div>
                 </div>
                 <div class="help-tips">
                     <h4>💡 Pro Tips</h4>
                     <ul>
-                        <li><strong>Toggle Agents:</strong> Temporarily disable agents to focus your queries on specific meetings.</li>
-                        <li><strong>Rename Agents:</strong> Give agents memorable names like "Q4 Planning" for easier identification.</li>
-                        <li><strong>Suggestion Chips:</strong> Click the quick query buttons for common cross-meeting questions.</li>
+                        <li><strong>Toggle Agents:</strong> Temporarily disable agents to focus your queries on specific codes.</li>
+                        <li><strong>Rename Agents:</strong> Give agents memorable names like "ASCE 7-22" for easier identification.</li>
+                        <li><strong>Suggestion Chips:</strong> Click the quick query buttons for common cross-code questions.</li>
                     </ul>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 /**
  * northstar.LM - Agent Orchestrator
- * Combines multiple meeting agents for cross-meeting insights
+ * Combines multiple code agents for cross-code analysis
  *
  * Now powered by RLM-Lite (Recursive Language Model) for:
  * - Query decomposition into targeted sub-queries
@@ -128,13 +128,13 @@ const TEST_SETTINGS_KEYS = [
     'showMemoryDebug'
 ];
 const DEFAULT_TEST_PROMPTS = [
-    'Summarize the key decisions made throughout the meetings.',
-    'What were the main blockers discussed across the meetings.',
-    'List the action items and owners that came out of the Q3 and Q4 meetings.',
-    'Which risks keep showing up across all meetings.',
-    'What were the main concerns with the capital markets in 2025.',
-    'Highlight any commitments made to external stakeholders since Q2.',
-    'Summarize this conversation with 6 bullets per topic.'
+    'Compare load factors across all codes.',
+    'List the key requirements for steel design across the agents.',
+    'Which sections conflict between ASCE and AASHTO?',
+    'Summarize cross-code dependencies and references.',
+    'Identify critical compliance notes across all standards.',
+    'Where do the codes define safety factors or resistance factors?',
+    'Summarize this analysis with 6 bullets per topic.'
 ];
 
 function deriveProcessingMode(settings) {
@@ -661,11 +661,11 @@ function initElements() {
 
         // Insights
         insightsSection: document.getElementById('insights-section'),
-        insightThemes: document.getElementById('insight-themes'),
-        insightTrends: document.getElementById('insight-trends'),
-        insightRisks: document.getElementById('insight-risks'),
+        insightCommonRequirements: document.getElementById('insight-common-requirements'),
+        insightConflicts: document.getElementById('insight-conflicts'),
+        insightLoadFactors: document.getElementById('insight-load-factors'),
+        insightDependencies: document.getElementById('insight-dependencies'),
         insightRecommendations: document.getElementById('insight-recommendations'),
-        insightActions: document.getElementById('insight-actions'),
 
         // Metrics
         metricsCard: document.getElementById('metrics-card'),
@@ -1551,6 +1551,55 @@ function extractJsonSection(content, sectionName) {
     }
 }
 
+function parseMarkdownList(sectionText) {
+    if (!sectionText) return [];
+    return sectionText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => line.replace(/^[-•*▸]\s*/, '').trim())
+        .filter(line => line.length > 0);
+}
+
+function parseRequirementsFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const parts = line.split(':');
+        if (parts.length > 1) {
+            return { id: parts.shift().trim(), text: parts.join(':').trim() };
+        }
+        return { id: '', text: line };
+    });
+}
+
+function parseDesignParametersFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const match = line.match(/^(.+?):\s*(.+)$/);
+        const name = match ? match[1].trim() : line;
+        let value = match ? match[2].trim() : '';
+        let section = '';
+        const sectionMatch = value.match(/\(Section:\s*([^)]+)\)$/i);
+        if (sectionMatch) {
+            section = sectionMatch[1].trim();
+            value = value.replace(/\(Section:\s*([^)]+)\)$/i, '').trim();
+        }
+        return { name, value, section };
+    });
+}
+
+function parseCrossReferencesFromMarkdown(sectionText) {
+    return parseMarkdownList(sectionText).map(line => {
+        const match = line.match(/(.+?)\s*->\s*(.+?)(?:\s*\((.+)\))?$/);
+        if (match) {
+            return {
+                source: match[1].trim(),
+                target: match[2].trim(),
+                relationship: match[3]?.trim() || ''
+            };
+        }
+        return { source: line, target: '', relationship: '' };
+    });
+}
+
 function stripBase64Fields(value, keyHint = '') {
     if (value === null || value === undefined) return value;
     if (typeof value === 'string') {
@@ -1605,10 +1654,7 @@ function buildExtendedContext(payload) {
     const contextPayload = JSON.parse(JSON.stringify(payload));
 
     if (contextPayload.analysis) {
-        delete contextPayload.analysis.summary;
-        delete contextPayload.analysis.keyPoints;
-        delete contextPayload.analysis.actionItems;
-        delete contextPayload.analysis.sentiment;
+        delete contextPayload.analysis.sourceText;
         delete contextPayload.analysis.transcript;
     }
 
@@ -1617,14 +1663,15 @@ function buildExtendedContext(payload) {
 
 function parseAgentFile(content) {
     const result = {
-        title: 'Untitled Meeting',
+        title: 'Untitled Code',
         date: null,
         sourceType: 'unknown',
-        summary: '',
-        keyPoints: '',
-        actionItems: '',
-        sentiment: '',
-        transcript: '',
+        codeOverview: '',
+        requirements: [],
+        designParameters: [],
+        crossReferences: [],
+        complianceNotes: [],
+        sourceText: '',
         payload: null,
         extendedContext: ''
     };
@@ -1651,37 +1698,40 @@ function parseAgentFile(content) {
         if (sourceMatch) result.sourceType = sourceMatch[1].trim();
     }
     
-    // Parse title from heading (# Meeting Agent: <title>)
-    const titleMatch = content.match(/# Meeting Agent:\s*(.+)/);
+    const titleMatch = content.match(/# (?:Code|Meeting) Agent:\s*(.+)/);
     if (titleMatch) {
         result.title = titleMatch[1].trim();
     }
     
-    // Parse sections with flexible matching (handles both old and new formats)
-    // Executive Summary or Summary
-    const summaryMatch = content.match(/## (?:Executive )?Summary\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
-    if (summaryMatch) result.summary = summaryMatch[1].trim();
-    
-    // Key Points
-    const keyPointsMatch = content.match(/## Key Points\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
-    if (keyPointsMatch) result.keyPoints = keyPointsMatch[1].trim();
-    
-    // Action Items
-    const actionItemsMatch = content.match(/## Action Items\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
-    if (actionItemsMatch) result.actionItems = actionItemsMatch[1].trim();
-    
-    // Sentiment Analysis or Sentiment
-    const sentimentMatch = content.match(/## Sentiment(?: Analysis)?\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
-    if (sentimentMatch) result.sentiment = sentimentMatch[1].trim();
-    
-    // Full Transcript (may be in code block)
-    const transcriptMatch = content.match(/## Full Transcript[\s\S]*?```\n?([\s\S]*?)```/);
-    if (transcriptMatch) {
-        result.transcript = transcriptMatch[1].trim();
+    const overviewMatch = content.match(/## Code Overview\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (overviewMatch) result.codeOverview = overviewMatch[1].trim();
+
+    const requirementsMatch = content.match(/## Requirements\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (requirementsMatch) {
+        result.requirements = parseRequirementsFromMarkdown(requirementsMatch[1].trim());
+    }
+
+    const parametersMatch = content.match(/## Design Parameters\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (parametersMatch) {
+        result.designParameters = parseDesignParametersFromMarkdown(parametersMatch[1].trim());
+    }
+
+    const crossRefsMatch = content.match(/## Cross References\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (crossRefsMatch) {
+        result.crossReferences = parseCrossReferencesFromMarkdown(crossRefsMatch[1].trim());
+    }
+
+    const complianceMatch = content.match(/## Compliance Notes\n\n?([\s\S]*?)(?=\n---|\n## |$)/);
+    if (complianceMatch) {
+        result.complianceNotes = parseMarkdownList(complianceMatch[1].trim());
+    }
+
+    const sourceTextMatch = content.match(/## Source Text[\s\S]*?```\n?([\s\S]*?)```/);
+    if (sourceTextMatch) {
+        result.sourceText = sourceTextMatch[1].trim();
     } else {
-        // Try without code block
-        const plainTranscriptMatch = content.match(/## (?:Full )?Transcript\n\n?([\s\S]*?)(?=\n## |$)/);
-        if (plainTranscriptMatch) result.transcript = plainTranscriptMatch[1].trim();
+        const plainSourceMatch = content.match(/## Source Text\n\n?([\s\S]*?)(?=\n## |$)/);
+        if (plainSourceMatch) result.sourceText = plainSourceMatch[1].trim();
     }
 
     const exportPayload = extractJsonSection(content, 'Export Payload (JSON)');
@@ -1707,11 +1757,20 @@ function parseAgentFile(content) {
         result.sourceType = exportPayload.agent?.sourceType || exportPayload.source?.inputMode || result.sourceType;
 
         const analysis = exportPayload.analysis || {};
-        result.summary = analysis.summary || result.summary;
-        result.keyPoints = analysis.keyPoints || result.keyPoints;
-        result.actionItems = analysis.actionItems || result.actionItems;
-        result.sentiment = analysis.sentiment || result.sentiment;
-        result.transcript = analysis.transcript || result.transcript;
+        if (analysis.codeOverview || analysis.requirements || analysis.designParameters || analysis.sourceText) {
+            result.codeOverview = analysis.codeOverview || result.codeOverview;
+            result.requirements = analysis.requirements || result.requirements;
+            result.designParameters = analysis.designParameters || result.designParameters;
+            result.crossReferences = analysis.crossReferences || result.crossReferences;
+            result.complianceNotes = analysis.complianceNotes || result.complianceNotes;
+            result.sourceText = analysis.sourceText || result.sourceText;
+        } else {
+            result.codeOverview = analysis.summary || result.codeOverview;
+            result.requirements = parseRequirementsFromMarkdown(analysis.keyPoints || result.requirements.join('\n'));
+            result.designParameters = parseDesignParametersFromMarkdown(analysis.actionItems || result.designParameters.join('\n'));
+            result.complianceNotes = analysis.sentiment ? [analysis.sentiment] : result.complianceNotes;
+            result.sourceText = analysis.transcript || result.sourceText;
+        }
     }
     
     return result;
@@ -1764,11 +1823,12 @@ function clearChatAndCache() {
                 <div class="welcome-avatar">🤖</div>
                 <div class="welcome-content">
                     <p class="welcome-title">Hello! I'm your Orchestrator AI</p>
-                    <p class="welcome-text">I have access to your knowledge base. Ask me about decisions, action items, patterns, or insights from your meeting agents.</p>
+                    <p class="welcome-text">I have access to your knowledge base. Ask me about requirements, parameters, conflicts, or cross-references from your code agents.</p>
                     <div class="welcome-suggestions">
-                        <button class="suggestion-chip" data-query="What are the key action items across all meetings?">📋 Key action items</button>
-                        <button class="suggestion-chip" data-query="What common themes appear in these meetings?">🔗 Common themes</button>
-                        <button class="suggestion-chip" data-query="Summarize the main decisions made">✅ Main decisions</button>
+                        <button class="suggestion-chip" data-query="Compare load factors across all codes">📊 Load factors</button>
+                        <button class="suggestion-chip" data-query="What are the key requirements for steel design?">🔧 Steel requirements</button>
+                        <button class="suggestion-chip" data-query="Find cross-references to ASCE 7">🔗 ASCE 7 refs</button>
+                        <button class="suggestion-chip" data-query="What conflicts exist between codes?">⚠️ Code conflicts</button>
                     </div>
                 </div>
             </div>
@@ -1955,9 +2015,9 @@ function updateButtonStates() {
     elements.generateInsightsBtn.disabled = !hasEnoughAgents || !hasApiKey || state.isProcessing;
     
     if (activeAgents.length === 0) {
-        elements.generateInsightsBtn.title = 'Enable at least 2 agents for cross-meeting insights';
+        elements.generateInsightsBtn.title = 'Enable at least 2 agents for cross-code analysis';
     } else if (activeAgents.length === 1) {
-        elements.generateInsightsBtn.title = 'Enable at least 2 agents for cross-meeting insights';
+        elements.generateInsightsBtn.title = 'Enable at least 2 agents for cross-code analysis';
     } else if (!hasApiKey) {
         elements.generateInsightsBtn.title = 'Enter your API key first';
     } else {
@@ -2587,7 +2647,7 @@ function buildTestReportHtml() {
             <h1>northstar.LM Test Prompting Report</h1>
             <p>Generated ${escapeHtml(timestamp)}</p>
             <p><strong>Settings:</strong> ${escapeHtml(settingsSummary)}</p>
-            <p>This report documents a batch test run of orchestrator prompts for meeting-minute analysis.</p>
+            <p>This report documents a batch test run of orchestrator prompts for design code analysis.</p>
             <div class="summary">
                 <div class="summary-card">
                     <strong>Prompts</strong>
@@ -2693,7 +2753,7 @@ const SIGNAL_MEMORY_LIMITS = {
     chunkMaxTokens: 350
 };
 
-const RLM_SUBQUERY_SYSTEM_PROMPT = `You are analyzing meeting data to answer a specific question.
+const RLM_SUBQUERY_SYSTEM_PROMPT = `You are analyzing design code data to answer a specific question.
 Be concise and focus only on information relevant to the question.
 If the information is not available in the provided context, say so briefly.`;
 
@@ -2741,7 +2801,7 @@ function estimatePromptTokens(systemPrompt, historyMessages, userPrompt) {
 }
 
 function buildRlmUserPrompt(agentContext, query) {
-    return `Context from meetings:
+    return `Context from codes:
 ${agentContext}
 
 Question: ${query}
@@ -3186,7 +3246,7 @@ async function estimateRlmContextUsage(draftMessage) {
 
         if (subQuery.type === 'reduce') {
             const reduceContentTokens = estimateTokensFromParts([
-                'Context from meetings:\n',
+                'Context from codes:\n',
                 estimatedMapTokens,
                 '\n\nQuestion: ',
                 queryText,
@@ -3275,7 +3335,7 @@ function estimateReplContextUsage(draftMessage) {
 
 function buildContextGaugeFootnote(details, currentTokens, rawTokens) {
     if (currentTokens === 0 && rawTokens === 0) {
-        return 'Add meetings and a query to estimate context usage.';
+        return 'Add code agents and a query to estimate context usage.';
     }
 
     const savings = Math.max(rawTokens - currentTokens, 0);
@@ -3285,7 +3345,7 @@ function buildContextGaugeFootnote(details, currentTokens, rawTokens) {
 
     let modeNote = '';
     if (details.mode === 'direct') {
-        const agentNote = details.agentCount ? `${details.agentCount} meetings` : 'meetings';
+        const agentNote = details.agentCount ? `${details.agentCount} codes` : 'codes';
         const historyNote = details.historyCount ? `${details.historyCount} recent messages` : 'no history';
         modeNote = `Direct uses ${agentNote} and ${historyNote}.`;
     } else if (details.mode === 'rlm') {
@@ -3299,8 +3359,8 @@ function buildContextGaugeFootnote(details, currentTokens, rawTokens) {
 
     const savingsNote = rawTokens > 0
         ? (savings > 0
-            ? `Full transcripts estimate ${formatTokenCount(rawTokens)} tokens (saves ${formatTokenCount(savings)}, ${savingsPercent}%).`
-            : `Full transcripts estimate ${formatTokenCount(rawTokens)} tokens.`)
+            ? `Full source text estimate ${formatTokenCount(rawTokens)} tokens (saves ${formatTokenCount(savings)}, ${savingsPercent}%).`
+            : `Full source text estimate ${formatTokenCount(rawTokens)} tokens.`)
         : '';
 
     return `${modeNote} ${savingsNote}`.trim();
@@ -3385,7 +3445,7 @@ function escapeHtml(text) {
 }
 
 // ============================================
-// Cross-Meeting Insights Generation
+// Cross-Code Analysis Generation
 // ============================================
 
 async function generateCrossInsights() {
@@ -3403,27 +3463,26 @@ async function generateCrossInsights() {
     updateButtonStates();
 
     // Start prompt group to aggregate all API calls for insights generation
-    startPromptGroup('Cross-Meeting Insights', false, 'direct');
+    startPromptGroup('Cross-Code Analysis', false, 'direct');
 
     try {
         const combinedContext = buildCombinedContext();
         console.log('[generateCrossInsights] Combined context length:', combinedContext.length);
 
-        const systemPrompt = `You are an expert business analyst specializing in meeting synthesis and strategic insights.
-You have been given data from multiple meetings and must identify cross-meeting patterns, themes, and actionable recommendations.
+        const systemPrompt = `You are an expert engineering code analyst specializing in multi-code synthesis.
 
-Analyze the meetings holistically and provide insights in the following categories:
-1. COMMON THEMES: Recurring topics, concerns, or focus areas across meetings
-2. TRENDS & PATTERNS: Evolution of discussions, emerging priorities, or shifting focus
-3. RISKS & BLOCKERS: Common challenges, dependencies, or concerns that appear across meetings
-4. RECOMMENDATIONS: Strategic suggestions based on the aggregate meeting data
-5. CONSOLIDATED ACTIONS: All action items organized by priority or theme
+Analyze the provided design codes and provide insights in JSON format:
 
-Format your response as JSON with these keys: themes, trends, risks, recommendations, actions
-Each should be an array of strings (bullet points).`;
+{
+    "commonRequirements": "Requirements that appear across multiple codes",
+    "conflictingRequirements": "Where codes differ or conflict",
+    "loadFactorComparison": "Side-by-side comparison of load/safety factors",
+    "crossCodeDependencies": "How codes reference each other",
+    "recommendations": "Which code to follow for specific scenarios"
+}`;
 
         console.log('[generateCrossInsights] Calling GPT API...');
-        const response = await callGPT(systemPrompt, combinedContext, 'Cross-Meeting Insights');
+        const response = await callGPT(systemPrompt, combinedContext, 'Cross-Code Analysis');
         console.log('[generateCrossInsights] Got response, length:', response?.length);
 
         // Store response in active prompt group for metrics
@@ -3446,11 +3505,11 @@ Each should be an array of strings (bullet points).`;
             console.warn('[generateCrossInsights] JSON parse failed, using fallback:', parseError.message);
             // Fallback: treat response as plain text
             insights = {
-                themes: [response],
-                trends: [],
-                risks: [],
-                recommendations: [],
-                actions: []
+                commonRequirements: [response],
+                conflictingRequirements: [],
+                loadFactorComparison: [],
+                crossCodeDependencies: [],
+                recommendations: []
             };
         }
         
@@ -3478,24 +3537,27 @@ Each should be an array of strings (bullet points).`;
 function buildCombinedContext() {
     const activeAgents = state.agents.filter(a => a.enabled);
     return activeAgents.map((agent, index) => `
-=== MEETING ${index + 1}: ${agent.displayName || agent.title} ===
+=== CODE ${index + 1}: ${agent.displayName || agent.title} ===
 Date: ${agent.date || 'Unknown'}
 Source: ${agent.sourceType}
 
-SUMMARY:
-${agent.summary}
+CODE OVERVIEW:
+${agent.codeOverview || ''}
 
-KEY POINTS:
-${agent.keyPoints}
+REQUIREMENTS:
+${JSON.stringify(agent.requirements || [], null, 2)}
 
-ACTION ITEMS:
-${agent.actionItems}
+DESIGN PARAMETERS:
+${JSON.stringify(agent.designParameters || [], null, 2)}
 
-SENTIMENT:
-${agent.sentiment}
-${agent.transcript ? `
-TRANSCRIPT:
-${agent.transcript}
+CROSS REFERENCES:
+${JSON.stringify(agent.crossReferences || [], null, 2)}
+
+COMPLIANCE NOTES:
+${(agent.complianceNotes || []).join(' | ')}
+${agent.sourceText ? `
+SOURCE TEXT:
+${agent.sourceText}
 ` : ''}
 ${agent.extendedContext ? `
 EXTENDED CONTEXT:
@@ -3520,20 +3582,20 @@ function displayInsights(insights) {
     }
     
     // Populate each insight card with null checks
-    if (elements.insightThemes) {
-        elements.insightThemes.innerHTML = formatInsightList(insights.themes);
+    if (elements.insightCommonRequirements) {
+        elements.insightCommonRequirements.innerHTML = formatInsightList(insights.commonRequirements);
     }
-    if (elements.insightTrends) {
-        elements.insightTrends.innerHTML = formatInsightList(insights.trends);
+    if (elements.insightConflicts) {
+        elements.insightConflicts.innerHTML = formatInsightList(insights.conflictingRequirements);
     }
-    if (elements.insightRisks) {
-        elements.insightRisks.innerHTML = formatInsightList(insights.risks);
+    if (elements.insightLoadFactors) {
+        elements.insightLoadFactors.innerHTML = formatInsightList(insights.loadFactorComparison);
+    }
+    if (elements.insightDependencies) {
+        elements.insightDependencies.innerHTML = formatInsightList(insights.crossCodeDependencies);
     }
     if (elements.insightRecommendations) {
         elements.insightRecommendations.innerHTML = formatInsightList(insights.recommendations);
-    }
-    if (elements.insightActions) {
-        elements.insightActions.innerHTML = formatInsightList(insights.actions);
     }
     
     // Scroll to insights section
@@ -3615,7 +3677,7 @@ async function sendChatMessage() {
         } else {
             addThinkingStep(thinkingId, `Mode: Direct ${modelName}${!rlmEnabled ? ' (RLM off)' : ''}`, 'classify');
             updateThinkingStatus(thinkingId, 'Analyzing with LLM...');
-            addThinkingStep(thinkingId, `Building context from ${state.agents.length} meetings`, 'info');
+            addThinkingStep(thinkingId, `Building context from ${state.agents.length} codes`, 'info');
         }
 
         // Execute the actual chat processing (pass thinkingId for real-time updates from RLM)
@@ -3948,13 +4010,20 @@ function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
 
         // Keyword matching
         queryKeywords.forEach(keyword => {
-            if (agent.title.toLowerCase().includes(keyword)) score += 5;
-            if (agent.summary.toLowerCase().includes(keyword)) score += 3;
-            if (agent.keyPoints.toLowerCase().includes(keyword)) score += 2;
-            if (agent.actionItems.toLowerCase().includes(keyword)) score += 2;
+            const displayName = (agent.displayName || agent.title || '').toLowerCase();
+            if (displayName.includes(keyword)) score += 5;
+            if ((agent.codeOverview || '').toLowerCase().includes(keyword)) score += 4;
+            const requirementText = (agent.requirements || []).map(req => `${req.id || ''} ${req.text || ''}`).join(' ').toLowerCase();
+            if (requirementText.includes(keyword)) score += 3;
+            const parameterText = (agent.designParameters || []).map(param => `${param.name || ''} ${param.value || ''}`).join(' ').toLowerCase();
+            if (parameterText.includes(keyword)) score += 3;
+            const crossRefText = (agent.crossReferences || []).map(ref => `${ref.source || ''} ${ref.target || ''}`).join(' ').toLowerCase();
+            if (crossRefText.includes(keyword)) score += 2;
+            const complianceText = (agent.complianceNotes || []).join(' ').toLowerCase();
+            if (complianceText.includes(keyword)) score += 2;
         });
 
-        // Recency boost (recent meetings are more likely to be relevant)
+        // Recency boost (recent codes are more likely to be relevant)
         if (agent.date) {
             try {
                 const agentDate = new Date(agent.date);
@@ -3978,10 +4047,17 @@ function selectRelevantAgents(userQuery, allAgents, maxAgents = 5) {
         .map(s => s.agent);
 }
 
-const DIRECT_SYSTEM_PROMPT_PREFIX = `You are a helpful meeting assistant with access to data from multiple meetings.
-Use the following meeting data to answer questions accurately and comprehensively.
-If information isn't available in the meeting data, say so clearly.
-Be concise but thorough. Use bullet points when listing multiple items.`;
+const DIRECT_SYSTEM_PROMPT_PREFIX = `You are an expert structural engineering assistant with access to multiple design codes and standards.
+
+You can help with:
+- Cross-code compliance checking (comparing requirements across ASCE, AASHTO, ACI, AISC)
+- Finding specific design requirements and parameters
+- Understanding code dependencies and cross-references
+- Identifying conflicting or superseding requirements
+- Calculating design values using code formulas
+
+When citing requirements, always include section references.
+Be precise about which code each requirement comes from.`;
 
 function buildDirectSystemPrompt(context) {
     return `${DIRECT_SYSTEM_PROMPT_PREFIX}\n\n${context}`;
@@ -4012,22 +4088,23 @@ function buildChatContext(userQuery = '', options = {}) {
             : Math.floor(30000 / Math.max(relevantAgents.length, 1)));
 
     return relevantAgents.map((agent, index) => {
-        const transcriptText = agent.transcript || '';
-        const transcriptSection = transcriptText
-            ? (transcriptLimit && transcriptText.length > transcriptLimit
-                ? `Transcript: ${transcriptText.substring(0, transcriptLimit)}...[truncated]`
-                : `Transcript: ${transcriptText}`)
+        const sourceText = agent.sourceText || '';
+        const transcriptSection = sourceText
+            ? (transcriptLimit && sourceText.length > transcriptLimit
+                ? `Source Text: ${sourceText.substring(0, transcriptLimit)}...[truncated]`
+                : `Source Text: ${sourceText}`)
             : '';
         const extendedSection = agent.extendedContext
             ? `Extended Context:\n${agent.extendedContext}`
             : '';
 
         return `
---- Meeting ${index + 1}: ${agent.displayName || agent.title} (${agent.date || 'No date'}) ---
-Summary: ${agent.summary}
-Key Points: ${agent.keyPoints}
-Action Items: ${agent.actionItems}
-Sentiment: ${agent.sentiment}
+--- Code ${index + 1}: ${agent.displayName || agent.title} (${agent.date || 'No date'}) ---
+Code Overview: ${agent.codeOverview || ''}
+Requirements: ${JSON.stringify(agent.requirements || [], null, 2)}
+Design Parameters: ${JSON.stringify(agent.designParameters || [], null, 2)}
+Cross References: ${JSON.stringify(agent.crossReferences || [], null, 2)}
+Compliance Notes: ${(agent.complianceNotes || []).join(' | ')}
 ${transcriptSection}
 ${extendedSection}
 `;
@@ -4281,7 +4358,7 @@ function resetChatHistory() {
             <div class="chat-welcome-icon">🤖</div>
             <div class="chat-welcome-text">
                 <strong>Multi-Agent Assistant</strong>
-                <p>I have access to all your uploaded meeting agents. Ask me about decisions, action items, patterns across meetings, or anything else from your meeting data.</p>
+                <p>I have access to all your uploaded code agents. Ask me about requirements, parameters, conflicts, or anything else from your code data.</p>
             </div>
         </div>
     `;
